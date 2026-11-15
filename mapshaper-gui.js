@@ -184,10 +184,15 @@
     priority = priority || 0;
     var handler = new Handler(type, this, callback, context, priority);
     // Insert the new event in the array of handlers according to its priority.
-    var handlers = this._handlers || (this._handlers = []);
+    // The array is replaced rather than spliced, as removeEventListeners() does:
+    // a dispatch in progress loops over the array it started with, and an insert
+    // into it would shift later handlers past the end of the loop or back onto
+    // the one running.
+    var handlers = this._handlers ? this._handlers.concat() : [];
     var i = handlers.length;
     while (--i >= 0 && handlers[i].priority < handler.priority) {}
     handlers.splice(i+1, 0, handler);
+    this._handlers = handlers;
     return this;
   };
 
@@ -2193,7 +2198,7 @@
     if (!idb$1) return;
     var source = getRasterSourceFile(group);
     var sourceKey = source && source.content ?
-        await persistRasterSourceBytes(dataset, source) : null;
+        await persistRasterSourceGroup(dataset, source, group) : null;
     await persistRasterLayerSamples(dataset);
     lifecycle.touch();
     return sourceKey;
@@ -2201,6 +2206,32 @@
 
   function getRasterSourceFile(group) {
     return group && (group.geotiff || group.png || group.jpeg) || null;
+  }
+
+  // The raster file and the sidecars that are read with it, as a content group
+  // that the importer can read again (e.g. for a -join that needs bands or a
+  // resolution that the layer doesn't have)
+  var SOURCE_GROUP_TYPES = ['geotiff', 'png', 'jpeg', 'aux', 'world', 'prj'];
+
+  function getRasterSourceGroup(group) {
+    var stored = {};
+    SOURCE_GROUP_TYPES.forEach(function(type) {
+      var file = group[type];
+      if (file && file.content) stored[type] = {filename: file.filename, content: file.content};
+    });
+    return stored;
+  }
+
+  // Lets core code read a raster source stored by this module
+  // (see setRasterSourceReader())
+  function registerRasterSourceReader() {
+    internal.setRasterSourceReader(async function(sourceInfo) {
+      if (!idb$1 || !sourceInfo || sourceInfo.storage != 'indexeddb' || !sourceInfo.key) return null;
+      var group = await idb$1.get(sourceInfo.key);
+      return group && typeof group == 'object' && SOURCE_GROUP_TYPES.some(function(type) {
+        return group[type];
+      }) ? group : null;
+    });
   }
 
   function startRasterSourceStoreLifecycle() {
@@ -2247,9 +2278,9 @@
     return [KEY_PREFIX, sessionId, 'samples', sampleCount, layerName || 'raster'].join(':');
   }
 
-  async function persistRasterSourceBytes(dataset, sourceFile) {
+  async function persistRasterSourceGroup(dataset, sourceFile, group) {
     var key = makeRasterSourceKey(sourceFile.filename);
-    await idb$1.set(key, sourceFile.content);
+    await idb$1.set(key, getRasterSourceGroup(group));
     ownKeys.add(key);
     if (dataset.info && dataset.info.raster_sources) {
       dataset.info.raster_sources.forEach(function(source) {
@@ -3494,7 +3525,8 @@
       var names = getFileNames(files);
       var expanded = [];
       if (files.length === 0) return;
-      useQuickView = importTotal === 0 && (opts.quick_view ||
+      // quickView is false if the user checked "with advanced options"
+      useQuickView = importTotal === 0 && quickView !== false && (opts.quick_view ||
           quickView);
       try {
         expanded = await expandFiles(files);
@@ -3699,7 +3731,7 @@
     }
 
     function isRasterImagePart(name) {
-      return /\.(png|jpg|jpeg|tfw|pgw|pngw|jgw|jpw|jpgw|jpegw|wld|prj)$/i.test(name);
+      return /\.(png|jpg|jpeg|tfw|tifw|tiffw|pgw|pngw|jgw|jpw|jpgw|jpegw|wld|prj)$/i.test(name);
     }
 
     function readImportOpts() {
@@ -4027,6 +4059,10 @@
         });
       }
 
+      function hasGeoTIFF(basename) {
+        return data.some(d => fileType(d) == 'geotiff' && fileBase(d) == basename);
+      }
+
       // A .aux.xml sidecar is named after the whole raster file
       // (world.tif.aux.xml), so it joins that file's group rather than one of its
       // own. Returns null if the raster it names was not loaded with it.
@@ -4052,6 +4088,8 @@
         } else if ((type == 'png' || type == 'jpeg') || isRasterImagePart(d.name) && hasRasterImage(basename)) {
           d.group = key(basename, type == 'png' || type == 'jpeg' ? type : getRasterImageGroupType(data, basename));
           if (type == 'png' || type == 'jpeg') d.filename = d.name;
+        } else if (type == 'world' && hasGeoTIFF(basename)) {
+          d.group = key(basename, 'geotiff');
         } else if (!isShapefilePart(d.name)) {
           d.group = key(basename, type);
           d.filename = d.name;
@@ -4215,7 +4253,10 @@
     }
 
     function message() {
-      var msg = formatPopupMessage(arguments);
+      var last = arguments[arguments.length - 1];
+      var msg;
+      if (last && last.type == 'mapshaper-console-progress') return;
+      msg = formatPopupMessage(arguments);
       if (gui.notify && messageShouldGoToInbox(msg)) {
         gui.notify({
           severity: 'info',
@@ -5259,10 +5300,18 @@
     var history = [];
     var historyId = 0;
     var _isOpen = false;
+    var _isRunning = false; // a typed command is running (the command line is hidden)
+    var progressLine = null; // log line receiving progress glyphs
     var globals = {}; // share user-defined globals (job.defs) between runs
     var sharedVars = {}; // share -vars / -defaults templating scope between runs
 
     var activeSession = null; // see createCommandSession()
+    var runningCommands = null; // see runMapshaperCommands()
+    var interruptibleJob = null; // the job of a running command that can be stopped
+    var stopTimer = null;
+    var stopLine = El('div').addClass('console-stop').appendTo(content).hide();
+    var stopLink = El('span').addClass('console-stop-link').appendTo(stopLine).text('Stop');
+    var stopStatus = El('span').appendTo(stopLine);
 
     // expose this function, so other components can run commands (e.g. box tool)
     this.runMapshaperCommands = runMapshaperCommands;
@@ -5285,6 +5334,8 @@
     consoleMessage(PROMPT);
     gui.keyboard.on('keydown', onKeyDown);
     window.addEventListener('beforeunload', saveHistory); // save history if console is open on refresh
+
+    GUI.onClick(stopLink, interruptCommand);
 
     GUI.onClick(el, function(e) {
       var targ = El(e.target);
@@ -5314,6 +5365,7 @@
 
     function toLog(str, cname) {
       var msg = El('div').text(str).appendTo(log);
+      progressLine = null;
       if (cname) {
         msg.addClass(cname);
       }
@@ -5322,6 +5374,7 @@
 
     function toLogNode(node, cname) {
       var msg = El('div').appendTo(log);
+      progressLine = null;
       if (cname) {
         msg.addClass(cname);
       }
@@ -5422,6 +5475,15 @@
           inputText = readCommandLine(),
           capture = false;
 
+      // Ctrl-C stops a running command, like in a terminal, unless it would
+      // copy selected text (Windows, Linux)
+      if (kc == 67 && e.ctrlKey && !e.metaKey && !e.altKey && interruptibleJob &&
+          !String(window.getSelection() || '')) {
+        interruptCommand();
+        e.preventDefault();
+        return;
+      }
+
       // esc key
       if (kc == 27) {
         if (typing) {
@@ -5457,7 +5519,9 @@
         // which is irksome...
         // // gui.clearMode(); // close any panels that  might be open
         //
-        if (kc == 13) { // enter
+        if (_isRunning && (kc == 13 || kc == 9 || kc == 38 || kc == 40)) {
+          // the command line is hidden until the running command finishes
+        } else if (kc == 13) { // enter
           onEnter();
         } else if (kc == 9) { // tab
           tabComplete();
@@ -5643,11 +5707,13 @@
           setDisplayProjection(gui, cmd);
         } else {
           line.hide(); // hide cursor while command is being run
+          _isRunning = true;
           // quit certain edit modes
           if (!gui.interaction.modeWorksWithConsole(gui.interaction.getMode())) {
             gui.interaction.turnOff();
           }
           runMapshaperCommands(cmd, function(err, flags) {
+            _isRunning = false;
             if (flags) {
               gui.clearMode();
             }
@@ -5772,13 +5838,25 @@
     //                  the GUI runs for a panel or tool are run as if with -quiet,
     //                  so their messages don't fill the console (errors still
     //                  reach the caller).
+    //
+    // Some commands take a while (e.g. -fetch, or -deshadow in a worker), and
+    // the GUI stays responsive while they run. Commands run one at a time, in
+    // the order they were submitted, so a command submitted meanwhile waits:
+    // otherwise it could finish first, and the session history would list it
+    // first, and the two would share the active undo transaction. Undo and Redo
+    // wait as well (Undo#addPendingCommit()), or they would take back the state
+    // before the running command while the command still uses it.
     function runMapshaperCommands(str, done, runOpts) {
       var session = runOpts && runOpts.session || null;
       var quiet = !(runOpts && runOpts.typed);
       // A command session is a panel's edits to the active layer, so it is
       // taken to change the layer being edited, like a command that says so.
       var changesEditTarget = !!(runOpts && runOpts.changesEditTarget) || !!session;
-      var commands, checkpoint;
+      var commands, checkpoint, release, unregisterRun;
+      if (runningCommands) {
+        runAfter(runningCommands);
+        return;
+      }
       if (activeSession && activeSession != session) {
         // the session's commit clears activeSession before anything in it can
         // fail, so running again after a failure does not loop
@@ -5791,6 +5869,7 @@
         runAfter(checkpoint);
         return;
       }
+      startRun();
       try {
         if (session) session.activate();
         commands = internal.parseConsoleCommands(str);
@@ -5819,7 +5898,17 @@
         });
       }
 
+      function startRun() {
+        var promise = new Promise(function(resolve) { release = resolve; });
+        runningCommands = promise;
+        unregisterRun = gui.undo && gui.undo.addPendingCommit ?
+          gui.undo.addPendingCommit(function() { return promise; }) : null;
+      }
+
       function finish(err, flags) {
+        runningCommands = null;
+        if (unregisterRun) unregisterRun();
+        if (release) release();
         if (gui.undo && gui.undo.restartEditSession) {
           callSafely(function() { gui.undo.restartEditSession(); });
         }
@@ -5882,11 +5971,15 @@
       // Notify listeners (e.g. comparison overlay) before the model is mutated,
       // so they can snapshot the pre-command state of the active layer.
       gui.dispatchEvent('command_start', {commands: commands});
+      if (commands.some(function(cmd) { return internal.commandCanBeInterrupted(cmd.name); })) {
+        startInterruptible(job);
+      }
       try {
         // -quiet is a setting, read and removed by runParsedCommands()
         internal.runParsedCommands(quiet ? [{name: 'quiet', options: {}}].concat(commands) : commands,
           job, onCommandsDone);
       } catch(e) {
+        endInterruptible();
         if (undoTransaction) {
           clearActiveUndoTransaction(undoTransaction);
         }
@@ -5894,6 +5987,7 @@
       }
 
       function onCommandsDone(err) {
+        endInterruptible();
         var flags = getCommandFlags(commands),
             historyIds = [],
             active2 = model.getActiveLayer(),
@@ -5964,6 +6058,46 @@
           done(err, flags);
         });
       }
+    }
+
+    // The Stop link shows only if the command looks like it has a while to go,
+    // so that it doesn't flash on just before a command finishes. Each step is
+    // [ms since the start, share of the work done (from the progress meter)
+    // below which the link shows]
+    var STOP_LINK_STEPS = [[2000, 0.25], [8000, 0.75], [12000, Infinity]];
+
+    function startInterruptible(job) {
+      var t0 = Date.now();
+      interruptibleJob = job;
+      stopLink.show();
+      stopStatus.text(' (Ctrl-C)');
+      internal.resetProgressShare();
+      scheduleStep(0);
+
+      function scheduleStep(i) {
+        var step = STOP_LINK_STEPS[i];
+        stopTimer = setTimeout(function() {
+          if (internal.getProgressShare() < step[1]) {
+            stopLine.show();
+            scrollDown();
+          } else {
+            scheduleStep(i + 1);
+          }
+        }, Math.max(0, step[0] - (Date.now() - t0)));
+      }
+    }
+
+    function endInterruptible() {
+      interruptibleJob = null;
+      clearTimeout(stopTimer);
+      stopLine.hide();
+    }
+
+    function interruptCommand() {
+      if (!interruptibleJob) return;
+      interruptibleJob.interrupt();
+      stopLink.hide();
+      stopStatus.text('Stopping...');
     }
 
     function createCommandUndoTransaction(commandString) {
@@ -6114,7 +6248,9 @@
       var msg;
       if (internal.getStashedVar('QUIET')) return;
       if (internal.loggingEnabled()) {
-        if (structured) {
+        if (structured && structured.type == 'mapshaper-console-progress') {
+          showProgress(structured);
+        } else if (structured) {
           toLogNode(renderStructuredConsoleMessage(structured), 'console-message');
         } else {
           msg = GUI.formatMessageArgs(arguments);
@@ -6126,6 +6262,42 @@
     function consoleError() {
       var msg = GUI.formatMessageArgs(arguments);
       throw new Error(msg);
+    }
+
+    // Glyphs from internal.progress() accumulate on one line, which ends at the
+    // next message or at internal.endProgress()
+    function showProgress(msg) {
+      if (msg.done) {
+        progressLine = null;
+        return;
+      }
+      if (!progressLine) {
+        progressLine = El('div').addClass('console-message').appendTo(log);
+      }
+      appendProgressGlyphs(progressLine.node(), msg.glyph);
+      scrollDown();
+    }
+
+    // The line can wrap after any dot, but not within a percentage (e.g. 50%)
+    function appendProgressGlyphs(node, str) {
+      str.split(/(\d+%)/).forEach(function(part, i) {
+        var span, pieces;
+        if (i % 2 == 1) {
+          span = document.createElement('span');
+          span.className = 'console-progress-mark';
+          span.textContent = part;
+          node.appendChild(span);
+          return;
+        }
+        pieces = part.split('.');
+        pieces.forEach(function(text, j) {
+          if (text) node.appendChild(document.createTextNode(text));
+          if (j < pieces.length - 1) {
+            node.appendChild(document.createTextNode('.'));
+            node.appendChild(document.createElement('wbr'));
+          }
+        });
+      });
     }
 
     function printExample(comment, command) {
@@ -6194,34 +6366,13 @@
         title.className = 'console-info-title';
         title.textContent = 'Layer: ' + (info.layer_name || '[unnamed layer]');
         section.appendChild(title);
-        section.appendChild(renderKeyValueTable(getInfoRows(info), 'console-info-table'));
+        section.appendChild(renderKeyValueTable(internal.getLayerInfoRows(info), 'console-info-table'));
         if (!info.raster_type) {
           section.appendChild(renderAttributeInfoTable(info.attribute_data));
         }
         container.appendChild(section);
       });
       return container;
-    }
-
-    function getInfoRows(info) {
-      var rows = [
-        ['Type', info.raster_type ? 'raster data' : info.geometry_type || 'tabular data']
-      ];
-      if (info.raster_type) {
-        rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
-        rows.push(['Data', info.raster_pixel_type || 'unknown']);
-      } else {
-        rows.push(['Records', utils.format('%,d', info.feature_count)]);
-      }
-      if (info.null_shape_count > 0) {
-        rows.push(['Nulls', utils.format("%'d", info.null_shape_count)]);
-      }
-      if (info.raster_type || info.geometry_type && info.feature_count > info.null_shape_count) {
-        rows.push(['Bounds', info.bbox.join(',')]);
-        rows.push(['CRS', info.proj4]);
-      }
-      rows.push(['Source', info.source_file || 'n/a']);
-      return rows;
     }
 
     function renderAttributeInfoTable(fields) {
@@ -6738,18 +6889,31 @@
       internal.layerHasFurniture(lyr);
   }
 
-  // Every layer is visible until something says otherwise, so that a layer
-  // made or imported next to another does not hide it -- a reference layer used
-  // as a guide for drawing or labelling would otherwise vanish the moment the
-  // new layer became the active one. Only layers whose visibility has never
+  // A layer that arrives without becoming the active one is visible, so that a
+  // command that makes several layers does not hide all but one. The active
+  // layer is shown by being active, and is left unpinned so that it hides
+  // when another layer becomes active. Only layers whose visibility has never
   // been set are touched: a snapshot stores every layer's, and a layer hidden
   // with its eye icon stays hidden.
   //
+  // The exception is a new layer with nothing in it, made to be drawn in: the
+  // layer that was active stays visible, as a guide for the drawing.
+  //
   // layers: [{layer, dataset}], as from model.getLayers()
-  function showNewLayers(layers) {
+  // active: the active layer, {layer, dataset}
+  // prevActive: (optional) the layer that was active before, if the active
+  //   layer is new
+  function showNewLayers(layers, active, prevActive) {
+    var activeLyr = active && active.layer;
+    var prev = prevActive && prevActive.layer;
+    if (prev && prev != activeLyr && !prev.hidden && activeLyr.geometry_type &&
+        !internal.layerHasGeometry(activeLyr) &&
+        layerIsPinnable(prev, prevActive.dataset)) {
+      setLayerPinning(prev, true);
+    }
     layers.forEach(function(o) {
       if (o.layer.pinned === undefined && layerIsPinnable(o.layer, o.dataset)) {
-        setLayerPinning(o.layer, true);
+        setLayerPinning(o.layer, o.layer != activeLyr);
       }
     });
   }
@@ -8026,12 +8190,26 @@
           return internal.formatRasterSampleValue(val, info.isFloat);
         });
         var valueStr = values.join(', ');
-        addMenuLabel(getBandLabel(info.values.length) +
-          (info.valid ? '' : ' (no data)'));
+        addMenuLabel(getBandLabel(info.channels) +
+          (info.valid ? '' : ' (no data)') +
+          (info.valid && info.units ? ' (' + info.units + ')' : ''));
         addCopyItem(valueStr, valueStr);
+        if (info.names && info.names.some(Boolean)) {
+          addCategoryNames(info.names);
+        }
         if (info.color) {
           addColor(getColorString(info.color));
         }
+      }
+
+      // one band's name, or the names of several bands' values (a dash for a
+      // value without one)
+      function addCategoryNames(names) {
+        var str = names.length == 1 ? names[0] : names.map(function(name) {
+          return name || '–';
+        }).join(', ');
+        addMenuLabel(names.length == 1 ? 'category' : 'categories');
+        addCopyItem(utils.htmlEscape(str), str);
       }
 
       function addColor(color) {
@@ -8072,10 +8250,11 @@
     });
   }
 
-  function getBandLabel(bands) {
-    if (bands == 1) return 'band value';
-    if (bands == 3) return 'red, green, blue';
-    if (bands == 4) return 'red, green, blue, alpha';
+  // @channels: see getRasterPixelAtMapXY()
+  function getBandLabel(channels) {
+    if (channels == 'gray') return 'band value';
+    if (channels == 'rgb') return 'red, green, blue';
+    if (channels == 'rgba') return 'red, green, blue, alpha';
     return 'band values';
   }
 
@@ -8938,9 +9117,309 @@
     return [parts[0], parts.length > 1 ? parts[1] : parts[0]];
   }
 
+  // Options of a -frame command that shows and hides a frame's layers, for a run
+  // of visibility changes that is recorded as one command
+  // members: [{ref, start, prev, next}] for each of the frame's layers: its
+  //   reference in a layer list, and whether it is hidden at the start of the
+  //   run, before this change and after it
+  // formatValue: formats a list of refs as an option value
+  // Returns {run, record}: run changes the layers from where they are to next,
+  //   and from start as well (as when a command before it hasn't run yet);
+  //   record changes them from start, as the run's command in the history;
+  //   '' if there is nothing to change
+  function getFrameVisibilityOptions(members, formatValue) {
+    var run = {hide: [], show: []};
+    var record = {hide: [], show: []};
+    members.forEach(function(m) {
+      var key = m.next ? 'hide' : 'show';
+      if (!!m.next != !!m.start) record[key].push(m.ref);
+      if (!!m.next != !!m.start || !!m.next != !!m.prev) run[key].push(m.ref);
+    });
+    return {
+      run: formatOptions(run, members.length, formatValue),
+      record: formatOptions(record, members.length, formatValue)
+    };
+  }
+
+  function formatOptions(lists, memberCount, formatValue) {
+    var opts = [];
+    if (lists.hide.length > 0) opts.push('hide-layers=' + formatList(lists.hide, memberCount, formatValue));
+    if (lists.show.length > 0) opts.push('show-layers=' + formatList(lists.show, memberCount, formatValue));
+    return opts.join(' ');
+  }
+
+  function formatList(refs, memberCount, formatValue) {
+    return refs.length == memberCount ? '*' : formatValue(refs.join(','));
+  }
+
+  // Showing and hiding a frame's layers is part of the map, so each change is a
+  // -frame command, recorded in the session and undoable. A run of changes to
+  // one frame's layers, with nothing in between but changes of the selected
+  // layer, is kept as one undo state and one command in the session history,
+  // which makes the change from where the run started; changes that cancel out
+  // leave neither.
+  function FrameVisibilityRuns(gui) {
+    var model = gui.model;
+    var run = null;
+
+    // @layers: layers of @frame to hide (@hidden) or show
+    this.setLayersHidden = function(frame, layers, hidden, onSuccess) {
+      var members = internal.getFrameMemberLayers(model, frame);
+      var before = getHiddenFlags(members);
+      var continued = runContinues(frame);
+      var start = continued ? run.start : before;
+      var options = getFrameVisibilityOptions(members.map(function(o) {
+        var prev = before.get(o.layer);
+        return {
+          ref: internal.getFrameMemberRef(model, frame, o.layer),
+          start: start.has(o.layer) ? start.get(o.layer) : prev,
+          prev: prev,
+          next: layers.includes(o.layer) ? hidden : prev
+        };
+      }), internal.formatOptionValue);
+      var stateBefore = undoIsOn() ? gui.undo.getDoneStateId(0) : null;
+      if (!options.run) {
+        if (onSuccess) onSuccess();
+        return;
+      }
+      runGuiEditCommand(gui, getFrameCommand(frame, options.run), {
+        title: 'Map frame',
+        onSuccess: function(flags) {
+          recordChange(frame, continued, start, before, options.record, stateBefore);
+          if (onSuccess) onSuccess(flags);
+        }
+      });
+    };
+
+    function recordChange(frame, continued, start, before, record, stateBefore) {
+      var entryId = gui.session.getLastEditId();
+      var undoOn = undoIsOn();
+      var stateId = undoOn ? gui.undo.getDoneStateId(0) : null;
+      var culled;
+      if (continued && (!undoOn || stateId !== stateBefore && gui.undo.getDoneStateId(1) === run.stateId)) {
+        gui.session.replaceCommand(run.entryId, null);
+        gui.session.replaceCommand(entryId, record ? getFrameCommand(frame, record) : null);
+        if (!record) {
+          if (undoOn) gui.undo.discardDoneStates(2);
+          run = null;
+          return;
+        }
+        culled = run.culled.concat(run.entryId);
+        run.culled = culled;
+        run.entryId = entryId;
+        run.stateId = undoOn ? gui.undo.combineDoneStates(2, function() {
+          culled.forEach(function(id) { gui.session.replaceCommand(id, null); });
+        }) : null;
+        return;
+      }
+      run = {
+        dataset: frame.dataset,
+        start: before,
+        entryId: entryId,
+        stateId: undoOn && stateId !== stateBefore ? stateId : null,
+        culled: []
+      };
+    }
+
+    // A run goes on while its command is the last edit in the session history
+    // and its state is the last undo state
+    function runContinues(frame) {
+      if (!run || run.dataset != frame.dataset) return false;
+      if (gui.session.getLastEditId() !== run.entryId) return false;
+      if (!undoIsOn()) return true;
+      return !gui.undo.canRedo() && run.stateId !== null && gui.undo.getDoneStateId(0) === run.stateId;
+    }
+
+    function undoIsOn() {
+      return !!gui.undo && appUndoIsEnabled(gui);
+    }
+
+    function getFrameCommand(frame, options) {
+      return '-frame target=' +
+        internal.formatOptionValue(internal.getLayerTargetId(model, frame.layer)) + ' ' + options;
+    }
+  }
+
+  function getHiddenFlags(members) {
+    return members.reduce(function(memo, o) {
+      memo.set(o.layer, !!o.layer.frame_hidden);
+      return memo;
+    }, new Map());
+  }
+
+  // The values that the color palettes panel classifies on a raster layer: the
+  // pixels of a band, sampled as -classify samples them (see
+  // mapshaper-raster-classify.mjs), so that the panel's classes are the ones
+  // -classify finds. A band is a field named as in -classify: band1 to bandN,
+  // numbered as in the source file.
+  //
+  // Samples and categories are cached by grid, since the panel reads them on
+  // every change, and commands that change the pixels make a new grid.
+
+  // bands with more unique values than this aren't offered as categories
+  var MAX_RASTER_CATEGORIES = 300;
+  // the range of elevations that a band can have, in meters
+  var MIN_ELEVATION = -12000;
+  var MAX_ELEVATION = 9000;
+  var ELEVATION_NAME = /(^|[^a-z])(dem|dtm|dsm)([^a-z]|$)|elev|height|altitude|srtm|etopo|gebco|bathy|topo|terrain|relief/i;
+  var cache$3 = new WeakMap(); // grid -> {fields, samples: {}, categories: {}}
+
+  function layerHasPaletteRaster(lyr) {
+    return !!(lyr && internal.layerHasRaster(lyr) && internal.rasterCanTakePalette(lyr.raster));
+  }
+
+  function getRasterBandFields(lyr) {
+    var entry = getCacheEntry(lyr);
+    return entry ? entry.bands.map(function(o) { return o.field; }) : [];
+  }
+
+  // e.g. 'Band 2 (Near infrared)'
+  function getRasterBandLabel(lyr, field) {
+    var o = findBand(lyr, field);
+    if (!o) return field;
+    return 'Band ' + o.band + (o.description ? ' (' + o.description + ')' : '');
+  }
+
+  // The band's sampled values, ascending (an Array, as the model's field values are)
+  function getRasterBandValues(lyr, field) {
+    var sample = getBandSample(lyr, field);
+    return sample ? sample.values : [];
+  }
+
+  // The number of pixels that the band's sample stands for, and of valid pixels:
+  // {sampled, count, total}
+  function getRasterBandCounts(lyr, field) {
+    var sample = getBandSample(lyr, field);
+    return sample ? {sampled: sample.values.length, count: sample.count, total: sample.total} : null;
+  }
+
+  // Integer bands with few enough values to color each one
+  function getRasterCategoryFields(lyr) {
+    var grid = getGrid(lyr);
+    if (!grid || !internal.rasterBandIsInteger(grid)) return [];
+    return getRasterBandFields(lyr).filter(function(field) {
+      var categories = getRasterBandCategories(lyr, field);
+      return categories.length > 0 && categories.length <= MAX_RASTER_CATEGORIES;
+    });
+  }
+
+  // The band's unique values, ascending, as -classify gives them swatches
+  function getRasterBandCategories(lyr, field) {
+    var entry = getCacheEntry(lyr);
+    var o = findBand(lyr, field);
+    if (!o || !internal.rasterBandIsInteger(entry.grid)) return [];
+    if (!entry.categories[field]) {
+      entry.categories[field] = internal.getRasterBandCategories(entry.grid, o.index);
+    }
+    return entry.categories[field];
+  }
+
+  // The name of a band's value, from its file or a palette, or null
+  function getRasterCategoryName(lyr, field, value) {
+    var o = findBand(lyr, field);
+    return o ? internal.getRasterCategoryName(getGrid(lyr), o.band, value) : null;
+  }
+
+  // The raster's categorical palette, if it has one: {field, categories, colors}
+  function getRasterCategoricalPalette(lyr) {
+    var recipe = lyr && lyr.raster && lyr.raster.view && lyr.raster.view.recipe;
+    var palette = recipe && recipe.palette;
+    if (!palette || palette.type != 'categorical' || !palette.categories) return null;
+    return {field: 'band' + palette.band, categories: palette.categories, colors: palette.colors};
+  }
+
+  // A raster of values that aren't categories (by its interpretation) starts with
+  // continuous colors
+  function rasterHasContinuousValues(lyr) {
+    return !!(lyr && lyr.raster && lyr.raster.interpretation != 'categorical');
+  }
+
+  // Meters per unit of the raster's values. Unknown units are taken for meters,
+  // as the elevation commands take them.
+  function getRasterUnitMeters(lyr) {
+    var grid = getGrid(lyr);
+    return grid && internal.getVerticalUnitMeters(grid.verticalUnits) || 1;
+  }
+
+  // e.g. 'm' or 'ft'
+  function getRasterUnitsLabel(lyr) {
+    var grid = getGrid(lyr);
+    return grid && grid.verticalUnits ? internal.formatVerticalUnits(grid.verticalUnits) : 'm';
+  }
+
+  // Whether a band's values could be elevations: continuous values, all of them
+  // between the depth of the deepest ocean and the height of the highest
+  // mountain, with room to spare
+  function rasterBandCouldBeElevation(lyr, field) {
+    var values = getRasterBandValues(lyr, field);
+    var meters = getRasterUnitMeters(lyr);
+    if (!rasterHasContinuousValues(lyr) || values.length === 0) return false;
+    return values[0] * meters >= MIN_ELEVATION && values[values.length - 1] * meters <= MAX_ELEVATION;
+  }
+
+  // Whether a band that could hold elevations says that it does: by its units,
+  // or by an elevation-like name or description of it or of its layer. Values
+  // in the range of elevations aren't enough, since plenty of other data fall in
+  // it.
+  function rasterBandIsElevation(lyr, field) {
+    var grid = getGrid(lyr);
+    if (!grid || !rasterBandCouldBeElevation(lyr, field)) return false;
+    return !!grid.verticalUnits || ELEVATION_NAME.test(getRasterBandLabel(lyr, field)) ||
+      ELEVATION_NAME.test(lyr.name || '');
+  }
+
+  // Identifies the palette on a raster layer, for checking later whether a
+  // scheme still matches it
+  function getRasterLayerPaletteKey(lyr) {
+    var recipe = lyr && lyr.raster && lyr.raster.view && lyr.raster.view.recipe;
+    return recipe && recipe.palette ? internal.getRasterPaletteKey(recipe.palette) : '';
+  }
+
+  function getBandSample(lyr, field) {
+    var entry = getCacheEntry(lyr);
+    var o = findBand(lyr, field);
+    var sample;
+    if (!o) return null;
+    if (!entry.samples[field]) {
+      sample = internal.getRasterBandSample(entry.grid, o.index); // values are ascending
+      entry.samples[field] = sample;
+    }
+    return entry.samples[field];
+  }
+
+  function findBand(lyr, field) {
+    var entry = getCacheEntry(lyr);
+    return entry && entry.bands.find(function(o) { return o.field == field; }) || null;
+  }
+
+  function getGrid(lyr) {
+    var grid = lyr && lyr.raster ? internal.getRasterGrid(lyr.raster) : null;
+    return grid && grid.samples ? grid : null;
+  }
+
+  function getCacheEntry(lyr) {
+    var grid = getGrid(lyr);
+    var entry;
+    if (!grid) return null;
+    entry = cache$3.get(grid);
+    if (!entry) {
+      entry = {
+        grid: grid,
+        bands: internal.getRasterClassifyBands(grid).map(function(o) {
+          return Object.assign({field: 'band' + o.band}, o);
+        }),
+        samples: {},
+        categories: {}
+      };
+      cache$3.set(grid, entry);
+    }
+    return entry;
+  }
+
   function LayerControl(gui) {
     var model = gui.model;
     var map = gui.map;
+    var frameVisibility = new FrameVisibilityRuns(gui);
     var el = gui.container.findChild(".layer-control").hide();
     var btn = gui.container.findChild('.layer-control-btn');
     var headerBtn = btn.findChild('.active-layer-label');
@@ -8989,8 +9468,10 @@
     // layer repositioning
     var dragTargetId = null;
     var dragging = false;
+    var draggingFrame = false;
     var layerOrderSlug;
-    var pendingMove = null; // {drag, drop, above}: a drop in another section
+    // {drag, drop, above}: a drop in another section, or of a frame
+    var pendingMove = null;
 
     headerBtn.on('click', function() {
       toggle();
@@ -9033,8 +9514,19 @@
       // re-render is wasteful and makes the panel's icons flicker.
       var flags = e.flags || {};
       if (flags.simplify_amount || flags.redraw_only) return;
+      showSelectedLayerIfShownInFrame();
       if (isOpen) render();
     });
+
+    // Hiding the selected layer in a frame also hides it in the frame; if the
+    // frame shows it again (e.g. after undo), so does the map
+    function showSelectedLayerIfShownInFrame() {
+      var active = model.getActiveLayer();
+      if (!active || !active.layer.hidden || active.layer.frame_hidden) return;
+      if (!internal.getFrameForDataset(model, active.dataset)) return;
+      active.layer.hidden = false;
+      map.redraw();
+    }
 
     el.on('mouseup', function() {
       var move = pendingMove;
@@ -9098,6 +9590,7 @@
       clearClass('insert-above');
       clearClass('insert-below');
       dragTargetId = layerOrderSlug = pendingMove = null;
+      draggingFrame = false;
       if (dragging) {
         renderLayerList(); // in case menu changed...
         dragging = false;
@@ -9119,6 +9612,16 @@
       } else {
         insertLayer(drag, drop, above);
       }
+    }
+
+    // A frame is dropped on another frame's section, ahead of that frame or
+    // after it; the frames' order is changed when the mouse button is released
+    function dragFrameOver(dragId, dropId, above) {
+      var drag = findLayerById(dragId);
+      var drop = findLayerById(dropId);
+      pendingMove = null;
+      if (!drag || !drop || drag.dataset == drop.dataset) return;
+      pendingMove = {drag: drag, drop: drop, above: above};
     }
 
     function isFrameEntry(o) {
@@ -9146,7 +9649,11 @@
       var fromFrame = internal.getFrameForDataset(model, drag.dataset);
       var toFrame = isFrameEntry(drop) ? drop : internal.getFrameForDataset(model, drop.dataset);
       var position;
-      if (toFrame) {
+      if (isFrameEntry(drag)) {
+        if (frameDropLeavesOrder(move)) return;
+        runFrameCommand(drag, (move.above ? 'before=' : 'after=') +
+          internal.formatOptionValue(drop.layer.name));
+      } else if (toFrame) {
         position = isFrameEntry(drop) ? 'top' :
           (move.above ? 'above=' : 'below=') + getMemberRef(toFrame, drop.layer);
         if (fromFrame && fromFrame.dataset == toFrame.dataset) {
@@ -9173,6 +9680,12 @@
       if (isFrameEntry(move.drop)) return i === 0;
       // members are listed top first, so "above" is the previous entry
       return members[move.above ? i + 1 : i - 1] == move.drop.layer;
+    }
+
+    function frameDropLeavesOrder(move) {
+      var frames = internal.getFrames(model).map(function(o) { return o.dataset; });
+      var i = frames.indexOf(move.drag.dataset);
+      return frames[move.above ? i + 1 : i - 1] == move.drop.dataset;
     }
 
     function insertLayer(dragLyr, dropLyr, above) {
@@ -9279,6 +9792,7 @@
           .classed('active-section', inView)
           .classed('inactive-section', !inView)
           .appendTo(frameList);
+        section.node().dataset.frameMenuId = g.frame.layer.menu_id;
         var members = El('div').addClass('frame-members');
         section.appendChild(getLayerEntry(g.frame, {
           frame: true,
@@ -9321,8 +9835,7 @@
         element = cache.use(html);
       } else {
         element = El('div').html(html).firstChild();
-        // A frame is not in the layer stack, so its entry can't be dragged
-        initMouseEvents(element, o.layer.menu_id, opts.pinnable, !opts.frame);
+        initMouseEvents(element, o.layer.menu_id, opts.pinnable, !!opts.frame);
         cache.add(html, element);
       }
       return element;
@@ -9375,33 +9888,37 @@
       return html;
     }
 
-    // A frame is not in the layer stack, so its entry can't be dragged to reorder
-    function initMouseEvents(entry, id, pinnable, draggable) {
+    function initMouseEvents(entry, id, pinnable, isFrameHeading) {
       entry.on('mouseover', init);
       entry.on('focusin', init);
       function init() {
         entry.removeEventListener('mouseover', init);
         entry.removeEventListener('focusin', init);
-        initMouseEvents2(entry, id, pinnable, draggable);
+        initMouseEvents2(entry, id, pinnable, isFrameHeading);
       }
     }
 
-    // A frame's heading can't be dragged, but a layer can be dropped on it,
-    // which puts the layer on top of the frame's layers
+    // A layer dropped on a frame's heading goes on top of the frame's layers.
+    // A frame's heading is dragged to change the order of frames: it is dropped
+    // on another frame's section, and goes ahead of that frame if dropped on
+    // the upper half of the section, after it if on the lower half.
     function initLayerDragging(entry, id, isFrameHeading) {
 
       // support layer drag-drop
-      // A drag starts with a press on a layer row, not with a held button
-      // entering one, so a press elsewhere (e.g. on the frame) can't reorder layers
-      if (!isFrameHeading) {
-        entry.on('mousedown', function(e) {
-          if (e.button !== 0) return;
-          if (pendingMove) stopDragging(); // its mouseup was missed
-          dragTargetId = id;
-        });
-      }
+      // A drag starts with a press on a row, not with a held button entering
+      // one, so a press elsewhere can't reorder layers
+      entry.on('mousedown', function(e) {
+        if (e.button !== 0) return;
+        if (pendingMove) stopDragging(); // its mouseup was missed
+        dragTargetId = id;
+        draggingFrame = isFrameHeading;
+      });
       entry.on('mousemove', function(e) {
         var rect, insertionClass;
+        if (e.buttons && dragTargetId && draggingFrame) {
+          dragFrameOverEntry(e);
+          return;
+        }
         // A move without the button pressed ends a drag whose mouseup was
         // missed. macOS can send one just before the mouseup that ends a drag,
         // so a drop that is ready is left for the mouseup.
@@ -9431,11 +9948,36 @@
           dragOver(dragTargetId, id, insertionClass == 'insert-above');
         }
       });
+
+      function dragFrameOverEntry(e) {
+        var section = entry.node().closest('.frame-section');
+        var dropId = section ? section.dataset.frameMenuId : null;
+        var rect, insertionClass;
+        if (dragTargetId == id) entry.addClass('drag-target');
+        if (!dropId || dropId == dragTargetId) {
+          clearFrameDropTarget();
+          return;
+        }
+        dragging = true;
+        rect = section.getBoundingClientRect();
+        insertionClass = e.clientY - rect.top < rect.height / 2 ? 'insert-above' : 'insert-below';
+        if (!section.classList.contains(insertionClass)) {
+          clearFrameDropTarget();
+          section.classList.add(insertionClass);
+          dragFrameOver(dragTargetId, dropId, insertionClass == 'insert-above');
+        }
+      }
     }
 
-    function initMouseEvents2(entry, id, pinnable, draggable) {
+    function clearFrameDropTarget() {
+      clearClass('insert-above');
+      clearClass('insert-below');
+      pendingMove = null;
+    }
+
+    function initMouseEvents2(entry, id, pinnable, isFrameHeading) {
       var moreBtn = entry.findChild('.more-btn');
-      initLayerDragging(entry, id, !draggable);
+      initLayerDragging(entry, id, isFrameHeading);
 
       function deleteLayer() {
         var target = findLayerById(id);
@@ -9469,18 +10011,14 @@
       }
 
       // Duplicate a layer by running an equivalent command, so the copy is
-      // recorded in session history and can be undone. Uses '-filter true +'
-      // to append a copy without replacing the source, keeps the same name
-      // (if any), and targets the source layer explicitly so the menu works on
-      // layers that aren't currently active. The '+' output becomes the new
-      // default target, which selects the copy as the active layer.
+      // recorded in session history and can be undone. Targets the source layer
+      // explicitly so the menu works on layers that aren't currently active.
+      // The copy becomes the new default target, which selects it as the
+      // active layer.
       function duplicateLayer() {
         var target = findLayerById(id);
-        var parts = ['-filter true +'];
+        var parts = ['-copy'];
         if (!target) return;
-        if (target.layer.name) {
-          parts.push('name=' + internal.formatOptionValue(target.layer.name));
-        }
         if (!map.isActiveLayer(target.layer)) {
           parts.push('target=' +
             internal.formatOptionValue(internal.getLayerTargetId(model, target.layer)));
@@ -9517,7 +10055,7 @@
         } else if (map.isActiveLayer(lyr)) {
           lyr.hidden = false;
         } else if (frame && lyr.frame_hidden) {
-          runFrameCommand(frame, 'show-layers=' + getMemberRef(frame, lyr), function() {
+          frameVisibility.setLayersHidden(frame, [lyr], false, function() {
             map.zoomToLayer(lyr);
           });
           return;
@@ -9569,6 +10107,14 @@
         var target = findLayerById(id);
         var tool;
         if (!target) return;
+        if (layerCanBeToned(target.layer) || layerHasPaletteRaster(target.layer)) {
+          if (!map.isActiveLayer(target.layer)) {
+            target.layer.hidden = false;
+            model.selectLayer(target.layer, target.dataset);
+          }
+          gui.interaction.setMode(layerCanBeToned(target.layer) ? 'tone' : 'palette');
+          return;
+        }
         tool = getLayerAnnotationTool(target.layer);
         if (tool == 'label') {
           // The point style panel can only restyle a label layer; the label tool
@@ -9625,9 +10171,14 @@
             menuEvent.zoomToLayer = zoomToLayer;
           }
         }
-        if (!isFrame && target && layerCanBeStyled(target.layer)) {
+        if (!isFrame && target && (layerCanBeStyled(target.layer) || layerCanBeToned(target.layer) ||
+            layerHasPaletteRaster(target.layer))) {
           menuEvent.styleLayer = styleLayer;
-          if (getLayerAnnotationTool(target.layer) == 'label') {
+          if (layerCanBeToned(target.layer)) {
+            menuEvent.styleLayerName = 'adjust colors';
+          } else if (layerHasPaletteRaster(target.layer)) {
+            menuEvent.styleLayerName = 'color palette';
+          } else if (getLayerAnnotationTool(target.layer) == 'label') {
             menuEvent.styleLayerName = 'style/edit labels';
           } else if (getLayerAnnotationTool(target.layer) == 'symbols') {
             menuEvent.styleLayerName = 'style/edit symbols';
@@ -9661,11 +10212,14 @@
             return;
           }
           if (frame && active) {
-            // as in the Layers section, the selected layer is hidden from the
-            // map for the moment, without changing the frame
+            // The selected layer is always drawn, so it is hidden from the map
+            // with lyr.hidden; it is also hidden in the frame, so it stays hidden
+            // after another layer is selected (like unpinning in the Layers
+            // section)
             lyr.hidden = !lyr.hidden;
             entry.classed('invisible', lyr.hidden);
             map.redraw();
+            if (lyr.hidden != !!lyr.frame_hidden) toggleFrameVisibility(target, frame);
             return;
           }
           if (frame) {
@@ -9744,17 +10298,17 @@
     // them all. As with the Layers section's eye, the selected layer stays on
     // the map either way.
     function toggleAllFrameLayers(frame) {
-      var anyHidden = internal.getFrameMemberLayers(model, frame).some(function(o) {
+      var members = internal.getFrameMemberLayers(model, frame);
+      var anyHidden = members.some(function(o) {
         return o.layer.frame_hidden;
       });
-      runFrameCommand(frame, (anyHidden ? 'show-layers=' : 'hide-layers=') + '*');
+      frameVisibility.setLayersHidden(frame, members.map(function(o) { return o.layer; }), !anyHidden);
     }
 
     // Hiding a frame's layer is part of the map, so it is a command, recorded
-    // in the session and undoable, unlike pinning
+    // in the session and undoable, unlike pinning (see FrameVisibilityRuns)
     function toggleFrameVisibility(target, frame) {
-      var option = target.layer.frame_hidden ? 'show-layers=' : 'hide-layers=';
-      runFrameCommand(frame, option + getMemberRef(frame, target.layer));
+      frameVisibility.setLayersHidden(frame, [target.layer], !target.layer.frame_hidden);
     }
 
     // Items for a frame's menu: copy the frame; and for a frame without
@@ -9766,8 +10320,10 @@
       });
       var visible = getVisibleUnframedLayers();
       var actions = [{label: 'copy frame', run: function() {
-        runFrameCommand(frame, '+ name=' +
-          internal.formatOptionValue(getFrameCopyName(model, frame.layer.name)));
+        runGuiEditCommand(gui, '-copy target=' +
+          internal.formatOptionValue(internal.getLayerTargetId(model, frame.layer)) +
+          ' name=' + internal.formatOptionValue(getFrameCopyName(model, frame.layer.name)),
+          {title: 'Copy frame'});
       }}];
       if (group && group.members.length === 0 && visible.length > 0) {
         actions.push({label: 'move visible layers into frame', run: function() {
@@ -9864,7 +10420,9 @@
     }
 
     // The active frame follows the selected layer, so a frame is shown by
-    // selecting one of its layers: the top one that is not hidden
+    // selecting one of its layers: the top one that is on the map, or else one
+    // that could be. A data-only layer is picked last, since selecting it shows
+    // its table instead of the frame.
     function activateFrame(frame) {
       var active = model.getActiveFrame();
       var members, pick;
@@ -9872,7 +10430,9 @@
       members = getLayerMenuGroups(model).frames.find(function(g) {
         return g.frame.dataset == frame.dataset;
       }).members;
-      pick = members.find(function(o) { return !o.layer.frame_hidden; }) || members[0];
+      pick = members.find(function(o) { return layerHasViewableContent(o.layer) && !o.layer.frame_hidden; }) ||
+        members.find(function(o) { return layerHasViewableContent(o.layer); }) ||
+        members.find(function(o) { return !o.layer.frame_hidden; }) || members[0];
       if (pick) model.selectLayer(pick.layer, pick.dataset);
     }
 
@@ -9913,32 +10473,11 @@
       title.className = 'console-info-title';
       title.textContent = 'Layer: ' + (info.layer_name || '[unnamed layer]');
       container.appendChild(title);
-      container.appendChild(renderKeyValueTable(getInfoRows(info), 'console-info-table'));
+      container.appendChild(renderKeyValueTable(internal.getLayerInfoRows(info), 'console-info-table'));
       if (!info.raster_type) {
         container.appendChild(renderAttributeInfoTable(info.attribute_data));
       }
       return container;
-    }
-
-    function getInfoRows(info) {
-      var rows = [
-        ['Type', info.raster_type ? 'raster data' : info.geometry_type || 'tabular data']
-      ];
-      if (info.raster_type) {
-        rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
-        rows.push(['Data', info.raster_pixel_type || 'unknown']);
-      } else {
-        rows.push(['Records', utils.format('%,d', info.feature_count)]);
-      }
-      if (info.null_shape_count > 0) {
-        rows.push(['Nulls', utils.format("%'d", info.null_shape_count)]);
-      }
-      if (info.raster_type || info.geometry_type && info.feature_count > info.null_shape_count) {
-        rows.push(['Bounds', info.bbox.join(',')]);
-        rows.push(['CRS', info.proj4]);
-      }
-      rows.push(['Source', info.source_file || 'n/a']);
-      return rows;
     }
 
     function renderAttributeInfoTable(fields) {
@@ -10041,6 +10580,12 @@
 
     function layerCanBeStyled(lyr) {
       return !!(lyr && (lyr.geometry_type == 'point' || lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon'));
+    }
+
+    // RGB and grayscale images
+    function layerCanBeToned(lyr) {
+      return !!(lyr && internal.layerHasRaster(lyr) && (internal.rasterCanBeToned(lyr.raster) ||
+        internal.rasterIsGrayImage(lyr.raster)));
     }
 
   }
@@ -10622,6 +11167,10 @@
   }
 
   function commandCanCull(curr, prev) {
+    // a -target that only selects layers is superseded by the next -target
+    if (curr.type == 'target' || prev.type == 'target') {
+      return curr.type == prev.type && prev.plain;
+    }
     if (curr.type != prev.type || curr.target != prev.target || curr.ids != prev.ids) {
       return false;
     }
@@ -10642,6 +11191,9 @@
     if (!parsed || parsed.length != 1) return null;
     cmd = parsed[0];
     opts = cmd.options || {};
+    if (cmd.name == 'target') {
+      return {type: 'target', plain: Object.keys(opts).every(function(k) { return k == 'target'; })};
+    }
     if (cmd.name == 'style' || cmd.name == 'svg-style') {
       return getStyleCullInfo(opts, isStyleProperty);
     }
@@ -10823,6 +11375,29 @@
           entry.active = !!active;
         }
       });
+    };
+
+    // The id of the last command in effect, not counting -target commands (which
+    // record selection), or null
+    this.getLastEditId = function() {
+      for (var i = commands.length - 1; i >= 0; i--) {
+        if (!commandIsActive(commands[i])) continue;
+        if (getCommandName(getCommandString(commands[i])) == 'target') continue;
+        return commands[i].id;
+      }
+      return null;
+    };
+
+    // Rewrites a command as one with the same effect, or removes it if @cmd is
+    // empty (as a command that has been undone, so that redo can restore it)
+    this.replaceCommand = function(id, cmd) {
+      var entry = commands.find(function(entry) { return entry && entry.id === id; });
+      if (!entry) return;
+      if (cmd) {
+        entry.command = cmd;
+      } else {
+        entry.active = false;
+      }
     };
 
     this.simplificationApplied = function(optStr) {
@@ -11030,6 +11605,7 @@
     var history, offset, stashedUndo, editSession;
     var pendingCommits = [];
     var interceptors = [];
+    var stateId = 0;
     var self = this;
     editSession = createEditSessionUndo();
     reset();
@@ -11274,6 +11850,53 @@
       return evictOldestHistoryState(opts || {});
     };
 
+    // The id of a state that can be undone, @depth states below the last one
+    // (0 for the last), or null
+    this.getDoneStateId = function(depth) {
+      var item = history[history.length - offset - 1 - (depth || 0)];
+      return item ? item.id : null;
+    };
+
+    // Makes the last @count states one, which undoes and redoes them together.
+    // Only with nothing to redo, so that they are the last in the history.
+    // afterRedo: called after the combined state is redone
+    // Returns the new state's id
+    this.combineDoneStates = function(count, afterRedo) {
+      var items;
+      if (offset > 0 || count < 2 || count > history.length) return null;
+      items = history.splice(-count);
+      history.push(Object.assign({}, items[items.length - 1], {
+        id: ++stateId,
+        undo: function() {
+          return items.slice().reverse().reduce(function(memo, item) {
+            return memo.then(function() { return item.undo(); });
+          }, Promise.resolve());
+        },
+        redo: function() {
+          return items.reduce(function(memo, item) {
+            return memo.then(function() { return item.redo(); });
+          }, Promise.resolve()).then(function() {
+            if (afterRedo) afterRedo();
+          });
+        },
+        cleanup: function() {
+          return Promise.all(items.map(disposeHistoryItem));
+        },
+        preserveOnModeChange: items.every(function(item) { return item.preserveOnModeChange; }),
+        changesEditTarget: items.some(function(item) { return item.changesEditTarget; })
+      }));
+      fireHistoryChange();
+      return stateId;
+    };
+
+    // Removes the last @count states, whose changes have been taken back by
+    // other means (only with nothing to redo)
+    this.discardDoneStates = function(count) {
+      if (offset > 0 || count > history.length) return;
+      disposeHistoryItems(history.splice(-count));
+      fireHistoryChange();
+    };
+
     function addHistoryState(undo, redo, cleanup, opts) {
       var preserveOnModeChange = !!(opts && opts.preserveOnModeChange);
       if (offset > 0) {
@@ -11281,6 +11904,7 @@
         offset = 0;
       }
       history.push({
+        id: ++stateId,
         undo: undo,
         redo: redo,
         cleanup: cleanup,
@@ -12446,6 +13070,13 @@
       lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],
       table: ['info', 'selection'],
       raster: ['box', 'ruler'],
+      // an RGB image, which -tone can adjust
+      image: ['tone', 'box', 'ruler'],
+      // a data raster (a DEM, land cover...), which -classify can color
+      dataRaster: ['palette', 'box', 'ruler'],
+      // a grayscale image, which -tone can adjust (apart from its colors) and
+      // -classify can color
+      grayImage: ['tone', 'palette', 'box', 'ruler'],
       labels: ['info', 'label', 'symbols', 'selection', 'box', 'ruler'],
       // a layer of symbols, which the point tools have no controls for
       symbols: ['info', 'symbols', 'selection', 'box', 'ruler'],
@@ -12479,6 +13110,8 @@
       point_style: 'style/edit points',
       line_style: 'style/edit lines',
       polygon_style: 'style/edit polygons',
+      tone: 'adjust colors',
+      palette: 'color palette',
       edit_points: 'style/edit points',
       edit_lines: 'draw lines',
       edit_polygons: 'draw polygons',
@@ -12530,7 +13163,6 @@
       });
 
       btn.on('mouseenter', function() {
-        if (stylePanelIsActive()) return;
         btn.addClass('hover');
         if (_menuOpen) {
           clearTimeout(_menuTimeout); // prevent timed closing
@@ -12577,7 +13209,7 @@
     };
 
     this.modeSupportsUndo = function(mode) {
-      return ['data', 'frame', 'label', 'label_style', 'symbols', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
+      return ['data', 'frame', 'label', 'label_style', 'symbols', 'point_style', 'palette', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
     };
 
     this.getMode = getInteractionMode;
@@ -12668,22 +13300,15 @@
       return _editMode && _editMode != 'off';
     }
 
-    // A mode with a panel of its own: hovering the button must not open the mode
-    // menu over the panel.
-    function stylePanelIsActive() {
-      return _editMode == 'frame' || _editMode == 'frame_draw' ||
-        _editMode == 'label' || _editMode == 'label_style' || _editMode == 'symbols' ||
-        _editMode == 'point_style' || _editMode == 'line_style' ||
-        _editMode == 'polygon_style';
-    }
-
     function getAvailableModes() {
       var o = gui.model.getActiveLayer();
       if (!o || !o.layer) {
         return menus.empty; // TODO: more sensible handling of missing layer
       }
       if (internal.layerHasRaster(o.layer)) {
-        return menus.raster;
+        if (internal.rasterCanBeToned(o.layer.raster)) return menus.image;
+        if (internal.rasterIsGrayImage(o.layer.raster)) return menus.grayImage;
+        return layerHasPaletteRaster(o.layer) ? menus.dataRaster : menus.raster;
       }
       if (!o.layer.geometry_type) {
         return menus.table;
@@ -13773,14 +14398,14 @@
     }
     if (format == 'hsl') {
       hsl = rgbToHsl(rgb);
-      return 'hsl(' + round$3(hsl.h, 1) + ', ' + round$3(hsl.s * 100, 1) + '%, ' +
-        round$3(hsl.l * 100, 1) + '%)';
+      return 'hsl(' + round$4(hsl.h, 1) + ', ' + round$4(hsl.s * 100, 1) + '%, ' +
+        round$4(hsl.l * 100, 1) + '%)';
     }
     if (format == 'oklch') {
       lch = internal.oklabToOklch(internal.rgbToOklab(rgb));
       // a gray has no hue
       return 'oklch(' + lch.l.toFixed(4) + ' ' + lch.c.toFixed(4) + ' ' +
-        (lch.c < 0.00005 ? 0 : round$3(lch.h, 2)) + ')';
+        (lch.c < 0.00005 ? 0 : round$4(lch.h, 2)) + ')';
     }
     return internal.formatColor({r: rgb.r, g: rgb.g, b: rgb.b, a: 1});
   }
@@ -13882,7 +14507,7 @@
     return {h: h, s: s, l: l};
   }
 
-  function round$3(val, decimals) {
+  function round$4(val, decimals) {
     var k = Math.pow(10, decimals);
     return Math.round(val * k) / k;
   }
@@ -14359,8 +14984,9 @@
       });
     }
 
+    // A hidden picker is drawn when it opens (see toggle())
     function drawColorPicker() {
-      if (!sbCanvas) return;
+      if (!sbCanvas || !colorPicker.visible()) return;
       drawSaturationBrightnessCanvas();
       drawHueCanvas();
       drawAlphaCanvas();
@@ -16041,7 +16667,7 @@
       o.type = shape;
     }
     o.radius = shape == 'square' ? Math.round(style.size / Math.SQRT2 * 1e4) / 1e4 :
-      round$2(style.size / 2);
+      round$3(style.size / 2);
     if (style.fill) {
       o.fill = style.fill;
     } else if (kind != 'stroke') {
@@ -16082,8 +16708,8 @@
 
   function getIconSize(rec) {
     if (!getIconShape(rec)) return null;
-    if (!rec.icon) return round$2(Number(rec.r) * 2);
-    return isNumber$1(rec['icon-size']) ? round$2(Number(rec['icon-size'])) : null;
+    if (!rec.icon) return round$3(Number(rec.r) * 2);
+    return isNumber$1(rec['icon-size']) ? round$3(Number(rec['icon-size'])) : null;
   }
 
   function getIconPaint(rec) {
@@ -16178,7 +16804,7 @@
     return val !== '' && val !== null && val !== undefined && isFinite(Number(val));
   }
 
-  function round$2(n) {
+  function round$3(n) {
     return Math.round(n * 100) / 100;
   }
 
@@ -16839,10 +17465,10 @@
     // length of the drag, and drop it back on release.
     var drawn = start.aligned ? drawnAnchor : anchor;
     return {
-      dx: round$1(left + anchorOffsets[anchor] * width),
-      dy: round$1(start.dy + delta.dy),
+      dx: round$2(left + anchorOffsets[anchor] * width),
+      dy: round$2(start.dy + delta.dy),
       'text-anchor': anchor,
-      x: round$1(left + anchorOffsets[drawn] * width),
+      x: round$2(left + anchorOffsets[drawn] * width),
       anchor: drawn
     };
   }
@@ -16894,7 +17520,7 @@
     return anchor in anchorOffsets ? anchor : 'start';
   }
 
-  function round$1(px) {
+  function round$2(px) {
     return Math.round(px * PRECISION) / PRECISION;
   }
 
@@ -20664,6 +21290,20 @@
   // will find (see updateDivergingLayout()). A custom diverging ramp is pinned
   // at its ends and its center.
   //
+  // On a raster layer, the fields are bands (see gui-raster-band-values.mjs),
+  // and -classify sets the raster's palette instead of writing fills. A raster's
+  // schemes have raster: true; their no-data color is null (transparent) unless
+  // one is set, and there is no non-adjacent method.
+  //
+  // A sequential scheme on a raster that could hold elevations can have fixed
+  // elevations (method 'elevation'): continuous colors at the elevations of a
+  // hypsometric preset (see hypsometric-schemes.mjs), in the band's units,
+  // whatever the data's range, or for one preset (not a blend), classes from
+  // each stop up to the next (continuous: false). Its tiles are the preset's stops, which can be
+  // recolored and moved (in the class breaks dialog), but not added to or taken
+  // away. Choosing a preset gives its own colors and elevations. Another method
+  // keeps the colors as a custom ramp.
+  //
   // A continuous sequential or diverging scheme gives unclassed colors: its
   // tiles are color stops, at the data's min, the class breaks and its max,
   // with colors interpolated between them. Each side of a diverging scheme is
@@ -20688,6 +21328,27 @@
   //                                             of the preset's colors, as
   //                                             rearranged)
   //   swatches: [...] or null                   (custom categorical lists)
+  //   elevationPreset: name,                    (fixed elevations: the
+  //   stopColors: [...] or null                 hypsometric preset, and its
+  //   stops: [...] or null                      colors and elevations (in the
+  //                                             band's units), once edited;
+  //                                             preset is null when the
+  //                                             colors are)
+  //   blended: boolean                          (fixed elevations: blended by
+  //                                             climate, with preset 'Blended',
+  //                                             or null once recolored; the
+  //                                             presets share the stops)
+  //   blendColors: {name: [...]} or null        (blended: the colors of the
+  //                                             presets that were recolored,
+  //                                             see getBlendRampColors())
+  //   seaScheme: {elevationPreset, preset,      (fixed elevations: the colors
+  //     stopColors, stops, n} or null           of pixels at or below 0 that are
+  //                                             open to the sea, at fixed
+  //                                             depths, like the land's; null
+  //                                             leaves the sea out. See
+  //                                             getSeaScheme(), -classify sea=)
+  //   landTransparent: boolean                  (fixed elevations: only the sea
+  //                                             is colored)
   //   continuous: boolean                       (sequential and diverging)
   //   pivot: 'auto', 'median', 'mean' or a number,
   //   neutral, continuousNeutral: boolean       (a pivot class, for classed
@@ -20703,16 +21364,26 @@
   //                                             getDivergingLayout())
   //   nullColor       the color of features with no data (both types; not
   //                   used by non-adjacent schemes)
+  //   raster          the scheme is for a raster layer
+  //   paletteKey      raster schemes: the palette they gave the layer
   //   colors: [...]   the colors that were applied, for checking a layer later
   //   fillHash        continuous schemes: a fingerprint of the fills they gave
   //                   the layer (interpolated fills aren't the scheme's colors)
   // }
 
+  // The panel's tabs. Elevation schemes are sequential schemes with fixed
+  // elevations (see getSchemeTab()).
   var schemeTypes = [
     {name: 'sequential', label: 'Sequential'},
     {name: 'diverging', label: 'Diverging'},
+    {name: 'elevation', label: 'Elevation'},
     {name: 'categorical', label: 'Categorical'}
   ];
+
+  // For the Sea menu: the bathymetric presets
+  function getBathymetricPresetNames() {
+    return internal.getBathymetricSchemeNames();
+  }
 
   var classifyMethods = [
     {name: 'quantile', label: 'Quantile'},
@@ -20744,9 +21415,13 @@
   var minSchemeColors = 2;
   var maxSchemeColors = 12;
   var maxCategoricalColors = 20;
+  // a palette that gives each category its own color (a raster's file palette,
+  // see getRasterPaletteScheme(), or an imported one) can have more than that
+  var maxFilePaletteColors = 40;
   var defaultCategoricalPreset = 'batlowS';
   var defaultNonAdjacentColors = 5;
   var defaultDivergingPreset = 'RdBu';
+  var blendedPresetName = 'Blended';
   var defaultDivergingClasses = 7;
   var defaultDivergingSideClasses = 3;
   var maxDivergingSideClasses = 6;
@@ -20801,11 +21476,70 @@
     return groups.reduce(function(memo, group) { return memo.concat(group.names); }, []);
   }
 
-  // The scheme a panel tab starts with on a layer
-  function getDefaultSchemeOfType(type, lyr) {
-    if (type == 'categorical') return getDefaultCategoricalScheme(lyr);
-    if (type == 'diverging') return getDefaultDivergingScheme(lyr);
-    return getDefaultScheme(getNumericFields(lyr)[0]);
+  // The scheme a panel tab starts with on a layer. A raster of continuous values
+  // starts with continuous colors: classes of elevation look like contour
+  // bands, which is a choice rather than a default.
+  // points: [lon, lat] points across the layer, for the elevation tab, which
+  //   starts with the presets blended by climate where it can (they are one
+  //   preset across a small area)
+  function getDefaultSchemeOfType(type, lyr, points) {
+    var scheme;
+    if (type == 'elevation') {
+      scheme = getDefaultSchemeOfType('sequential', lyr);
+      scheme = setSchemeMethod(setSchemeField(scheme, getElevationFields(lyr)[0] || scheme.field), 'elevation', null, -1, points);
+      return points && internal.getClimatePreset(points) ? chooseBlendedElevations(scheme, points) : scheme;
+    }
+    scheme = type == 'categorical' ? getDefaultCategoricalScheme(lyr) :
+      type == 'diverging' ? getDefaultDivergingScheme(lyr) :
+      getDefaultScheme(getNumericFields(lyr)[0]);
+    if (!isRasterLayer(lyr)) return scheme;
+    scheme = setSchemeLayerType(scheme, lyr);
+    if (type != 'categorical' && rasterHasContinuousValues(lyr)) {
+      scheme = updateDivergingLayout(setSchemeContinuous(scheme, true), lyr);
+    }
+    return scheme;
+  }
+
+  function isRasterLayer(lyr) {
+    return !!(lyr && internal.layerHasRaster(lyr));
+  }
+
+  // Marks a scheme (e.g. an imported one) as being for a raster layer, or not
+  function setSchemeLayerType(scheme, lyr) {
+    var raster = isRasterLayer(lyr);
+    if (!!scheme.raster == raster) return scheme;
+    return Object.assign({}, scheme, {raster: raster});
+  }
+
+  // A number of the values that the scheme classifies, e.g. '3 features'. A
+  // raster's are pixels of a sample, counted as a share of the sample: '12% of
+  // pixels', or with short, '12%'.
+  function formatSchemeCount(scheme, lyr, n, short) {
+    if (!isRasterLayer(lyr)) return short ? String(n) : n + (n == 1 ? ' feature' : ' features');
+    return formatShare(n, getSchemeValueCounts(scheme, lyr).values) + (short ? '' : ' of pixels');
+  }
+
+  // The number of features with no data, or the share of a raster's pixels
+  // that are nodata
+  function formatNoDataCount(scheme, lyr, n) {
+    if (!isRasterLayer(lyr)) return formatSchemeCount(scheme, lyr, n);
+    return formatShare(n, getSchemeValueCounts(scheme, lyr).total) + ' of pixels';
+  }
+
+  function formatShare(n, total) {
+    var pct = total > 0 ? n / total * 100 : 0;
+    if (pct > 0 && pct < 0.1) return '<0.1%';
+    if (pct < 100 && pct > 99.9) return '>99.9%';
+    return (pct < 10 ? Math.round(pct * 10) / 10 : Math.round(pct)) + '%';
+  }
+
+  // The number of values that the scheme's counts are out of, and for a
+  // raster, the number of pixels (including nodata) and valid pixels:
+  // {values, total, valid}
+  function getSchemeValueCounts(scheme, lyr) {
+    var counts = isRasterLayer(lyr) ? getRasterBandCounts(lyr, scheme.field) : null;
+    if (counts) return {values: counts.sampled, total: counts.total, valid: counts.count};
+    return {values: getAscendingValues(lyr, scheme.field).length, total: null, valid: null};
   }
 
   function getDefaultDivergingScheme(lyr) {
@@ -20870,7 +21604,11 @@
   var minContinuousStartColors = 5;
 
   function setSchemeContinuous(scheme, continuous) {
-    var next = Object.assign({}, !!continuous == !!scheme.continuous ? scheme : resetSchemeBreaks(scheme), {continuous: !!continuous});
+    var next;
+    if (isElevationScheme(scheme)) {
+      return canClassifyElevations(scheme) ? Object.assign({}, scheme, {continuous: !!continuous}) : scheme;
+    }
+    next = Object.assign({}, !!continuous == !!scheme.continuous ? scheme : resetSchemeBreaks(scheme), {continuous: !!continuous});
     if (continuous && next.type == 'sequential' && next.n < minContinuousStartColors) {
       next.n = minContinuousStartColors;
     }
@@ -20878,6 +21616,7 @@
   }
 
   function getAscendingValues(lyr, field) {
+    if (isRasterLayer(lyr)) return getRasterBandValues(lyr, field);
     if (!lyr || !lyr.data || !field || !lyr.data.fieldExists(field)) return [];
     return lyr.data.getRecords().map(function(rec) {
       return rec ? rec[field] : undefined;
@@ -20929,6 +21668,11 @@
   // uses are null. Returns null if there are no data.
   function getContinuousTileStops(scheme, lyr) {
     var values, breaks, layout, stops, k, tiles;
+    if (isElevationScheme(scheme)) {
+      return getElevationSchemeStops(scheme, lyr).map(function(val) {
+        return {value: val, min: false, max: false};
+      });
+    }
     if (scheme.type == 'sequential') {
       values = getAscendingValues(lyr, scheme.field);
       if (values.length === 0) return null;
@@ -21029,6 +21773,7 @@
   function getSequentialClassRanges(scheme, lyr) {
     var values = getAscendingValues(lyr, scheme.field);
     if (values.length === 0) return null;
+    if (isElevationScheme(scheme)) return getBreakRanges(getElevationClassBreaks(scheme, lyr));
     try {
       return getBreakRanges(getSequentialSchemeBreaks(scheme, values));
     } catch(e) {
@@ -21062,6 +21807,7 @@
     var layout = scheme.layout;
     var breaks;
     if (values.length === 0 || scheme.type == 'categorical') return null;
+    if (isElevationScheme(scheme)) return getElevationBreaks(scheme, lyr, values);
     if (scheme.type == 'diverging') {
       if (!layout) return null;
       return {
@@ -21088,16 +21834,42 @@
     };
   }
 
+  // Fixed elevations: every stop is a break, the end stops too. The range runs
+  // from the stop at or below the data's min (or the min, if no stop is) to the
+  // stop at or above its max, so that stops far from the data may be outside it.
+  // The sea's range runs from its deepest stop (or the data's min) to its top
+  // stop, leaving out the land.
+  function getElevationBreaks(scheme, lyr, values) {
+    var breaks = getElevationSchemeStops(scheme, lyr);
+    var lo = values[0], hi = values[values.length - 1];
+    var below = breaks.filter(function(b) { return b <= lo; });
+    var above = breaks.filter(function(b) { return b >= hi; });
+    var min = below.length > 0 ? below[below.length - 1] : lo;
+    return {
+      breaks: breaks,
+      fixed: breaks.map(function() { return false; }),
+      pivot: null,
+      neutral: null,
+      min: scheme.bathymetric ? Math.min(min, breaks[0]) : min,
+      max: above.length > 0 ? above[0] : scheme.bathymetric ? breaks[breaks.length - 1] : hi
+    };
+  }
+
   // Moves break i to a value, as far as it can go: between its neighbors (and
   // the data's min and max), and for an edge of a pivot class, on its own side
   // of the pivot. The pivot itself doesn't move. A scheme that isn't custom
-  // yet becomes custom, starting from the breaks its method gives.
+  // yet becomes custom, starting from the breaks its method gives. A stop of
+  // fixed elevations goes anywhere between its neighbors.
   function setSchemeBreak(scheme, lyr, i, value) {
     var info = getSchemeBreaks(scheme, lyr);
     var breaks, lo, hi, edge, next;
     if (!info || !(i >= 0 && i < info.breaks.length) || info.fixed[i] || !isFiniteNumber(value)) return scheme;
     breaks = info.breaks.map(tidyNumber);
     value = tidyNumber(value);
+    if (isElevationScheme(scheme)) {
+      breaks[i] = clamp$4(value, i > 0 ? breaks[i - 1] : -Infinity, i < breaks.length - 1 ? breaks[i + 1] : Infinity);
+      return Object.assign({}, scheme, {stops: breaks});
+    }
     lo = i > 0 ? breaks[i - 1] : Math.min(info.min, breaks[i]);
     hi = i < breaks.length - 1 ? breaks[i + 1] : Math.max(info.max, breaks[i]);
     edge = info.neutral ? info.neutral.indexOf(breaks[i]) : -1;
@@ -21180,6 +21952,12 @@
     var layout = scheme.layout;
     var swatches = [];
     var k, stops;
+    if (isElevationScheme(scheme)) {
+      // the end colors go on past the end stops; a class has its low stop's color
+      return [colors[0]].concat(colors.slice(1).map(function(color, i) {
+        return isContinuousScheme(scheme) ? gradient(colors[i], color) : colors[i];
+      }), [colors[colors.length - 1]]);
+    }
     if (scheme.type == 'sequential') {
       if (!isContinuousScheme(scheme)) return colors;
       return colors.slice(1).map(function(color, i) { return gradient(colors[i], color); });
@@ -21212,10 +21990,27 @@
   }
 
   // the number of values in each class (classes are [low, high), as -classify has them)
+  // values: ascending
   function getClassCounts(breaks, values) {
     var counts = [];
-    for (var j=0; j<=breaks.length; j++) counts.push(getClassMembers(breaks, values, j).length);
+    var lo, hi;
+    for (var j=0; j<=breaks.length; j++) {
+      lo = j > 0 ? countValuesBelow(values, breaks[j - 1]) : 0;
+      hi = j < breaks.length ? countValuesBelow(values, breaks[j]) : values.length;
+      counts.push(Math.max(hi - lo, 0));
+    }
     return counts;
+  }
+
+  // the number of ascending values less than val
+  function countValuesBelow(values, val) {
+    var lo = 0, hi = values.length, mid;
+    while (lo < hi) {
+      mid = (lo + hi) >>> 1;
+      if (values[mid] < val) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
   }
 
   function getClassMembers(breaks, values, j) {
@@ -21230,20 +22025,23 @@
   }
 
   // Positions along the class breaks dialog's histogram (0 to 1) for values
-  // from min to max, on a linear or log scale (log: min must be above 0)
+  // from min to max, on a linear or log scale. A log scale of a range that
+  // reaches 0 or below is of the distance above the min, plus a thousandth of
+  // the range, so that it spans three powers of ten.
   function getBreaksScale(min, max, log) {
-    var f = log ? Math.log : function(val) { return val; };
+    var shift = log && !(min > 0) ? (max - min) / 1000 - min : 0;
+    var f = log ? function(val) { return Math.log(val + shift); } : function(val) { return val; };
     var a = f(min), b = f(max);
     return {
       toPos: function(val) {
         if (!(b > a)) return 0.5;
-        if (log && !(val > 0)) return 0;
+        if (log && !(val + shift > 0)) return 0;
         return clamp$4((f(val) - a) / (b - a), 0, 1);
       },
       toValue: function(pos) {
         var val = a + clamp$4(pos, 0, 1) * (b - a);
         if (!(b > a)) return min;
-        return log ? Math.exp(val) : val;
+        return log ? Math.exp(val) - shift : val;
       }
     };
   }
@@ -21289,11 +22087,8 @@
     var values = getAscendingValues(lyr, scheme.field);
     var pivot = scheme.layout ? scheme.layout.pivot : null;
     if (pivot === null) return null;
-    return {
-      pivot: pivot,
-      below: values.filter(function(val) { return val < pivot; }).length,
-      above: values.filter(function(val) { return val >= pivot; }).length
-    };
+    var below = countValuesBelow(values, pivot);
+    return {pivot: pivot, below: below, above: values.length - below};
   }
 
   // pivot: 'auto', 'median', 'mean' or a number
@@ -21321,7 +22116,7 @@
   function getDefaultCategoricalScheme(lyr) {
     var fields = getCategoryFields(lyr);
     var records = lyr && lyr.data ? lyr.data.getRecords() : [];
-    var field = fields.find(function(name) {
+    var field = isRasterLayer(lyr) ? fields[0] || null : fields.find(function(name) {
       return internal.getColumnType(name, records) == 'string';
     }) || fields[0] || null;
     var scheme = {
@@ -21340,8 +22135,12 @@
     return scheme.type == 'diverging' && scheme.split == 'count' ? 1 : minSchemeColors;
   }
 
+  // lyr: the layer, for the fixed elevations of a raster that could hold them
   function getSchemeMethods(scheme) {
-    return scheme.type == 'categorical' ? categoricalMethods : classifyMethods;
+    if (scheme.type != 'categorical') return classifyMethods;
+    return scheme.raster ? categoricalMethods.filter(function(item) {
+      return item.name != 'non-adjacent';
+    }) : categoricalMethods;
   }
 
   // count: the number of categories, for the categorical method
@@ -21349,7 +22148,8 @@
     var max = maxSchemeColors;
     if (scheme.type == 'diverging' && scheme.split == 'count') return maxDivergingSideClasses;
     if (scheme.type != 'categorical') return max;
-    max = scheme.preset ? internal.getCategoricalColors(scheme.preset).length : maxCategoricalColors;
+    max = scheme.preset ? internal.getCategoricalColors(scheme.preset).length :
+      Math.max(maxCategoricalColors, scheme.swatches ? scheme.swatches.length : 0);
     if (scheme.method == 'categorical' && count >= 0) {
       max = Math.min(max, Math.max(count, minSchemeColors));
     }
@@ -21374,10 +22174,15 @@
 
   // field, count: the field to use, and its number of categories, when a
   // categorical scheme changes to the categorical method
-  function setSchemeMethod(scheme, method, field, count) {
+  // points: [lon, lat] points across the layer, for choosing fixed elevations'
+  //   preset
+  function setSchemeMethod(scheme, method, field, count, points) {
     var next;
     if (method == 'breaks') return scheme; // the Custom entry: breaks come from the dialog
-    next = Object.assign({}, resetSchemeBreaks(scheme), {method: method});
+    if (method == 'elevation') {
+      return chooseElevationPreset(resetSchemeBreaks(scheme), scheme.elevationPreset || getDefaultElevationPreset(points));
+    }
+    next = Object.assign({}, isElevationScheme(scheme) ? leaveFixedElevations(scheme) : resetSchemeBreaks(scheme), {method: method});
     if (next.type != 'categorical') return next;
     if (method == 'categorical') {
       return setSchemeField(next, next.field || field, count);
@@ -21387,8 +22192,11 @@
 
   // Fields that a categorical scheme can classify: text and numbers. The
   // fill field is left out, since the scheme writes over it.
+  // On a raster, integer bands with few enough values (see
+  // getRasterCategoryFields()).
   function getCategoryFields(lyr) {
     var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+    if (isRasterLayer(lyr)) return getRasterCategoryFields(lyr);
     if (!lyr || !lyr.data) return [];
     return lyr.data.getFields().filter(function(field) {
       var type = internal.getColumnType(field, records);
@@ -21399,8 +22207,25 @@
   // The values of a field, in the order -classify gives them swatches. Empty
   // values are left out, as -classify leaves them out: they are no data.
   function getCategories(lyr, field) {
+    if (isRasterLayer(lyr)) return getRasterBandCategories(lyr, field);
     if (!lyr || !lyr.data || !field || !lyr.data.fieldExists(field)) return [];
     return internal.getUniqFieldValues(lyr.data.getRecords(), field).filter(isCategoryValue);
+  }
+
+  // The name of a category: a raster's, from its file or an imported palette,
+  // or null
+  function getCategoryName(scheme, lyr, val) {
+    var names = getSchemeCategoryNames(scheme);
+    var name = names ? names[val] : null;
+    if (!name && isRasterLayer(lyr)) name = getRasterCategoryName(lyr, scheme.field, val);
+    return name || null;
+  }
+
+  // {<value>: name} that an imported palette gave the scheme's field, or null
+  // scheme.categoryNames: {field, names}
+  function getSchemeCategoryNames(scheme) {
+    var o = scheme.categoryNames;
+    return o && o.field == scheme.field ? o.names : null;
   }
 
   // The same test as -classify's (0 is a value; null, undefined, '' and NaN
@@ -21409,9 +22234,13 @@
     return !!val || val === 0;
   }
 
-  // How many features the scheme gives the no-data color
+  // How many features (or pixels) the scheme gives the no-data color
   function getNoDataCount(lyr, scheme) {
-    var records, test;
+    var records, test, counts;
+    if (isRasterLayer(lyr)) {
+      counts = getRasterBandCounts(lyr, scheme.field);
+      return counts ? counts.total - counts.count : 0;
+    }
     if (!lyr || !lyr.data || !scheme.field || scheme.method == 'non-adjacent' ||
         !lyr.data.fieldExists(scheme.field)) return 0;
     records = lyr.data.getRecords();
@@ -21425,14 +22254,17 @@
     return typeof val == 'number' && isFinite(val);
   }
 
+  // null: transparent (raster schemes only)
   function getSchemeNullColor(scheme) {
+    if (scheme.raster) return scheme.nullColor || null;
     return scheme.nullColor || defaultNullColor;
   }
 
   // An empty or unreadable color is the default
   function setSchemeNullColor(scheme, color) {
     var rgb = color ? internal.parseColor(color) : null;
-    return Object.assign({}, scheme, {nullColor: rgb ? internal.formatColor(rgb) : defaultNullColor});
+    var fallback = scheme.raster ? null : defaultNullColor;
+    return Object.assign({}, scheme, {nullColor: rgb ? internal.formatColor(rgb) : fallback});
   }
 
   // The categories each swatch colors, as -classify assigns them
@@ -21471,6 +22303,13 @@
     if (scheme.type == 'categorical') {
       return getCategoricalPalette(scheme).slice(0, scheme.n).map(function(color) {
         return {color: color, pinned: false, adjusted: false};
+      });
+    }
+    if (isElevationScheme(scheme)) {
+      colors = getElevationPresetColors(scheme.elevationPreset);
+      return (isBlendedScheme(scheme) ? getBlendedColors(scheme, scheme.elevationPreset) :
+          scheme.stopColors || colors).map(function(color, i) {
+        return {color: color, pinned: color != colors[i], adjusted: false};
       });
     }
     if (scheme.preset) {
@@ -21523,7 +22362,7 @@
   }
 
   function hasSchemeRange(scheme) {
-    return !!scheme.preset && scheme.type != 'categorical';
+    return !!scheme.preset && scheme.type != 'categorical' && !isElevationScheme(scheme);
   }
 
   // The range as positions along the tiles, left to right: [left, right]
@@ -21600,6 +22439,9 @@
 
   // One boolean per tile: whether the user set its color.
   function getPinnedTiles(scheme) {
+    if (isElevationScheme(scheme)) {
+      return getSchemeTiles(scheme).map(function(tile) { return tile.pinned; });
+    }
     if (scheme.preset || scheme.type == 'categorical') {
       return new Array(getRampSize(scheme)).fill(false);
     }
@@ -21611,6 +22453,7 @@
   // count: the number of categories, for a categorical scheme
   function choosePreset(scheme, name, count) {
     var next, size;
+    if (isElevationScheme(scheme)) return chooseElevationPreset(scheme, name);
     if (scheme.type == 'categorical') {
       next = Object.assign({}, scheme, {preset: name, order: null, swatches: null});
       next.n = clampColorCount(next, next.n, count);
@@ -21626,6 +22469,372 @@
       next = chooseDivergingSet(next, name, size);
     }
     return next;
+  }
+
+  function isElevationScheme(scheme) {
+    return scheme.method == 'elevation';
+  }
+
+  // One preset's colors can be classes, with a class from each stop up to the
+  // next, and the first class reaching down to the sea (a blend, which only
+  // -classify hypsometric= draws, is always continuous)
+  function canClassifyElevations(scheme) {
+    return isElevationScheme(scheme) && !isBlendedScheme(scheme) && !isLandTransparent(scheme);
+  }
+
+  // The inner breaks of classed elevations: every stop but the first
+  function getElevationClassBreaks(scheme, lyr) {
+    return getElevationSchemeStops(scheme, lyr).slice(1);
+  }
+
+  function canUseFixedElevations(scheme, lyr) {
+    return scheme.type == 'sequential' && isRasterLayer(lyr) && rasterBandCouldBeElevation(lyr, scheme.field);
+  }
+
+  // The panel tab of a scheme
+  function getSchemeTab(scheme) {
+    return isElevationScheme(scheme) ? 'elevation' : scheme.type;
+  }
+
+  // The bands of a raster that could hold elevations, for the elevation tab
+  function getElevationFields(lyr) {
+    if (!isRasterLayer(lyr)) return [];
+    return getNumericFields(lyr).filter(function(field) {
+      return rasterBandCouldBeElevation(lyr, field);
+    });
+  }
+
+  // Whether a raster says that it holds elevations, so that the panel opens on
+  // the elevation tab
+  function layerHasElevations(lyr) {
+    return getElevationFields(lyr).some(function(field) {
+      return rasterBandIsElevation(lyr, field);
+    });
+  }
+
+  // The sea of a fixed-elevation scheme, as a fixed-elevation scheme of its
+  // own (with a bathymetric preset), for the tiles and the class breaks dialog;
+  // or null if the sea is left out
+  function getSeaScheme(scheme) {
+    var sea = scheme.seaScheme;
+    if (!sea) return null;
+    return Object.assign({type: 'sequential', method: 'elevation', continuous: true, nullColor: null}, sea,
+      {field: scheme.field, raster: scheme.raster, bathymetric: true});
+  }
+
+  // @sea: an edited sea scheme (see getSeaScheme()), or null to leave out the sea
+  function setSeaScheme(scheme, sea) {
+    var next = Object.assign({}, scheme, {
+      seaScheme: sea ? {elevationPreset: sea.elevationPreset, preset: sea.preset, stopColors: sea.stopColors || null,
+        stops: sea.stops || null, n: sea.n} : null
+    });
+    // something has to be colored
+    if (!sea && scheme.landTransparent) next.landTransparent = false;
+    return next;
+  }
+
+  // @name: a bathymetric preset, or null to leave out the sea
+  function chooseSeaPreset(scheme, name) {
+    return setSeaScheme(scheme, name ? chooseElevationPreset({}, name) : null);
+  }
+
+  // The name for the sea's menu: 'Transparent', a preset, or 'Custom'
+  function getSeaLabel(scheme) {
+    var sea = scheme.seaScheme;
+    return !sea ? 'Transparent' : sea.preset || 'Custom';
+  }
+
+  function isLandTransparent(scheme) {
+    return !!scheme.landTransparent;
+  }
+
+  // Land without colors leaves only the sea, which then needs some
+  function setLandTransparent(scheme, transparent) {
+    var next = Object.assign({}, scheme, {landTransparent: !!transparent});
+    if (transparent && !next.seaScheme) next = chooseSeaPreset(next, getBathymetricPresetNames()[0]);
+    return next;
+  }
+
+  // The preset for the climate across a set of [lon, lat] points (see
+  // hypsometric-climate.mjs), or Temperate without any on land
+  function getDefaultElevationPreset(points) {
+    return points && internal.getClimatePreset(points) || 'Temperate';
+  }
+
+  // All the land presets, for the palette menu
+  function getElevationPresetNames() {
+    return internal.getHypsometricSchemeNames();
+  }
+
+  // The presets of a blend, which share their elevations
+  function getClimatePresetNames() {
+    return internal.getClimateSchemeNames();
+  }
+
+  // Land (hypsometric) and sea (bathymetric) presets of fixed elevations
+  function getFixedPresetStops(name) {
+    return internal.getHypsometricStops(name) || internal.getBathymetricStops(name);
+  }
+
+  function getElevationPresetColors(name) {
+    return getFixedPresetStops(name).map(function(stop) { return stop.color; });
+  }
+
+  // The elevations of a fixed-elevation scheme's stops, in the band's units
+  function getElevationSchemeStops(scheme, lyr) {
+    var meters = getRasterUnitMeters(lyr);
+    if (scheme.stops) return scheme.stops.concat();
+    return getFixedPresetStops(scheme.elevationPreset).map(function(stop) {
+      return meters == 1 ? stop.elevation : +(stop.elevation / meters).toPrecision(6);
+    });
+  }
+
+  // Blended colors (-classify hypsometric=blended) mix the presets by climate
+  // across the map, which only the command can do. The tiles and stops are
+  // those of @points' preset, which the command uses where it can't blend.
+  function chooseBlendedElevations(scheme, points) {
+    return Object.assign(chooseElevationPreset(scheme, getDefaultElevationPreset(points)), {
+      preset: blendedPresetName,
+      blended: true,
+      continuous: true
+    });
+  }
+
+  function isBlendedScheme(scheme) {
+    return !!scheme.blended;
+  }
+
+  // For the Blended item in the palette menu: a color of each preset (as
+  // recolored in @scheme, if given)
+  function getBlendedPresetColors(scheme) {
+    return getBlendRampColors(scheme || {}).map(function(ramp) {
+      return ramp.colors[2];
+    });
+  }
+
+  // The colors of each preset in a blend: [{name, colors}], one at each stop
+  function getBlendRampColors(scheme) {
+    return getClimatePresetNames().map(function(name) {
+      return {name: name, colors: getBlendedColors(scheme, name)};
+    });
+  }
+
+  function getBlendedColors(scheme, name) {
+    var edited = scheme.blendColors && scheme.blendColors[name];
+    return (edited || getElevationPresetColors(name)).concat();
+  }
+
+  // Recolors stop i of the presets @names in a blend; a blend whose presets all
+  // have their own colors again is Blended
+  function setBlendStopColor(scheme, names, i, color) {
+    var edited = Object.assign({}, scheme.blendColors);
+    names.forEach(function(name) {
+      var colors = getBlendedColors(scheme, name);
+      colors[i] = color;
+      if (colors.join() == getElevationPresetColors(name).join()) {
+        delete edited[name];
+      } else {
+        edited[name] = colors;
+      }
+    });
+    var custom = Object.keys(edited).length > 0;
+    return Object.assign({}, scheme, {blendColors: custom ? edited : null, preset: custom ? null : blendedPresetName});
+  }
+
+  // The color chips at stop i of a fixed-elevation scheme, for the class
+  // breaks dialog: [{names, color, edited}]. A blend has a chip for each run of
+  // neighboring presets with the same color there (names: the presets); other
+  // schemes have one (names: []).
+  function getElevationStopChips(scheme, i) {
+    var tile;
+    if (!isBlendedScheme(scheme)) {
+      tile = getSchemeTiles(scheme)[i];
+      return [{names: [], color: tile.color, edited: tile.pinned}];
+    }
+    return groupColorRuns(getBlendRampColors(scheme), function(colors) { return [colors[i]]; }).map(function(run) {
+      return {names: run.names, color: run.colors[0], edited: run.names.some(function(name) {
+        return getElevationPresetColors(name)[i] != run.colors[0];
+      })};
+    });
+  }
+
+  // The swatches of a fixed-elevation scheme's classes, from below the first
+  // stop to above the last: for each class, lanes [{names, colors: [low, high]}],
+  // one for each run of neighboring presets of a blend with the same colors at
+  // both ends of the class (or one lane, names: []). Classed elevations have
+  // one color from a stop up to the next.
+  function getElevationClassLanes(scheme) {
+    var ramps = isBlendedScheme(scheme) ? getBlendRampColors(scheme) : [{name: null, colors: getSchemeColors(scheme)}];
+    var n = ramps[0].colors.length;
+    var continuous = isContinuousScheme(scheme);
+    var classes = [];
+    for (var j = 0; j <= n; j++) {
+      classes.push(groupColorRuns(ramps, function(colors) {
+        var low = colors[Math.max(j - 1, 0)];
+        return [low, continuous ? colors[Math.min(j, n - 1)] : low];
+      }));
+    }
+    return classes;
+  }
+
+  function groupColorRuns(ramps, getColors) {
+    var runs = [];
+    ramps.forEach(function(ramp) {
+      var colors = getColors(ramp.colors);
+      var last = runs[runs.length - 1];
+      if (last && last.colors.join() == colors.join()) {
+        last.names.push(ramp.name);
+      } else {
+        runs.push({names: ramp.name ? [ramp.name] : [], colors: colors});
+      }
+    });
+    return runs;
+  }
+
+  // Recolors (or with a null color, resets) the chip at stop i for the presets
+  // @names (see getElevationStopChips())
+  function setElevationChipColor(scheme, names, i, color) {
+    if (!isBlendedScheme(scheme)) return color ? setTileColor(scheme, i, color) : clearTileColor(scheme, i);
+    return names.reduce(function(memo, name) {
+      return setBlendStopColor(memo, [name], i, color ? toHex(color) : getElevationPresetColors(name)[i]);
+    }, scheme);
+  }
+
+  // A fixed-elevation scheme with given colors and stops, e.g. an imported
+  // palette's. Returns null if they don't have one for each of the presets'
+  // stops. Colors and stops that are a preset's give the preset.
+  // @base: a fixed-elevation scheme of the layer, for its field and the preset
+  //   that a blend uses where it can't blend
+  // spec: {
+  //   blend: {name: colors} or null   (a blend: the colors of its presets;
+  //                                    presets left out keep their own)
+  //   colors: [...] or null           (one preset's colors)
+  //   preset: name or null            (the preset the colors are edited from)
+  //   stops: [...] or null            (in the band's units)
+  //   classed: boolean                (classes from each stop up to the next,
+  //                                    for one preset's colors)
+  //   sea: {preset, colors, stops} or null
+  //   landTransparent: boolean
+  // }
+  function getElevationSchemeFromSpec(base, spec, lyr) {
+    var names = spec.blend ? getClimatePresetNames() : getElevationPresetNames();
+    var scheme, edited, name, sea, n;
+    if (spec.blend) {
+      n = getFixedPresetStops(names[0]).length;
+      if (spec.stops && spec.stops.length != n) return null;
+      edited = {};
+      names.forEach(function(name) {
+        var colors = spec.blend[name];
+        if (colors && colors.join() != getElevationPresetColors(name).join()) edited[name] = colors;
+      });
+      if (names.some(function(name) { return edited[name] && edited[name].length != n; })) return null;
+      scheme = chooseElevationPreset(base, names.includes(base.elevationPreset) ? base.elevationPreset : names[0]);
+      edited = Object.keys(edited).length > 0 ? edited : null;
+      scheme = Object.assign(scheme, {blended: true, blendColors: edited, preset: edited ? null : blendedPresetName,
+        continuous: true});
+    } else {
+      name = findElevationPreset(names, spec.preset, spec.colors) ||
+        findElevationPresetWithStops([base.elevationPreset].concat(names), spec, lyr) || base.elevationPreset || names[0];
+      scheme = chooseElevationPreset(base, name);
+      n = scheme.n;
+      if (spec.stops && spec.stops.length != n) return null;
+      if (spec.colors && spec.colors.length != n) return null;
+      if (spec.colors && spec.colors.join() != getElevationPresetColors(name).join()) {
+        scheme = Object.assign(scheme, {preset: null, stopColors: spec.colors.concat()});
+      }
+      scheme.continuous = !spec.classed;
+    }
+    if (spec.stops && spec.stops.join() != getElevationSchemeStops(scheme, lyr).join()) {
+      scheme.stops = spec.stops.concat();
+    }
+    sea = spec.sea ? getSeaSchemeFromSpec(spec.sea, lyr) : null;
+    if (spec.sea && !sea) return null;
+    scheme = setSeaScheme(scheme, sea);
+    return spec.landTransparent ? setLandTransparent(scheme, true) : scheme;
+  }
+
+  // Without a preset, the one of @names that a recolored palette was most
+  // likely edited from: of those with as many stops as the spec has colors or
+  // stops (presets differ in their number of stops), those with the spec's
+  // stops, if any, and of those, the first with the most of the spec's colors
+  function findElevationPresetWithStops(names, spec, lyr) {
+    var n = spec.colors ? spec.colors.length : spec.stops ? spec.stops.length : 0;
+    var sized = n > 0 ? names.filter(function(name) {
+      return !!name && getFixedPresetStops(name).length == n;
+    }) : [];
+    var placed = spec.stops ? sized.filter(function(name) {
+      return getElevationSchemeStops({elevationPreset: name}, lyr).join() == spec.stops.join();
+    }) : [];
+    var candidates = placed.length > 0 ? placed : sized;
+    var best = null, bestCount = -1;
+    candidates.forEach(function(name) {
+      var colors = getElevationPresetColors(name);
+      var count = spec.colors ? spec.colors.filter(function(c, i) { return c == colors[i]; }).length : 0;
+      if (count > bestCount) {
+        best = name;
+        bestCount = count;
+      }
+    });
+    return best;
+  }
+
+  // The preset of @names that is @preset (in any case), or that has @colors
+  function findElevationPreset(names, preset, colors) {
+    var key = String(preset || '').toLowerCase();
+    return names.find(function(name) { return name.toLowerCase() == key; }) ||
+      colors && names.find(function(name) { return getElevationPresetColors(name).join() == colors.join(); }) || null;
+  }
+
+  function getSeaSchemeFromSpec(spec, lyr) {
+    var names = getBathymetricPresetNames();
+    var name = findElevationPreset(names, spec.preset, spec.colors) ||
+      findElevationPresetWithStops(names, spec, lyr) || names[0];
+    var sea = chooseElevationPreset({}, name);
+    var n = sea.n;
+    if (spec.colors && spec.colors.length != n || spec.stops && spec.stops.length != n) return null;
+    if (spec.colors && spec.colors.join() != getElevationPresetColors(name).join()) {
+      sea = Object.assign(sea, {preset: null, stopColors: spec.colors.concat()});
+    }
+    if (spec.stops && spec.stops.join() != getElevationSchemeStops(sea, lyr).join()) {
+      sea = Object.assign(sea, {stops: spec.stops.concat()});
+    }
+    return sea;
+  }
+
+  // Classed elevations stay classed with another preset
+  function chooseElevationPreset(scheme, name) {
+    return Object.assign({}, scheme, {
+      method: 'elevation',
+      preset: name,
+      blended: false,
+      blendColors: null,
+      elevationPreset: name,
+      stopColors: null,
+      stops: null,
+      reversed: false,
+      pins: null,
+      range: null,
+      continuous: !(isElevationScheme(scheme) && scheme.continuous === false),
+      landTransparent: false,
+      n: getFixedPresetStops(name).length
+    });
+  }
+
+  // The colors, spread evenly over the data's range by the method that takes
+  // over
+  function leaveFixedElevations(scheme) {
+    var colors = getSchemeColors(scheme);
+    return Object.assign({}, scheme, {
+      preset: null,
+      blended: false,
+      blendColors: null,
+      elevationPreset: null,
+      stopColors: null,
+      stops: null,
+      pins: colors.map(function(color, i) {
+        return {t: i / (colors.length - 1), color: color};
+      })
+    });
   }
 
   // A diverging set's classes: its colors on each side, and its center color
@@ -21675,15 +22884,17 @@
   // The color to edit for tile i: a pinned tile's own color, which vibrance
   // may have raised in the ramp, or else the tile's color
   function getTileEditColor(scheme, i) {
-    var slot = scheme.preset || scheme.type == 'categorical' ? -1 :
+    var slot = scheme.preset || scheme.type == 'categorical' || isElevationScheme(scheme) ? -1 :
       internal.getPinnedSlots(scheme.pins, getRampSize(scheme))[i];
     if (slot > -1) return toHex(scheme.pins[slot].color);
     return getSchemeColors(scheme)[i];
   }
 
   function setTileColor(scheme, i, color) {
-    var custom = makeSchemeCustom(scheme);
-    var swatches;
+    var custom, swatches;
+    if (isBlendedScheme(scheme)) return setBlendStopColor(scheme, [scheme.elevationPreset], i, toHex(color));
+    if (isElevationScheme(scheme)) return setElevationStopColor(scheme, i, toHex(color));
+    custom = makeSchemeCustom(scheme);
     if (custom.type == 'categorical') {
       swatches = custom.swatches.concat();
       swatches[i] = toHex(color);
@@ -21695,10 +22906,28 @@
   }
 
   function clearTileColor(scheme, i) {
+    if (isBlendedScheme(scheme)) {
+      return setBlendStopColor(scheme, [scheme.elevationPreset], i, getElevationPresetColors(scheme.elevationPreset)[i]);
+    }
+    if (isElevationScheme(scheme)) {
+      return setElevationStopColor(scheme, i, getElevationPresetColors(scheme.elevationPreset)[i]);
+    }
     if (scheme.preset || scheme.type == 'categorical' || i == getCenterTile(scheme)) return scheme;
     return Object.assign({}, scheme, {
       pins: internal.clearRampPin(scheme.pins, getRampSize(scheme), i)
     });
+  }
+
+  // A stop's color; the scheme is its preset again when every stop has the
+  // preset's color
+  function setElevationStopColor(scheme, i, color) {
+    var preset = getElevationPresetColors(scheme.elevationPreset);
+    var colors = getSchemeColors(scheme);
+    colors[i] = color;
+    if (colors.join() == preset.join()) {
+      return Object.assign({}, scheme, {preset: scheme.elevationPreset, stopColors: null, blended: false});
+    }
+    return Object.assign({}, scheme, {preset: null, stopColors: colors, blended: false});
   }
 
   // A custom categorical list grows to have at least n swatches.
@@ -21707,8 +22936,9 @@
   //   merged to fit (see resizeBreaks()); without it, or for a diverging scheme,
   //   the breaks go back to their method's
   function setTileCount(scheme, n, count, lyr) {
-    var next = Object.assign({}, scheme, {n: clampColorCount(scheme, n, count)});
-    var breaks;
+    var next, breaks;
+    if (isElevationScheme(scheme)) return scheme; // a tile for each of the preset's stops
+    next = Object.assign({}, scheme, {n: clampColorCount(scheme, n, count)});
     if (next.type == 'categorical' && !next.preset && next.swatches.length < next.n) {
       next.swatches = extendSwatches(next.swatches, next.n);
     }
@@ -21771,7 +23001,7 @@
   }
 
   function reverseScheme(scheme) {
-    if (scheme.type == 'categorical') return scheme;
+    if (scheme.type == 'categorical' || isElevationScheme(scheme)) return scheme;
     if (scheme.preset) {
       return Object.assign({}, scheme, {reversed: !scheme.reversed});
     }
@@ -21796,9 +23026,12 @@
   }
 
   // opts.target  a -target value, when the layer is not the active one
+  // opts.layer   the layer, for the units of a fixed-elevation scheme's stops
+  //   (beyond its end stops, values take the end colors)
   function formatSchemeCommand(scheme, colors, opts) {
     var parts = ['-classify'];
     var custom = scheme.method == 'breaks';
+    if (isElevationScheme(scheme)) return formatElevationCommand(scheme, opts);
     if (scheme.method != 'non-adjacent') {
       parts.push('field=' + quoteCommandValue(scheme.field));
     }
@@ -21818,10 +23051,14 @@
     }
     if (isContinuousScheme(scheme)) {
       // the tiles already have their vibrance, so no vibrance=
-      parts.push('continuous', 'interpolation=oklch');
+      parts.push('continuous');
     }
     parts.push('colors=' + colors.join(','));
-    if (scheme.method != 'non-adjacent' && getSchemeNullColor(scheme) != defaultNullColor) {
+    if (getSchemeCategoryNames(scheme) && scheme.method == 'categorical' && opts && opts.layer) {
+      parts.push(formatCategoryNamesOption(scheme, opts.layer));
+    }
+    if (scheme.raster ? !!getSchemeNullColor(scheme) :
+        scheme.method != 'non-adjacent' && getSchemeNullColor(scheme) != defaultNullColor) {
       parts.push('null-value=' + getSchemeNullColor(scheme));
     }
     if (opts && opts.target) {
@@ -21830,8 +23067,55 @@
     return parts.join(' ');
   }
 
+  // category-names= for a raster scheme with names (e.g. from an imported
+  // palette): a name for each category, in order, quoted where a name has a
+  // comma or a quote, and "" for a category without one
+  function formatCategoryNamesOption(scheme, lyr) {
+    var names = getCategories(lyr, scheme.field).map(function(val) {
+      var name = getSchemeCategoryNames(scheme)[val] || '';
+      return name && !/[,"']/.test(name) ? name : '"' + name.replace(/"/g, '\\"') + '"';
+    });
+    return 'category-names=' + quoteCommandValue(names.join(','));
+  }
+
+  // Fixed elevations: -classify hypsometric= with the preset (or blended, or
+  // none for only the sea), and only what was edited: colors= (the land's, or
+  // a blend's recolored presets by name) and breaks= (every stop), with the
+  // sea's colors and depths as their sea: lists, and classed. Without a sea,
+  // hypsometric= leaves it out.
+  function formatElevationCommand(scheme, opts) {
+    var parts = ['-classify', 'field=' + quoteCommandValue(scheme.field)];
+    var lyr = opts && opts.layer;
+    var land = !isLandTransparent(scheme);
+    var sea = getSeaScheme(scheme);
+    var colors = [], breaks = [];
+    parts.push('hypsometric=' + (!land ? 'none' : isBlendedScheme(scheme) ? 'blended' : scheme.elevationPreset.toLowerCase()));
+    if (land && isBlendedScheme(scheme)) {
+      getBlendRampColors(scheme).forEach(function(ramp) {
+        if (scheme.blendColors && scheme.blendColors[ramp.name]) {
+          colors.push(ramp.name.toLowerCase() + ':' + ramp.colors.join(','));
+        }
+      });
+    } else if (land && !scheme.preset) {
+      colors.push(getSchemeColors(scheme).join(','));
+    }
+    if (land && scheme.stops) breaks.push(getElevationSchemeStops(scheme, lyr).join(','));
+    if (land && !isContinuousScheme(scheme)) parts.push('classed');
+    if (sea) {
+      parts.push('sea=' + sea.elevationPreset.toLowerCase());
+      if (!sea.preset) colors.push('sea:' + getSchemeColors(sea).join(','));
+      if (sea.stops) breaks.push('sea:' + getElevationSchemeStops(sea, lyr).join(','));
+    }
+    if (colors.length > 0) parts.push('colors=' + colors.join(','));
+    if (breaks.length > 0) parts.push('breaks=' + breaks.join(','));
+    if (getSchemeNullColor(scheme)) parts.push('null-value=' + getSchemeNullColor(scheme));
+    if (opts && opts.target) parts.push('target=' + opts.target);
+    return parts.join(' ');
+  }
+
   function getNumericFields(lyr) {
     var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+    if (isRasterLayer(lyr)) return getRasterBandFields(lyr);
     if (!lyr || !lyr.data) return [];
     return lyr.data.getFields().filter(function(field) {
       return internal.getColumnType(field, records) == 'number';
@@ -21855,11 +23139,37 @@
     return scheme;
   }
 
+  // A categorical scheme for a raster palette that the panel didn't make, such
+  // as the colors of a palette image, so that opening the panel keeps them; or
+  // null if the palette isn't categories that the panel can color one by one
+  function getRasterPaletteScheme(lyr) {
+    var palette = isRasterLayer(lyr) ? getRasterCategoricalPalette(lyr) : null;
+    var lookup, categories, colors, scheme;
+    if (!palette || !getCategoryFields(lyr).includes(palette.field)) return null;
+    lookup = new Map(palette.categories.map(function(val, i) { return [val, palette.colors[i]]; }));
+    categories = getCategories(lyr, palette.field);
+    colors = categories.map(function(val) { return lookup.has(val) ? toHex(lookup.get(val)) : null; });
+    if (colors.length === 0 || colors.length > maxFilePaletteColors || colors.includes(null)) return null;
+    scheme = setSchemeLayerType({
+      type: 'categorical',
+      field: palette.field,
+      method: 'categorical',
+      n: colors.length,
+      preset: null,
+      order: null,
+      swatches: colors
+    }, lyr);
+    return getAppliedScheme(scheme, colors, lyr);
+  }
+
   // Checked from the data rather than kept in step with every edit, so that
   // anything that changes the fills -- a -style command, a typed fill color,
   // an undo past the scheme -- retires it.
   function schemeMatchesLayer(scheme, lyr) {
     var records, colors, val;
+    if (isRasterLayer(lyr)) {
+      return !!scheme.paletteKey && scheme.paletteKey == getRasterLayerPaletteKey(lyr);
+    }
     if (!lyr || !lyr.data || !scheme.colors) return false;
     if (scheme.method != 'non-adjacent' && !lyr.data.fieldExists(scheme.field)) return false;
     if (isContinuousScheme(scheme)) {
@@ -21880,7 +23190,9 @@
   // colors: the colors given to -classify
   function getAppliedScheme(scheme, colors, lyr) {
     var applied = Object.assign({}, scheme, {colors: colors});
-    if (isContinuousScheme(scheme)) {
+    if (isRasterLayer(lyr)) {
+      applied.paletteKey = getRasterLayerPaletteKey(lyr);
+    } else if (isContinuousScheme(scheme)) {
       applied.fillHash = getFillFingerprint(lyr);
     } else {
       delete applied.fillHash;
@@ -21920,9 +23232,18 @@
   // scheme's breaks custom (see setSchemeBreak()); the pivot of a diverging
   // scheme is shown, but stays where the panel puts it.
   //
+  // Fixed elevations also have their colors here: a chip at each stop, on the
+  // rule between two classes, whose tiles are gradients from one stop's color
+  // to the next. A blend has a column of chips and tiles for each preset, and
+  // presets that share a color share a chip, which recolors all of them (or
+  // those checked under the table).
+  //
   // opts.getScheme(), opts.getLayer()  the scheme and layer being edited
   // opts.onChange(scheme)  a break was moved
   // opts.onClose()         the dialog was closed
+  // opts.title             the dialog's title ('Class breaks' by default, or
+  //                        'Elevations and colors')
+  // opts.reversed(scheme)  true to list the classes from high to low
   var numBins = 40;
 
   function ClassBreaksDialog(gui, opts) {
@@ -21932,9 +23253,15 @@
     var logScale = false;
     var info = null; // see getSchemeBreaks()
     var scale = null;
-    var chartEl, barsEl, linesEl, handlesEl, minLabel, maxLabel, logToggle, tableEl, noteEl, bodyEl;
-    var handles = [], lines = [], pivotLine, inputs = [], rules = [], classRows = [];
+    var range = null; // the scale's [min, max]
+    var titleEl, chartEl, barsEl, linesEl, handlesEl, minLabel, maxLabel, logToggle, tableEl, noteEl, bodyEl;
+    var handles = [], lines = [], pivotLine, inputs = [], rules = [], classRows = [], chipBoxes = [];
+    var reversed = false; // the table's order, from opts.reversed()
     var drag = null;
+    var chipBar, pickerAnchor, picker;
+    // the chip being recolored: {i, names (the chip's presets), checked (the
+    // ones to recolor)}, or null
+    var selected = null;
 
     initDialog();
 
@@ -21958,17 +23285,22 @@
       scheme = opts.getScheme();
       lyr = opts.getLayer();
       info = scheme && lyr ? getSchemeBreaks(scheme, lyr) : null;
+      titleEl.text(opts.title || (scheme && isElevationScheme(scheme) ? 'Elevations and colors' : 'Class breaks'));
+      if (!info || !isElevationScheme(scheme)) hidePicker();
       noteEl.classed('hidden', !!info);
       bodyEl.classed('hidden', !info);
       if (!info) return;
-      if (!(info.min > 0)) logScale = false;
-      logToggle.node().disabled = !(info.min > 0);
       logToggle.node().checked = logScale;
-      scale = getBreaksScale(info.min, info.max, logScale);
+      // a drag keeps the scale it started with, since moving an end stop of
+      // fixed elevations can change the range
+      if (!drag) {
+        scale = getBreaksScale(info.min, info.max, logScale);
+        range = [info.min, info.max];
+      }
       values = getSchemeValues(scheme, lyr);
       renderHistogram(getHistogram(values, scale, numBins));
-      minLabel.text(formatNumber(info.min));
-      maxLabel.text(formatNumber(info.max));
+      minLabel.text(formatNumber(range[0]));
+      maxLabel.text(formatNumber(range[1]));
       renderHandles();
       renderTable();
     }
@@ -21977,6 +23309,7 @@
       if (!isOpen) return;
       isOpen = false;
       stopDrag();
+      hidePicker();
       panel.hide();
       if (opts.onClose) opts.onClose();
     }
@@ -21987,7 +23320,7 @@
         release: function() { releasePanelFocus(panel.node()); }
       });
       var header = El('div').addClass('label-style-panel-title').appendTo(panel);
-      El('span').appendTo(header).text('Class breaks');
+      titleEl = El('span').appendTo(header);
       El('button').addClass('label-style-close').appendTo(header).text('×').on('click', close);
       noteEl = El('div').addClass('label-style-row color-scheme-note').appendTo(panel)
         .text('There are no breaks to edit.');
@@ -21996,7 +23329,7 @@
       chartEl = El('div').addClass('class-breaks-chart').appendTo(bodyEl);
       barsEl = El('div').addClass('class-breaks-bars').appendTo(chartEl);
       linesEl = El('div').addClass('class-breaks-lines').appendTo(chartEl);
-      pivotLine = El('div').addClass('class-breaks-pivot').attr('title', 'Pivot').appendTo(linesEl);
+      pivotLine = El('div').addClass('class-breaks-pivot').appendTo(linesEl);
       handlesEl = El('div').addClass('class-breaks-handles').appendTo(chartEl);
       var axis = El('div').addClass('class-breaks-axis').appendTo(chartEl);
       minLabel = El('span').appendTo(axis);
@@ -22011,6 +23344,25 @@
       El('span').appendTo(logRow).text('Log scale');
 
       tableEl = El('div').addClass('class-breaks-table').appendTo(bodyEl);
+      chipBar = El('div').addClass('class-breaks-chip-bar hidden').appendTo(bodyEl);
+      // the picker opens beside the dialog, level with its chip (see positionPicker()
+      // in gui-color-picker.mjs: 48px below its parent, and against its right side)
+      pickerAnchor = El('div').addClass('class-breaks-picker-anchor').appendTo(panel);
+      picker = new ColorPicker(pickerAnchor, {
+        presetRows: [],
+        onPreview: function(hex) {
+          var chip = getSelectedChip();
+          if (chip) chip.style.backgroundColor = hex;
+        },
+        onChange: function(hex) {
+          var scheme = opts.getScheme();
+          if (selected && scheme) opts.onChange(setElevationChipColor(scheme, selected.checked, selected.i, hex));
+        },
+        onHide: function() {
+          selected = null;
+          if (isOpen) renderTable();
+        }
+      });
     }
 
     function renderHistogram(bins) {
@@ -22043,39 +23395,56 @@
       }
       breaks.forEach(function(b, i) {
         var left = pct(scale.toPos(b));
-        handles[i].css('left', left)
+        // fixed elevations can have stops outside the range (see getSchemeBreaks())
+        var outside = b < range[0] || b > range[1];
+        handles[i].css('left', left).classed('hidden', outside)
           .classed('fixed', info.fixed[i])
           .attr('aria-label', getBreakLabel(i))
           .attr('aria-valuenow', String(b))
-          .attr('aria-disabled', info.fixed[i] ? 'true' : null)
-          .attr('title', getBreakLabel(i) + ': ' + formatNumber(b));
-        lines[i].css('left', left).classed('fixed', info.fixed[i]);
+          .attr('aria-disabled', info.fixed[i] ? 'true' : null);
+        lines[i].css('left', left).classed('fixed', info.fixed[i]).classed('hidden', outside);
       });
       // a pivot inside a pivot class isn't a break, but marks where the class's edges can go
       pivotPos = info.neutral ? scale.toPos(info.pivot) : -1;
       pivotLine.classed('hidden', pivotPos < 0).css('left', pct(Math.max(pivotPos, 0)));
     }
 
-    // The classes from low to high, a color tile and the number of features in
-    // each, stacked; a rule across the boundary between two classes runs out to
+    // The classes from low to high (or high to low), a color tile and the number of features (or
+    // share of pixels) in each, stacked; a rule across the boundary between two classes runs out to
     // the field with the break's value (see .class-breaks-list in page.css)
     function renderTable() {
       var breaks = info ? info.breaks : [];
       var scheme = opts.getScheme();
+      var elevation = !!scheme && isElevationScheme(scheme);
+      var nextReversed = !!scheme && !!opts.reversed && opts.reversed(scheme);
       var swatches, counts;
-      if (inputs.length != breaks.length || classRows.length != breaks.length + 1) {
+      tableEl.classed('elevation', elevation);
+      tableEl.classed('blended', elevation && isBlendedScheme(scheme));
+      tableEl.node().style.setProperty('--class-breaks-columns',
+        elevation && isBlendedScheme(scheme) ? getClimatePresetNames().length : 1);
+      if (inputs.length != breaks.length || classRows.length != breaks.length + 1 || reversed != nextReversed) {
+        reversed = nextReversed;
         tableEl.empty();
         var list = El('div').addClass('class-breaks-list').appendTo(tableEl);
         classRows = breaks.concat([null]).map(function() {
-          var row = El('div').addClass('class-breaks-class').appendTo(list);
+          var row = El('div').addClass('class-breaks-class');
           El('div').addClass('class-breaks-swatch').appendTo(row);
           El('span').addClass('class-breaks-count').appendTo(row);
           return row;
         });
+        inDisplayOrder(classRows).forEach(function(row) { row.appendTo(list); });
         rules = [];
-        inputs = breaks.map(function(b, i) {
-          var mark = El('div').addClass('class-breaks-mark').appendTo(list)
-            .css('top', 'calc((var(--class-breaks-row-height) + var(--class-breaks-gap)) * ' + (i + 1) + ' - 13px)');
+        var marks = breaks.map(function(b, i) {
+          var pos = reversed ? breaks.length - i : i + 1;
+          return El('div').addClass('class-breaks-mark')
+            .css('top', 'calc((var(--class-breaks-row-height) + var(--class-breaks-gap)) * ' + pos + ' - 13px)');
+        });
+        // appended in display order, so that Tab moves down the list
+        inDisplayOrder(marks).forEach(function(mark) { mark.appendTo(list); });
+        chipBoxes = marks.map(function(mark) {
+          return El('div').addClass('class-breaks-chips').appendTo(mark);
+        });
+        inputs = marks.map(function(mark, i) {
           rules.push(El('div').addClass('class-breaks-rule').appendTo(mark));
           return El('input').attr('type', 'text').appendTo(mark)
             .on('change', function() {
@@ -22091,27 +23460,155 @@
         });
       }
       if (!info) return;
-      swatches = getBreakClassSwatches(scheme);
+      swatches = elevation ? getElevationClassLanes(scheme) : getBreakClassSwatches(scheme);
       counts = getBreakClassCounts(scheme, opts.getLayer(), breaks);
       classRows.forEach(function(row, j) {
         var neutral = info.neutral && j > 0 && breaks[j - 1] == info.neutral[0];
-        row.findChild('.class-breaks-swatch').css('background', swatches[j] || 'transparent');
+        var swatch = row.findChild('.class-breaks-swatch');
+        if (elevation) {
+          renderLanes(swatch, swatches[j]);
+        } else {
+          swatch.empty().css('background', swatches[j] || 'transparent');
+        }
         // the top row says what the numbers are
-        row.findChild('.class-breaks-count').text((j === 0 ? formatCount(counts[j]) : String(counts[j])) +
+        var top = reversed ? j == classRows.length - 1 : j === 0;
+        row.findChild('.class-breaks-count').text(formatSchemeCount(scheme, opts.getLayer(), counts[j], !top) +
           (neutral ? ' (pivot class)' : ''));
       });
       breaks.forEach(function(b, i) {
         var input = inputs[i].node();
         input.disabled = info.fixed[i];
         input.setAttribute('aria-label', getBreakLabel(i));
-        input.setAttribute('title', getBreakLabel(i));
         rules[i].classed('fixed', info.fixed[i]);
         if (document.activeElement != input || !isTextInput(input)) input.value = formatNumber(b);
+        renderChips(chipBoxes[i], elevation ? getElevationStopChips(scheme, i) : [], i);
+      });
+      renderChipBar(scheme);
+    }
+
+    // a tile for each run of presets (see getElevationClassLanes()), as wide as
+    // its presets' columns, from the color at the top of the row to the one at
+    // the bottom
+    function renderLanes(swatch, lanes) {
+      swatch.empty().css('background', 'none');
+      lanes.forEach(function(lane) {
+        var colors = reversed ? lane.colors.slice().reverse() : lane.colors;
+        El('div').addClass('class-breaks-lane').appendTo(swatch)
+          .css('grid-column', 'span ' + Math.max(lane.names.length, 1))
+          .css('background', 'linear-gradient(' + colors[0] + ', ' + colors[1] + ')');
       });
     }
 
-    function formatCount(n) {
-      return n + (n == 1 ? ' feature' : ' features');
+    // A chip's tooltip is fixed (see page.css): centered below the chip, and
+    // inside the window
+    function placeChipTooltip(el) {
+      var rect = el.getBoundingClientRect();
+      var half = (parseFloat(getComputedStyle(el, '::after').width) || 0) / 2;
+      var margin = 4;
+      var x = Math.min(rect.left + rect.width / 2, document.documentElement.clientWidth - margin - half);
+      el.style.setProperty('--tooltip-x', Math.max(x, margin + half) + 'px');
+      el.style.setProperty('--tooltip-y', rect.bottom + 5 + 'px');
+    }
+
+    function renderChips(box, chips, i) {
+      box.empty();
+      chips.forEach(function(chip) {
+        var label = (chip.names.length > 0 ? chip.names.join(', ') + ' at ' : 'Color at ') + formatElevation(info.breaks[i]);
+        // after recoloring some of a shared chip's presets, the chip they now have
+        var isSelected = !!selected && selected.i == i && (chip.names.length === 0 ||
+          chip.names.some(function(name) { return selected.checked.indexOf(name) > -1; }));
+        El('div').addClass('class-breaks-chip').attr('role', 'button').attr('tabindex', '0')
+          .attr('aria-label', label).attr('data-tooltip', label + (chip.edited ? ' (edited)' : ''))
+          .classed('edited', chip.edited).classed('selected', isSelected)
+          .css('grid-column', 'span ' + Math.max(chip.names.length, 1))
+          .css('background-color', chip.color)
+          .appendTo(box)
+          .on('mouseenter', function(e) { placeChipTooltip(e.currentTarget); })
+          .on('click', function() { selectChip(i, chip); })
+          .on('keydown', function(e) {
+            if (e.key == 'Enter' || e.key == ' ') {
+              e.preventDefault();
+              selectChip(i, chip);
+            }
+          });
+      });
+    }
+
+    function selectChip(i, chip) {
+      var chipEl;
+      if (selected && selected.i == i && sameNames(selected.names, chip.names)) {
+        hidePicker();
+        return;
+      }
+      selected = {i: i, names: chip.names, checked: chip.names.concat()};
+      renderTable();
+      chipEl = getSelectedChip();
+      if (chipEl) {
+        pickerAnchor.css('top', Math.round(chipEl.getBoundingClientRect().top - panel.node().getBoundingClientRect().top - 48) + 'px');
+      }
+      picker.setColor(chip.color);
+      if (!picker.visible()) picker.toggle();
+    }
+
+    // Which presets of a shared chip to recolor, and a reset for an edited color
+    function renderChipBar(scheme) {
+      var chip;
+      chipBar.empty();
+      chipBar.classed('hidden', !selected);
+      if (!selected) return;
+      chip = getElevationStopChips(scheme, selected.i).find(function(chip) {
+        return chip.names.some(function(name) { return selected.names.indexOf(name) > -1; }) || chip.names.length === 0;
+      });
+      El('span').addClass('class-breaks-chip-bar-label').appendTo(chipBar)
+        .text(formatElevation(info.breaks[selected.i]) + (selected.names.length > 1 ? ':' : ''));
+      if (selected.names.length > 1) {
+        selected.names.forEach(function(name) {
+          var label = El('label').appendTo(chipBar);
+          El('input').attr('type', 'checkbox').appendTo(label)
+            .attr('checked', selected.checked.indexOf(name) > -1 ? true : null)
+            .on('change', function() {
+              var checked = this.checked;
+              selected.checked = selected.names.filter(function(n) {
+                return n == name ? checked : selected.checked.indexOf(n) > -1;
+              });
+            });
+          El('span').appendTo(label).text(name);
+        });
+      } else if (selected.names.length == 1) {
+        El('span').appendTo(chipBar).text(selected.names[0]);
+      }
+      if (chip && chip.edited) {
+        El('button').addClass('class-breaks-chip-reset').appendTo(chipBar).text('Reset')
+          .on('click', function() {
+            var scheme = opts.getScheme();
+            var names = selected.checked;
+            var i = selected.i;
+            hidePicker();
+            opts.onChange(setElevationChipColor(scheme, names, i, null));
+          });
+      }
+    }
+
+    function getSelectedChip() {
+      return selected ? tableEl.node().querySelector('.class-breaks-chip.selected') : null;
+    }
+
+    function hidePicker() {
+      if (picker && picker.visible()) picker.hide();
+      selected = null;
+    }
+
+    function sameNames(a, b) {
+      return a.join() == b.join();
+    }
+
+    function formatElevation(val) {
+      var units = getRasterUnitsLabel(opts.getLayer());
+      return formatNumber(val) + (units ? ' ' + units : '');
+    }
+
+    function inDisplayOrder(arr) {
+      return reversed ? arr.slice().reverse() : arr;
     }
 
     function getBreakLabel(i) {
@@ -22125,7 +23622,7 @@
     function setBreak(i, val) {
       var scheme = opts.getScheme();
       var next = setSchemeBreak(scheme, opts.getLayer(), i, val);
-      if (next != scheme && next.breaks[i] !== info.breaks[i]) opts.onChange(next);
+      if (next != scheme && getSchemeBreaks(next, opts.getLayer()).breaks[i] !== info.breaks[i]) opts.onChange(next);
     }
 
     // A dragged break goes to the roundest value under the pointer: the one with
@@ -22156,6 +23653,7 @@
       document.removeEventListener('pointermove', onDragMove);
       document.removeEventListener('pointerup', stopDrag);
       document.removeEventListener('pointercancel', stopDrag);
+      update(); // the scale, for the range the drag left
     }
 
     // arrow keys move a break by a hundredth of the histogram's width (a
@@ -22189,7 +23687,8 @@
   // The scheme's classes, the base of both formats: {from, to, color} for
   // classes, {from, to, colors: [low, high]} for a stretch of continuous colors
   // (classes include from and exclude to, but for the last, which includes the
-  // max), or {value, color} for a category. Returns null if the scheme has no
+  // max), or {value, color} for a category, with the category's name if it has
+  // one (a raster's, from its file or a palette). Returns null if the scheme has no
   // classes to export (non-adjacent colors, or no data).
   function getExportClasses(scheme, lyr) {
     if (scheme.method == 'non-adjacent') return null;
@@ -22204,16 +23703,25 @@
     if (categories.length === 0) return null;
     // as -classify assigns them, repeating the colors if there are more categories
     return categories.map(function(val, i) {
-      return {value: val, color: colors[i % colors.length]};
+      var o = {value: val, color: colors[i % colors.length]};
+      var name = getCategoryName(scheme, lyr, val);
+      if (name) o.name = name;
+      return o;
     });
   }
 
   function getClassedClasses(scheme, lyr) {
     var info = getSchemeBreaks(scheme, lyr);
-    var colors, use, ends;
+    var colors, use, ends, breaks;
     if (!info) return null;
     colors = getSchemeColors(scheme);
-    if (scheme.type == 'diverging') {
+    breaks = info.breaks;
+    if (isElevationScheme(scheme)) {
+      // a class from each stop up to the next, as continuous elevations start
+      // at the first stop
+      breaks = breaks.slice(1);
+      ends = [info.breaks[0], info.max];
+    } else if (scheme.type == 'diverging') {
       use = getDivergingTileUse(scheme);
       colors = colors.filter(function(c, i) { return use[i]; });
       // the outer classes may reach past the data (e.g. equal intervals)
@@ -22221,7 +23729,6 @@
     } else {
       ends = [info.min, info.max];
     }
-    var breaks = info.breaks;
     var edges = [Math.min(ends[0], breaks.length ? breaks[0] : ends[0])].concat(breaks,
       [Math.max(ends[1], breaks.length ? breaks[breaks.length - 1] : ends[1])]);
     return colors.map(function(color, i) {
@@ -22274,13 +23781,17 @@
       // interpolates in RGB approaches between the colors
       data.interpolation = 'oklch';
     }
+    if (isElevationScheme(scheme)) {
+      data.elevations = getElevationExportData(scheme, lyr);
+    }
     data.classes = classes;
     if (scheme.type != 'categorical' && !continuous) {
       data.breaks = classes.slice(1).map(function(c) { return c.from; });
       data.colors = classes.map(function(c) { return c.color; });
     }
+    // null: transparent (a raster's default)
     data.nullColor = getSchemeNullColor(scheme);
-    data.expression = getStyleExpression(scheme.field, scheme.type, classes, data.nullColor);
+    data.expression = getStyleExpression(scheme.field, scheme.type, classes, data.nullColor || 'rgba(0,0,0,0)');
     data.command = getSchemeCommand(scheme, lyr);
     return data;
   }
@@ -22289,12 +23800,46 @@
   // what an import rebuilds the scheme from (see gui-color-scheme-import.mjs)
   function getSchemeCommand(scheme, lyr) {
     var count = scheme.type == 'categorical' ? getCategories(lyr, scheme.field).length : -1;
-    return formatSchemeCommand(scheme, getAppliedColors(scheme, count));
+    return formatSchemeCommand(scheme, getAppliedColors(scheme, count), {layer: lyr});
+  }
+
+  // A fixed-elevation scheme's stops (in the band's units) and the colors at
+  // them, which an import takes over the command's, so that they can be edited:
+  // {units, stops, colors} for one preset, {units, stops, blend: {name: colors}}
+  // with every preset's colors for a blend, and sea: {palette, stops, colors}
+  // or null. Transparent land has only the sea.
+  // A blend's classes are those of the preset it uses where it can't blend.
+  function getElevationExportData(scheme, lyr) {
+    var sea = getSeaScheme(scheme);
+    var o = {units: getRasterUnitsLabel(lyr)};
+    if (!isLandTransparent(scheme)) {
+      o.stops = getElevationSchemeStops(scheme, lyr).map(tidy);
+      if (isBlendedScheme(scheme)) {
+        o.blend = {};
+        getBlendRampColors(scheme).forEach(function(ramp) { o.blend[ramp.name] = ramp.colors; });
+      } else {
+        o.colors = getSchemeColors(scheme);
+      }
+    }
+    o.sea = sea ? {
+      palette: sea.preset || null,
+      stops: getElevationSchemeStops(sea, lyr).map(tidy),
+      colors: getSchemeColors(sea)
+    } : null;
+    return o;
   }
 
   function formatSchemeJSON(scheme, lyr) {
     var data = getSchemeExportData(scheme, lyr);
-    return data ? JSON.stringify(data, null, 2) + '\n' : null;
+    return data ? formatCompactJSON(data) + '\n' : null;
+  }
+
+  // Indented JSON, with arrays of numbers and strings on one line (e.g. a
+  // preset's colors), which makes them easier to read and edit
+  function formatCompactJSON(data) {
+    return JSON.stringify(data, null, 2).replace(/\[\n([^[\]{}]*)\n\s*\]/g, function(match, items) {
+      return '[' + items.split('\n').map(function(line) { return line.trim(); }).join(' ') + ']';
+    });
   }
 
   // Features without a number get the null color
@@ -22391,8 +23936,8 @@
     ];
     if (scheme.type == 'categorical') {
       classes.forEach(function(c) {
-        var label = String(c.value);
-        lines.push([label.replace(/\s+/g, '_'), formatGmtColor(c.color), ';' + label].join('\t'));
+        var key = String(c.value);
+        lines.push([key.replace(/\s+/g, '_'), formatGmtColor(c.color), ';' + (c.name || key)].join('\t'));
       });
     } else {
       classes.forEach(function(c) {
@@ -22404,7 +23949,10 @@
       lines.push('B\t' + formatGmtColor(getFirstColor(classes[0])));
       lines.push('F\t' + formatGmtColor(getLastColor(classes[classes.length - 1])));
     }
-    lines.push('N\t' + formatGmtColor(getSchemeNullColor(scheme)));
+    // GMT has no transparent color, so a transparent no-data color is left out
+    if (getSchemeNullColor(scheme)) {
+      lines.push('N\t' + formatGmtColor(getSchemeNullColor(scheme)));
+    }
     return lines.join('\n') + '\n';
   }
 
@@ -22482,7 +24030,7 @@
       El('span').appendTo(header).text('Import a palette');
       El('button').addClass('label-style-close').appendTo(header).text('×').on('click', close);
       dropEl = El('div').addClass('color-scheme-import-drop').appendTo(panel)
-        .text('Drop a GMT (.cpt) or JSON palette file here, or paste a palette or a list of colors');
+        .text('Drop a GMT (.cpt), JSON or legend file here, or paste a palette or a list of colors');
       messageEl = El('div').addClass('color-scheme-import-message').appendTo(panel);
 
       ['dragenter', 'dragover'].forEach(function(type) {
@@ -22559,7 +24107,9 @@
   }
 
   // Color palettes from text: a GMT color palette table (.cpt), the JSON that
-  // gui-color-scheme-export.mjs writes, or a list of CSS colors.
+  // gui-color-scheme-export.mjs writes, a legend of categories (see
+  // parseLegend()), or a list of CSS colors. Names that a palette gives a
+  // raster's categories go with its scheme, to -classify category-names=.
   // See docs/development/color-scheme-panel-design.md, "Importing a palette"
   //
   // A file that mapshaper exported has the -classify command that made it,
@@ -22570,20 +24120,46 @@
   // null). Throws an Error with a message for the user if the text isn't a
   // palette.
   // scheme: the panel's current scheme, which a palette of colors only goes into
-  function importColorPalette(text, scheme, lyr) {
+  // points: [lon, lat] points across the layer, for the preset that a blend of
+  //   elevation presets uses where it can't blend (see getDefaultElevationPreset())
+  function importColorPalette(text, scheme, lyr, points) {
     var palette = parsePalette(text);
-    var result = palette.command ? importCommand(palette, lyr) : null;
-    if (!result) {
+    var result = palette.command || palette.elevations ? importCommand(palette, lyr, points) : null;
+    var note;
+    if (!result || !result.scheme) {
+      note = result ? result.note : palette.command ? 'The palette was made for a field this layer doesn\'t have.' : null;
+      if (palette.kind == 'elevations') throw new Error(note);
+      // other colors go into a ramp, which fixed elevations don't have
+      if (isElevationScheme(scheme)) scheme = setSchemeMethod(scheme, 'equal-interval');
       result = palette.kind == 'categories' ? importCategories(palette, scheme, lyr) :
         palette.kind == 'classes' ? importClasses(palette, scheme, lyr) :
         {scheme: importColors(palette.colors, scheme, lyr), note: null};
-      if (palette.command) {
-        result.note = 'The palette was made for a field this layer doesn\'t have.' +
-          (result.note ? ' ' + result.note : '');
-      }
+      if (note) result.note = note + (result.note ? ' ' + result.note : '');
     }
     if (palette.nullColor) result.scheme = setSchemeNullColor(result.scheme, palette.nullColor);
+    if (palette.kind == 'categories') result.scheme = addCategoryNames(result.scheme, palette, lyr);
     return result;
+  }
+
+  // A raster's categories get the names that a palette gives them: the labels
+  // of a GMT table (;label), the names of a JSON palette's classes, or a
+  // legend's text. A label that is just the category's value isn't a name.
+  function addCategoryNames(scheme, palette, lyr) {
+    var byKey = {}, names = {}, found = false;
+    if (!internal.layerHasRaster(lyr) || scheme.type != 'categorical' || scheme.method != 'categorical') {
+      return scheme;
+    }
+    palette.categories.forEach(function(c) {
+      if (c.label && c.label != c.key && !(c.key in byKey)) byKey[c.key] = c.label;
+    });
+    getCategories(lyr, scheme.field).forEach(function(val) {
+      var name = byKey[String(val)];
+      if (name) {
+        names[val] = name;
+        found = true;
+      }
+    });
+    return found ? Object.assign({}, scheme, {categoryNames: {field: scheme.field, names: names}}) : scheme;
   }
 
   // {kind, command, preset, nullColor, ...}
@@ -22594,7 +24170,49 @@
     var str = String(text || '').trim();
     if (!str) throw new Error('There is no palette to import.');
     if (str[0] == '{' || str[0] == '[') return parseJsonPalette(str);
-    return parseColorList(str) || parseCPT(str);
+    return parseColorList(str) || parseTable(str);
+  }
+
+  // A GMT table, or else a legend
+  function parseTable(str) {
+    var legend;
+    try {
+      return parseCPT(str);
+    } catch(e) {
+      legend = parseLegend(str);
+      if (legend) return legend;
+      throw e;
+    }
+  }
+
+  // A legend of categories, like the text that comes with a classified raster:
+  // lines that start with a value and give a color and a name, e.g.
+  // "4: BWh Arid, desert, hot [255 0 0]", "4,#ff0000,Desert", or a line of a
+  // QGIS color map export, "4,255,0,0,255,Desert". Other lines (a title, notes,
+  // a header row) are skipped. Returns null if no line is a category.
+  function parseLegend(str) {
+    var categories = str.split(/\r?\n/).map(parseLegendLine).filter(Boolean);
+    if (categories.length === 0) return null;
+    return {kind: 'categories', command: null, preset: null, nullColor: null, categories: categories};
+  }
+
+  function parseLegendLine(line) {
+    var m = /^\s*([-+]?\d+)(?:\s*[:=,;\t]\s*|\s+)(\S.*)$/.exec(line);
+    var rest, found, color, label;
+    if (!m) return null;
+    rest = m[2];
+    found = /[[(]\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})\s*[\])]/.exec(rest) ||
+      /^(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})(?:[\s,]+\d{1,3})?(?=[\s,;]|$)/.exec(rest);
+    if (found) {
+      color = fromRGB(found.slice(1, 4).map(Number));
+    } else {
+      found = /rgba?\([^)]*\)|#[0-9a-f]{3,8}\b/i.exec(rest);
+      color = found ? parseGmtColor(found[0]) : null;
+    }
+    if (!color) return null;
+    label = (rest.slice(0, found.index) + ' ' + rest.slice(found.index + found[0].length))
+      .replace(/^[\s,;:"']+|[\s,;:"']+$/g, '').replace(/\s+/g, ' ');
+    return {key: m[1].replace(/^\+/, ''), label: label || m[1], color: color};
   }
 
   function parseJsonPalette(str) {
@@ -22615,11 +24233,19 @@
       preset: typeof data.palette == 'string' ? data.palette : null,
       nullColor: data.nullColor ? parseColorValue(data.nullColor) : null
     };
-    if (Array.isArray(data.classes) && data.classes.length > 0) {
+    if (data.elevations && typeof data.elevations == 'object') {
+      palette.elevations = parseElevations(data.elevations);
+      palette.elevations.classed = data.continuous === false;
+      palette.field = typeof data.field == 'string' ? data.field : null;
+    }
+    if (palette.elevations && !(Array.isArray(data.classes) && data.classes.length > 0)) {
+      palette.kind = 'elevations';
+    } else if (Array.isArray(data.classes) && data.classes.length > 0) {
       if (data.classes.every(function(c) { return c && 'value' in c; })) {
         palette.kind = 'categories';
         palette.categories = data.classes.map(function(c) {
-          return {key: String(c.value), label: String(c.value), color: parseColorValue(c.color)};
+          var name = c.name || c.label;
+          return {key: String(c.value), label: name ? String(name) : String(c.value), color: parseColorValue(c.color)};
         });
       } else {
         palette.kind = 'classes';
@@ -22638,6 +24264,44 @@
       throw new Error('The JSON has no classes or colors.');
     }
     return palette;
+  }
+
+  // The elevations of a JSON export of fixed elevations (see
+  // getElevationExportData()): {units, stops, colors, blend, sea}
+  function parseElevations(o) {
+    var blend = null;
+    if (o.blend && typeof o.blend == 'object') {
+      blend = {};
+      Object.keys(o.blend).forEach(function(name) {
+        blend[name] = parseColorArray(o.blend[name], name);
+      });
+    }
+    return {
+      units: typeof o.units == 'string' ? o.units : null,
+      stops: o.stops ? parseStops(o.stops, 'stops') : null,
+      colors: o.colors ? parseColorArray(o.colors, 'colors') : null,
+      blend: blend,
+      // without sea, the command's
+      sea: !('sea' in o) ? undefined : o.sea && typeof o.sea == 'object' ? {
+        preset: typeof o.sea.palette == 'string' ? o.sea.palette : null,
+        stops: o.sea.stops ? parseStops(o.sea.stops, 'sea stops') : null,
+        colors: o.sea.colors ? parseColorArray(o.sea.colors, 'sea colors') : null
+      } : null
+    };
+  }
+
+  function parseStops(arr, name) {
+    if (!Array.isArray(arr) || !arr.every(function(val, i) {
+      return isFinite(val) && val !== null && (i === 0 || +val >= +arr[i - 1]);
+    })) {
+      throw new Error('The ' + name + ' should be numbers in ascending order.');
+    }
+    return arr.map(Number);
+  }
+
+  function parseColorArray(arr, name) {
+    if (!Array.isArray(arr)) throw new Error('The ' + name + ' should be a list of colors.');
+    return arr.map(parseColorValue);
   }
 
   function parseColors(arr) {
@@ -22802,16 +24466,17 @@
   // The scheme that a mapshaper export was made from, by its -classify command.
   // Presets come back as presets if their colors are the same; other ramps
   // are pinned at every tile. Returns null if the command's field isn't one
-  // this layer can use.
-  function importCommand(palette, lyr) {
-    var cmd, o, colors, type, scheme;
-    try {
-      cmd = internal.parseCommands(palette.command)[0];
-    } catch(e) {
-      return null;
+  // this layer can use, or {scheme: null, note} for fixed elevations that
+  // can't be imported (see importElevations()).
+  function importCommand(palette, lyr, points) {
+    var o = palette.command ? parseClassifyCommand(palette.command) : null;
+    var colors, type, scheme;
+    if (palette.elevations || o && isElevationCommand(o)) {
+      return importElevations(o || {}, palette, lyr, points);
     }
-    o = cmd && cmd.name == 'classify' ? cmd.options : null;
     if (!o || !Array.isArray(o.colors) || o.colors.length < 2 || !o.field) return null;
+    // breaks given as percentages ("30%") depend on the data they were used with
+    if (o.breaks && !o.breaks.every(isFinite)) return null;
     colors = o.colors.map(function(c) { return internal.parseColor(c); });
     if (!colors.every(Boolean)) return null;
     colors = colors.map(internal.formatColor);
@@ -22825,6 +24490,124 @@
       if (!scheme) return null;
     }
     return {scheme: findPreset(scheme, palette.preset, colors, lyr), note: null};
+  }
+
+  function parseClassifyCommand(str) {
+    var cmd;
+    try {
+      cmd = internal.parseCommands(str)[0];
+    } catch(e) {
+      return null;
+    }
+    return cmd && cmd.name == 'classify' ? cmd.options : null;
+  }
+
+  // Fixed elevations are hypsometric= (see formatSchemeCommand()), or in older
+  // commands, stops given as breaks= and outer-breaks=, without a method=
+  function isElevationCommand(o) {
+    return !!o.hypsometric || !o.method && !!o.outer_breaks;
+  }
+
+  // Fixed elevations, from the command, and from a JSON export's elevations
+  // (see getElevationExportData()), which take precedence, so that they can be
+  // edited. Colors and stops have to be one at each of the presets' stops.
+  function importElevations(o, palette, lyr, points) {
+    var elev = palette.elevations || {};
+    var field = o.field || palette.field;
+    var cmd = readElevationCommand(o);
+    var hypsometric = cmd.hypsometric;
+    // land colors, from the elevations or else the command
+    var landTransparent = !elev.blend && !elev.colors && !cmd.colors && (hypsometric == 'none' || !hypsometric);
+    // transparent land keeps the palette it had, for when it has colors again
+    var blended = !!elev.blend || !elev.colors && (hypsometric == 'blended' ||
+      landTransparent && String(palette.preset).toLowerCase() == 'blended');
+    var classed = !blended && !landTransparent && (elev.classed || cmd.classed);
+    var spec, scheme, base;
+    if (!getElevationFields(lyr).includes(field)) {
+      return {scheme: null, note: 'The palette is for elevations, and this layer has no ' +
+        (field ? field + ' band of elevations.' : 'elevations.')};
+    }
+    base = setSchemeField(getDefaultSchemeOfType('elevation', lyr, points), field);
+    spec = {
+      preset: palette.preset || (hypsometric != 'blended' && hypsometric != 'none' ? hypsometric : null),
+      stops: elev.stops ? convertStops(elev.stops, elev.units, lyr) : cmd.stops,
+      classed: classed,
+      landTransparent: landTransparent,
+      sea: elev.sea !== undefined ? getJsonSea(elev.sea, elev.units, lyr) : cmd.sea
+    };
+    if (blended) {
+      spec.blend = {};
+      getClimatePresetNames().forEach(function(name) {
+        var colors = elev.blend ? elev.blend[name] : cmd.named[name.toLowerCase()];
+        if (colors) spec.blend[name] = colors.map(parseColorValue);
+      });
+    } else if (!landTransparent) {
+      spec.colors = elev.colors || (cmd.colors ? cmd.colors.map(parseColorValue) : null) ||
+        (spec.preset ? getPresetColorsByKey(spec.preset) : null);
+    }
+    scheme = getElevationSchemeFromSpec(base, spec, lyr);
+    if (!scheme) {
+      return {scheme: null, note: 'The ' + (blended ? 'blended presets have ' +
+        getElevationPresetColors(getClimatePresetNames()[0]).length : 'elevation presets have ' +
+        getElevationPresetNames().map(function(name) { return getElevationPresetColors(name).length; })
+          .filter(function(n, i, arr) { return arr.indexOf(n) == i; }).join(' or ')) +
+        ' stops, and the sea ' + getElevationPresetColors(getBathymetricPresetNames()[0]).length +
+        ', with a color at each; the palette\'s don\'t match.'};
+    }
+    return {scheme: scheme, note: null};
+  }
+
+  function getPresetColorsByKey(key) {
+    var name = getElevationPresetNames().find(function(name) { return name.toLowerCase() == key.toLowerCase(); });
+    return name ? getElevationPresetColors(name) : null;
+  }
+
+  // The fixed elevations of a command: {hypsometric, classed, colors, stops,
+  // named, sea}. With hypsometric=, the land's colors and stops (every one) are
+  // the unnamed lists of colors= and breaks= (or the preset's, by its name), a
+  // blend's colors are by preset (named: {name: colors}), and the sea's are its
+  // sea: lists (see splitRampLists()). An older command without hypsometric=
+  // gives the stops as breaks= and outer-breaks=; its classes have no
+  // continuous flag, and every stop but the first in breaks=.
+  function readElevationCommand(o) {
+    var hypsometric = o.hypsometric ? String(o.hypsometric).toLowerCase() : null;
+    var colors = internal.splitRampLists(o.colors) || {};
+    var breaks = internal.splitRampLists(o.breaks) || {};
+    var classed = hypsometric ? !!o.classed : !!o.outer_breaks && !o.continuous;
+    var stops = null;
+    if (hypsometric) {
+      stops = breaks[''] || breaks[hypsometric] || null;
+    } else if (breaks[''] && o.outer_breaks && o.outer_breaks.length == 2) {
+      stops = [o.outer_breaks[0]].concat(breaks[''], classed ? [] : [o.outer_breaks[1]]);
+    }
+    return {
+      hypsometric: hypsometric,
+      classed: classed,
+      colors: colors[''] || hypsometric && colors[hypsometric] || null,
+      stops: stops ? stops.map(Number) : null,
+      named: colors,
+      sea: getCommandSea(o, colors.sea, breaks.sea)
+    };
+  }
+
+  // A bathymetric sea=, with its colors and depths if they were changed
+  function getCommandSea(o, colors, stops) {
+    var sea = o.sea ? String(o.sea).toLowerCase() : null;
+    var preset = sea && sea != 'transparent' && sea != 'land' && sea != 'custom' ? sea : null;
+    if (!preset && !colors) return null;
+    return {preset: preset, stops: stops ? stops.map(Number) : null, colors: colors ? colors.map(parseColorValue) : null};
+  }
+
+  function getJsonSea(sea, units, lyr) {
+    return sea ? Object.assign({}, sea, {stops: sea.stops ? convertStops(sea.stops, units, lyr) : null}) : null;
+  }
+
+  // Stops in @units (e.g. 'm' or 'ft') in the band's units
+  function convertStops(stops, units, lyr) {
+    var meters = units ? internal.getVerticalUnitMeters(internal.parseVerticalUnits(units)) : null;
+    var bandMeters = getRasterUnitMeters(lyr);
+    if (!meters || meters == bandMeters) return stops;
+    return stops.map(function(val) { return +(val * meters / bandMeters).toPrecision(6); });
   }
 
   function getRampCommandScheme(o, type, colors, lyr) {
@@ -22909,7 +24692,7 @@
       var colors = categories.map(function(val) {
         return lookup[String(val)] || lookup[String(val).replace(/\s+/g, '_')];
       });
-      if (categories.length > 0 && categories.length <= maxCategoricalColors && colors.every(Boolean)) {
+      if (categories.length > 0 && categories.length <= maxFilePaletteColors && colors.every(Boolean)) {
         match = {field: field, colors: colors};
       }
       return !!match;
@@ -23067,7 +24850,8 @@
   }
 
   // A popup beside the polygon style panel for coloring a layer's fills by a
-  // data field, with -classify. Edits are applied as they are made, in a command
+  // data field, with -classify. On a data raster (see gui-raster-palette-tool.mjs)
+  // it sets the raster's palette, coloring a band. Edits are applied as they are made, in a command
   // session, so that the whole time the panel is open on a layer is one undo
   // state and one command in the session history.
   // See docs/development/color-scheme-panel-design.md
@@ -23108,10 +24892,11 @@
     var tabSchemes = {};
     var tabs = {};
     var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
-        methodRow, methodLabel, customizeCell, customizeBtn, breaksDialog, exportBtns, importBtn, importDialog,
+        fieldLabel, methodRow, methodCell, methodLabel, customizeCell, paletteRow, countCell, paletteLabel,
+        seaRow, seaBtn, seaMenu, seaCustomizeBtn, seaBreaksDialog, customizeBtn, breaksDialog, exportBtns, importBtn, importDialog,
         noFieldsNote, controlsEl, vibranceRow, vibranceInput,
         longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
-        rangeEl, rangeStrip, rangeShades, rangeHandles,
+        rangeEl, rangeStrip, rangeShades, rangeHandles, clearRow,
         divergingEl, pivotSelect, pivotInput, pivotNote, neutralToggle, splitSelect;
     // set while a tile is being dragged, so that letting go isn't a click
     var tileDrag = null;
@@ -23136,14 +24921,16 @@
       targetLayer = lyr;
       selectedTile = -1;
       tabSchemes = {};
-      scheme = getLayerScheme(lyr);
+      scheme = getLayerScheme(lyr) || getRasterPaletteScheme(lyr);
       panel.show();
       if (scheme) {
         scheme = updateDivergingLayout(scheme, lyr);
       } else {
         fields = getNumericFields(lyr);
-        scheme = getDefaultSchemeOfType(fields.length > 0 ? 'sequential' : 'categorical', lyr);
-        if (canApply(scheme)) apply();
+        scheme = layerHasElevations(lyr) ? getDefaultSchemeOfType('elevation', lyr, getLngLatSamples(lyr)) :
+          getDefaultSchemeOfType(fields.length > 0 ? 'sequential' : 'categorical', lyr);
+        // categories colored by their file keep those colors until edited
+        if (canApply(scheme) && !getRasterCategoricalPalette(lyr)) apply();
       }
       render();
     };
@@ -23160,6 +24947,7 @@
       nullControl.picker.hide();
       hidePaletteMenu();
       breaksDialog.close();
+      seaBreaksDialog.close();
       importDialog.close();
       panel.hide();
       targetLayer = null;
@@ -23206,21 +24994,26 @@
       controlsEl = El('div').appendTo(panel);
 
       fieldRow = El('div').addClass('label-style-row color-scheme-select-row').appendTo(controlsEl);
-      El('span').appendTo(fieldRow).text('Field');
+      fieldLabel = El('span').appendTo(fieldRow).text('Field');
       fieldSelect = El('select').attr('aria-label', 'Data field').appendTo(fieldRow).on('change', function() {
         var field = fieldSelect.node().value;
-        changeScheme(setSchemeField(scheme, field, getCategoryCount(field)));
+        var next = setSchemeField(scheme, field, getCategoryCount(field));
+        if (isElevationScheme(next) && !canUseFixedElevations(next, targetLayer)) {
+          next = setSchemeMethod(next, 'quantile');
+        }
+        changeScheme(next);
       });
 
       // numeric schemes: the breaks' method on the left, the button for
       // editing them on the right
       methodRow = El('div').addClass('label-style-row').appendTo(controlsEl);
-      var methodCell = El('div').addClass('label-split-cell color-scheme-select-row').appendTo(methodRow);
+      methodCell = El('div').addClass('label-split-cell color-scheme-select-row').appendTo(methodRow);
       customizeCell = El('div').addClass('label-split-cell color-scheme-customize-cell').appendTo(methodRow);
       methodLabel = El('span').appendTo(methodCell).text('Method');
       methodSelect = El('select').attr('aria-label', 'Classification method').appendTo(methodCell).on('change', function() {
         var field = scheme.field || getCategoryFields(targetLayer)[0];
-        changeScheme(setSchemeMethod(scheme, methodSelect.node().value, field, getCategoryCount(field)));
+        changeScheme(setSchemeMethod(scheme, methodSelect.node().value, field, getCategoryCount(field),
+          getLngLatSamples(targetLayer)));
       });
       customizeBtn = makePanelActionButton(customizeCell, 'Customize', function() {
         if (breaksDialog.isOpen()) {
@@ -23228,11 +25021,13 @@
         } else {
           picker.hide();
           importDialog.close();
+          seaBreaksDialog.close();
           breaksDialog.open();
         }
         renderMethodRow();
       }).addClass('color-scheme-customize-btn').attr('title', 'Edit the class breaks');
       breaksDialog = new ClassBreaksDialog(gui, {
+        reversed: isElevationScheme,
         getScheme: function() { return scheme; },
         getLayer: function() { return targetLayer; },
         onChange: changeScheme,
@@ -23241,10 +25036,10 @@
 
       initDivergingControls();
 
-      var paletteRow = El('div').addClass('label-style-row label-split-row').appendTo(controlsEl);
+      paletteRow = El('div').addClass('label-style-row label-split-row').appendTo(controlsEl);
       var paletteCell = El('div').addClass('label-split-cell color-scheme-palette-cell').appendTo(paletteRow);
-      var countCell = El('div').addClass('label-split-cell').appendTo(paletteRow);
-      El('span').appendTo(paletteCell).text('Palette');
+      countCell = El('div').addClass('label-split-cell').appendTo(paletteRow);
+      paletteLabel = El('span').appendTo(paletteCell).text('Palette');
       paletteBtn = El('div').addClass('color-scheme-palette-btn').attr('role', 'button')
         .attr('aria-label', 'Palette').appendTo(paletteCell).on('click', togglePaletteMenu);
       paletteMenu = El('div').addClass('color-scheme-palette-menu').appendTo(paletteCell).hide();
@@ -23304,6 +25099,7 @@
       shuffleBtn = addIconButton(vibranceRow, 'Shuffle the colors', shuffleIcon, function() {
         changeScheme(shuffleScheme(scheme));
       });
+      initSeaControls();
       // the color of features with no data, and how many there are
       nullControl = makeColorRow(controlsEl, {
         label: 'No data',
@@ -23317,6 +25113,11 @@
         picker.hide();
       });
       nullCount = El('span').addClass('color-scheme-note color-scheme-null-count').appendTo(nullControl.aside);
+      // a raster's palette is all of its style; a polygon layer's style panel
+      // has its own Clear style button
+      clearRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(controlsEl);
+      makePanelActionButton(clearRow, 'Clear style', clearRasterStyle)
+        .attr('title', 'Remove the palette and the opacity (-style clear)');
       // import on the left; on the right, a file for each export format, so
       // that there is no format to choose first
       var exportRow = El('div').addClass('label-style-row color-scheme-export-row').appendTo(controlsEl);
@@ -23329,7 +25130,7 @@
           importDialog.open();
         }
         renderImportButton();
-      }).attr('title', 'Use a palette from a GMT (.cpt) or JSON file, or a list of colors');
+      }).attr('title', 'Use a palette from a GMT (.cpt), JSON or legend file, or a list of colors');
       importDialog = new ColorSchemeImportDialog(gui, {
         onImport: importPalette,
         onClose: renderImportButton
@@ -23343,9 +25144,84 @@
       ];
       document.addEventListener('mousedown', function(e) {
         if (paletteMenu.visible() && !paletteMenu.node().contains(e.target) &&
-            !paletteBtn.node().contains(e.target)) {
+            !paletteBtn.node().contains(e.target) ||
+            seaMenu.visible() && !seaMenu.node().contains(e.target) && !seaBtn.node().contains(e.target)) {
           hidePaletteMenu();
         }
+      });
+    }
+
+    // Elevation schemes: the colors of the pixels below sea level that are open
+    // to the sea, at fixed depths, with their own palette menu and class breaks
+    // dialog, which has their colors (see getSeaScheme())
+    function initSeaControls() {
+      seaRow = El('div').addClass('label-style-row label-split-row sea').appendTo(controlsEl);
+      var seaCell = El('div').addClass('label-split-cell color-scheme-palette-cell').appendTo(seaRow);
+      var seaCustomizeCell = El('div').addClass('label-split-cell color-scheme-customize-cell').appendTo(seaRow);
+      var seaLabel = El('span').addClass('color-scheme-hint-label').appendTo(seaCell).text('Sea')
+        .attr('data-tooltip', 'Pixels at or below 0 that reach the edge of the map or a pixel without data;\n' +
+          'basins enclosed by land take land colors')
+        .on('mouseenter', function() { keepTooltipInWindow(seaLabel.node()); });
+      seaBtn = El('div').addClass('color-scheme-palette-btn').attr('role', 'button')
+        .attr('aria-label', 'Sea palette').appendTo(seaCell).on('click', toggleSeaMenu);
+      seaMenu = El('div').addClass('color-scheme-palette-menu').appendTo(seaCell).hide();
+      seaCustomizeBtn = makePanelActionButton(seaCustomizeCell, 'Customize', function() {
+        if (seaBreaksDialog.isOpen()) {
+          seaBreaksDialog.close();
+        } else if (getSeaScheme(scheme)) {
+          picker.hide();
+          importDialog.close();
+          breaksDialog.close();
+          seaBreaksDialog.open();
+        }
+        render();
+      }).addClass('color-scheme-customize-btn').attr('title', 'Edit the depths and colors of the sea');
+      seaBreaksDialog = new ClassBreaksDialog(gui, {
+        title: 'Sea depths',
+        reversed: function() { return true; },
+        getScheme: function() { return scheme && getSeaScheme(scheme); },
+        getLayer: function() { return targetLayer; },
+        onChange: function(next) { changeScheme(setSeaScheme(scheme, next)); },
+        onClose: render
+      });
+    }
+
+    function renderSeaControls(elevation) {
+      var sea = getSeaScheme(scheme);
+      seaRow.classed('hidden', !elevation);
+      if (!elevation || !sea) seaBreaksDialog.close();
+      if (!elevation) return;
+      renderStripButton(seaBtn, sea ? getSchemeColors(sea) : null, getSeaLabel(scheme), sea);
+      setPanelButtonDisabled(seaCustomizeBtn, !sea);
+      seaCustomizeBtn.classed('selected', seaBreaksDialog.isOpen());
+      seaBreaksDialog.update();
+    }
+
+    function toggleSeaMenu() {
+      if (seaMenu.visible()) {
+        hidePaletteMenu();
+      } else {
+        hidePaletteMenu();
+        renderSeaMenu();
+        seaMenu.show();
+      }
+    }
+
+    // Transparent, and the bathymetric presets; an edited one is Custom
+    function renderSeaMenu() {
+      var sea = getSeaScheme(scheme);
+      seaMenu.empty();
+      addPaletteItem('Transparent', null, !sea, function() {
+        changeScheme(chooseSeaPreset(scheme, null));
+      }, seaMenu);
+      if (sea && !sea.preset) {
+        addPaletteItem('Custom', getSchemeColors(sea), true, function() {}, seaMenu);
+      }
+      El('div').addClass('color-scheme-palette-heading').appendTo(seaMenu).text('Bathymetry');
+      getBathymetricPresetNames().forEach(function(name) {
+        addPaletteItem(name, getElevationPresetColors(name), !!sea && sea.preset == name, function() {
+          changeScheme(chooseSeaPreset(scheme, name));
+        }, seaMenu);
       });
     }
 
@@ -23417,13 +25293,41 @@
       }
       summary = getPivotSummary(scheme, targetLayer);
       pivotNote.text(summary ? formatCount(summary.below) + ' below the pivot, ' +
-        summary.above + ' at or above' : 'No numeric data to classify.');
+        formatSchemeCount(scheme, targetLayer, summary.above, true) + ' at or above' : 'No numeric data to classify.');
       neutralToggle.setState(getSchemeNeutral(scheme) ? 'on' : 'off');
       splitSelect.node().value = scheme.split;
     }
 
     function formatCount(n) {
-      return n + (n == 1 ? ' feature' : ' features');
+      return formatSchemeCount(scheme, targetLayer, n);
+    }
+
+    // [lon, lat] points on a grid across a raster, for choosing the preset of
+    // fixed elevations; none if its projection is unknown or can't be inverted
+    // (they then default to Temperate)
+    function getLngLatSamples(lyr) {
+      var o = gui.model.findLayer(lyr);
+      var bbox = o ? internal.getRasterBBox(lyr.raster) : null;
+      var n = 9, points = [];
+      var crs, p;
+      try {
+        crs = bbox ? internal.getDatasetCRS(o.dataset) : null;
+        if (!crs) return points;
+        for (var i = 0; i < n; i++) {
+          for (var j = 0; j < n; j++) {
+            p = internal.toLngLat([bbox[0] + (bbox[2] - bbox[0]) * (i + 0.5) / n,
+              bbox[1] + (bbox[3] - bbox[1]) * (j + 0.5) / n], crs);
+            if (p && isFinite(p[0]) && isFinite(p[1]) && Math.abs(p[1]) <= 90) points.push(p);
+          }
+        }
+      } catch(e) {
+        return [];
+      }
+      return points;
+    }
+
+    function isRaster() {
+      return !!targetLayer && internal.layerHasRaster(targetLayer);
     }
 
     function formatNumber(val) {
@@ -23431,14 +25335,22 @@
     }
 
     function render() {
-      var categorical, fields, colors, tiles;
+      var categorical, fields, colors, tiles, tab, elevation;
       if (!targetLayer || !scheme) return;
+      clearRow.classed('hidden', !isRaster());
       categorical = scheme.type == 'categorical';
+      tab = getSchemeTab(scheme);
+      elevation = tab == 'elevation';
       Object.keys(tabs).forEach(function(type) {
-        tabs[type].classed('selected', type == scheme.type)
-          .attr('aria-selected', type == scheme.type ? 'true' : 'false');
+        tabs[type].classed('selected', type == tab)
+          .attr('aria-selected', type == tab ? 'true' : 'false');
       });
-      fields = categorical ? getCategoryFields(targetLayer) : getNumericFields(targetLayer);
+      tabs.elevation.classed('hidden', !elevation && getElevationFields(targetLayer).length === 0);
+      // a raster's categories are the values of an integer band, and there is
+      // no non-adjacent method to fall back on
+      tabs.categorical.classed('hidden', isRaster() && !categorical && getCategoryFields(targetLayer).length === 0);
+      fields = categorical ? getCategoryFields(targetLayer) :
+        elevation ? getElevationFields(targetLayer) : getNumericFields(targetLayer);
       noFieldsNote.classed('hidden', categorical || fields.length > 0);
       controlsEl.classed('hidden', !categorical && fields.length === 0);
       if (!categorical && fields.length === 0) {
@@ -23446,14 +25358,22 @@
         return;
       }
       renderFieldOptions(fields);
-      fieldRow.classed('hidden', scheme.method == 'non-adjacent');
+      fieldRow.classed('hidden', scheme.method == 'non-adjacent' || isRaster() && fields.length < 2);
       renderMethodOptions(fields);
       renderDivergingControls();
       countLabel.text(scheme.type != 'diverging' ? 'Colors' : scheme.split == 'count' ? 'Per side' : 'Classes');
       countField.setValue(String(scheme.n));
+      // fixed elevations have a tile for each of the preset's stops
+      countCell.classed('hidden', elevation);
+      paletteLabel.text(elevation ? 'Land' : 'Palette');
+      renderSeaControls(elevation);
       tiles = getSchemeTiles(scheme);
       colors = tiles.map(function(tile) { return tile.color; });
       renderPaletteButton(colors);
+      // fixed elevations have their colors in the class breaks dialog, by
+      // their stops
+      tileRow.classed('hidden', elevation);
+      if (elevation) picker.hide();
       renderTiles(tiles);
       renderVibrance();
       renderNullColor();
@@ -23475,8 +25395,8 @@
     // An imported scheme of another type goes on its own tab, and the tab it
     // came from keeps its scheme
     function importPalette(text) {
-      var result = importColorPalette(text, scheme, targetLayer);
-      if (result.scheme.type != scheme.type) tabSchemes[scheme.type] = scheme;
+      var result = importColorPalette(text, scheme, targetLayer, isRaster() ? getLngLatSamples(targetLayer) : null);
+      if (getSchemeTab(result.scheme) != getSchemeTab(scheme)) tabSchemes[getSchemeTab(scheme)] = scheme;
       picker.hide();
       selectedTile = -1;
       // a palette without a no-data color keeps the panel's
@@ -23496,12 +25416,13 @@
       nullControl.row.classed('hidden', scheme.method == 'non-adjacent');
       if (scheme.method == 'non-adjacent') nullControl.picker.hide();
       nullControl.showColor(getSchemeNullColor(scheme));
-      nullCount.text(count === 0 ? 'None in this layer' : formatCount(count));
+      nullControl.chit.classed('transparent', !getSchemeNullColor(scheme));
+      nullCount.text(count === 0 ? 'None in this layer' : formatNoDataCount(scheme, targetLayer, count));
     }
 
     function renderMethodOptions(fields) {
       methodSelect.empty();
-      getSchemeMethods(scheme).forEach(function(item) {
+      getSchemeMethods(scheme, targetLayer).forEach(function(item) {
         var opt = El('option').attr('value', item.name).text(item.label).appendTo(methodSelect);
         // classifying by category needs a field
         if (item.name == 'categorical' && fields.length === 0) opt.attr('disabled', true);
@@ -23516,22 +25437,30 @@
 
     function renderMethodRow() {
       var numeric = scheme && scheme.type != 'categorical';
+      var elevation = !!scheme && isElevationScheme(scheme);
+      // fixed elevations have no method, only the stops to edit, by the palette
+      methodRow.classed('hidden', elevation);
+      (elevation ? paletteRow : methodRow).node().appendChild(customizeCell.node());
       methodRow.classed('label-split-row', numeric);
       methodLabel.text(numeric ? 'Breaks' : 'Method');
       methodSelect.attr('aria-label', numeric ? 'Class breaks' : 'Classification method');
       customizeCell.classed('hidden', !numeric);
-      customizeBtn.classed('selected', breaksDialog.isOpen());
+      customizeBtn.classed('selected', breaksDialog.isOpen())
+        .attr('title', elevation ? 'Edit the elevations and colors' : 'Edit the class breaks');
+      setPanelButtonDisabled(customizeBtn, elevation && isLandTransparent(scheme));
+      if (elevation && isLandTransparent(scheme)) breaksDialog.close();
     }
 
     // Each tab keeps its own scheme while the panel is open, and starts from a
     // default the first time
     function switchType(type) {
       var next;
-      if (type == scheme.type) return;
-      tabSchemes[scheme.type] = scheme;
-      next = tabSchemes[type] || getDefaultSchemeOfType(type, targetLayer);
+      if (type == getSchemeTab(scheme)) return;
+      tabSchemes[getSchemeTab(scheme)] = scheme;
+      next = tabSchemes[type] || getDefaultSchemeOfType(type, targetLayer,
+        type == 'elevation' ? getLngLatSamples(targetLayer) : null);
       // one no-data color for both tabs
-      next = updateDivergingLayout(Object.assign({}, next, {nullColor: scheme.nullColor}), targetLayer);
+      next = updateDivergingLayout(setSchemeLayerType(Object.assign({}, next, {nullColor: scheme.nullColor}), targetLayer), targetLayer);
       picker.hide();
       selectedTile = -1;
       scheme = next;
@@ -23671,21 +25600,24 @@
 
     // Presets and categorical schemes have no interpolated tiles for vibrance
     // or the hue path to change; the row keeps only the reverse button for them,
-    // and for sequential and diverging presets, the range.
+    // and for sequential and diverging presets, the range. Fixed elevations
+    // keep only the continuous button, for one preset.
     function renderVibrance() {
       var vibrance = getSchemeVibrance(scheme);
       setSliderValue(vibranceInput, Math.round(vibrance * 1000));
-      vibranceRow.classed('preset', !!scheme.preset || scheme.type == 'categorical');
+      var elevation = isElevationScheme(scheme);
+      vibranceRow.classed('hidden', elevation && !canClassifyElevations(scheme));
+      vibranceRow.classed('preset', !!scheme.preset || scheme.type == 'categorical' || elevation);
       vibranceRow.classed('ranged', hasSchemeRange(scheme));
       renderRange();
-      reverseBtn.classed('hidden', scheme.type == 'categorical');
+      reverseBtn.classed('hidden', scheme.type == 'categorical' || elevation);
       shuffleBtn.classed('hidden', scheme.type != 'categorical');
       // each half of a diverging ramp runs from a low-chroma center, where the
       // hue path makes little difference
-      longHueBtn.classed('hidden', scheme.type == 'diverging')
+      longHueBtn.classed('hidden', scheme.type == 'diverging' || elevation)
         .classed('selected', !!scheme.longHue)
         .attr('aria-pressed', scheme.longHue ? 'true' : 'false');
-      continuousBtn.classed('hidden', scheme.type == 'categorical')
+      continuousBtn.classed('hidden', scheme.type == 'categorical' || elevation && !canClassifyElevations(scheme))
         .classed('selected', isContinuousScheme(scheme))
         .attr('aria-pressed', isContinuousScheme(scheme) ? 'true' : 'false');
     }
@@ -23705,20 +25637,40 @@
     }
 
     function renderFieldOptions(fields) {
+      var raster = isRaster();
+      fieldLabel.text(raster ? 'Band' : 'Field');
+      fieldSelect.attr('aria-label', raster ? 'Band' : 'Data field');
       fieldSelect.empty();
       fields.forEach(function(field) {
-        El('option').attr('value', field).text(field).appendTo(fieldSelect);
+        El('option').attr('value', field).text(raster ? getRasterBandLabel(targetLayer, field) : field)
+          .appendTo(fieldSelect);
       });
       fieldSelect.node().value = scheme.field || '';
     }
 
     function renderPaletteButton(colors) {
-      paletteBtn.empty();
-      El('div').addClass('color-scheme-strip').appendTo(paletteBtn)
-        .css('background-image', isContinuousScheme(scheme) ?
-          getGradientStripBackground(scheme) : getStripBackground(colors));
-      El('span').addClass('color-scheme-palette-name').appendTo(paletteBtn)
-        .text(scheme.preset || 'Custom');
+      var strip;
+      if (isElevationScheme(scheme) && isLandTransparent(scheme)) {
+        renderStripButton(paletteBtn, null, 'Transparent');
+        return;
+      }
+      // blended colors are drawn by the command, and have no stops of their own
+      strip = renderStripButton(paletteBtn, colors, scheme.preset || 'Custom');
+      strip.css('background-image', isBlendedScheme(scheme) ? getStripBackground(getBlendedPresetColors(scheme)) :
+        isContinuousScheme(scheme) ? getGradientStripBackground(scheme) : getStripBackground(colors));
+    }
+
+    // A palette menu's button: a strip of @colors (a gradient, for the stops of
+    // @continuous; checkered without colors) and a name
+    function renderStripButton(btn, colors, name, continuous) {
+      var strip;
+      btn.empty();
+      strip = El('div').addClass('color-scheme-strip').classed('transparent', !colors).appendTo(btn);
+      if (colors) {
+        strip.css('background-image', continuous ? getGradientStripBackground(continuous) : getStripBackground(colors));
+      }
+      El('span').addClass('color-scheme-palette-name').appendTo(btn).text(name);
+      return strip;
     }
 
     function renderTiles(tiles) {
@@ -23801,13 +25753,14 @@
     // The gradient over a continuous ramp's tiles, each stop over the center
     // of its tile; one bar per side of a diverging ramp, and one for a pivot
     // class
-    function renderGradient(segments, n) {
-      var width = tilesEl.node().clientWidth;
+    function renderGradient(segments, n, tilesBox, gradient) {
+      var gradientBox = gradient || gradientEl;
+      var width = (tilesBox || tilesEl).node().clientWidth;
       var gap = 3;
       var tileWidth = (width - (n - 1) * gap) / n;
       var center = function(pos) { return pos * (tileWidth + gap) + tileWidth / 2; };
-      gradientEl.empty();
-      gradientEl.classed('hidden', !segments);
+      gradientBox.empty();
+      gradientBox.classed('hidden', !segments);
       if (!segments || !(width > 0)) return;
       segments.forEach(function(seg) {
         var left = seg.flatStart ? center(seg.start) - tileWidth / 2 : center(seg.start);
@@ -23816,7 +25769,7 @@
           return sample.color + ' ' + round(center(sample.pos) - left) + 'px';
         });
         if (stops.length == 1) stops.push(stops[0]);
-        El('div').addClass('color-scheme-gradient-segment').appendTo(gradientEl).css({
+        El('div').addClass('color-scheme-gradient-segment').appendTo(gradientBox).css({
           left: round(left) + 'px',
           width: round(right - left) + 'px',
           'background-image': 'linear-gradient(to right, ' + stops.join(', ') + ')'
@@ -23832,10 +25785,11 @@
     // pivot class
     function getStopLabels() {
       var stops = getContinuousTileStops(scheme, targetLayer) || [];
+      var units = isElevationScheme(scheme) ? ' ' + getRasterUnitsLabel(targetLayer) : '';
       return stops.map(function(stop) {
         if (!stop) return null;
         if (stop.range) return formatClassRange(stop.range);
-        return formatNumber(stop.value) + (stop.min ? ' (min)' : stop.max ? ' (max)' : '');
+        return formatNumber(stop.value) + units + (stop.min ? ' (min)' : stop.max ? ' (max)' : '');
       });
     }
 
@@ -23970,7 +25924,10 @@
       // "and 1 more" would take a line that the value itself can have
       var max = values.length == 5 ? 5 : 4;
       var labels = values.slice(0, max).map(function(val) {
-        return val === '' || val === null || val === undefined ? '(no value)' : String(val);
+        var name;
+        if (val === '' || val === null || val === undefined) return '(no value)';
+        name = getCategoryName(scheme, targetLayer, val);
+        return name ? val + ': ' + name : String(val);
       });
       if (values.length > max) labels.push('and ' + (values.length - max) + ' more');
       return labels.join('\n');
@@ -24005,6 +25962,7 @@
       if (paletteMenu.visible()) {
         hidePaletteMenu();
       } else {
+        hidePaletteMenu();
         renderPaletteMenu();
         paletteMenu.show();
       }
@@ -24012,11 +25970,16 @@
 
     function hidePaletteMenu() {
       paletteMenu.hide();
+      seaMenu.hide();
     }
 
     function renderPaletteMenu() {
       var categorical = scheme.type == 'categorical';
       paletteMenu.empty();
+      if (isElevationScheme(scheme)) {
+        renderElevationPaletteMenu();
+        return;
+      }
       addPaletteItem('Custom', getSchemeColors(makeSchemeCustom(scheme)), !scheme.preset, function() {
         changeScheme(makeSchemeCustom(scheme));
       });
@@ -24031,21 +25994,54 @@
       });
     }
 
-    function addPaletteItem(name, colors, selected, onSelect) {
+    // Only presets have elevations; an edited one is Custom
+    function renderElevationPaletteMenu() {
+      var transparent = isLandTransparent(scheme);
+      addPaletteItem('Transparent', null, transparent, function() {
+        changeScheme(setLandTransparent(scheme, true));
+      }).attr('title', 'Color only the sea');
+      if (!scheme.preset) {
+        addPaletteItem(isBlendedScheme(scheme) ? 'Custom blend' : 'Custom',
+            isBlendedScheme(scheme) ? getBlendedPresetColors(scheme) : getSchemeColors(scheme), !transparent, function() {
+          changeScheme(setLandTransparent(scheme, false));
+        });
+      }
+      El('div').addClass('color-scheme-palette-heading').appendTo(paletteMenu).text('Elevation');
+      var climate = getClimatePresetNames();
+      var addPreset = function(name) {
+        addPaletteItem(name, getElevationPresetColors(name), !transparent && scheme.preset == name, function() {
+          changeScheme(choosePreset(scheme, name));
+        });
+      };
+      climate.forEach(addPreset);
+      // blending needs to know where the raster is
+      var points = getLngLatSamples(targetLayer);
+      if (internal.getClimatePreset(points)) {
+        addPaletteItem('Blended', getBlendedPresetColors(), !transparent && scheme.preset == 'Blended', function() {
+          changeScheme(chooseBlendedElevations(scheme, points));
+        }).attr('title', 'The climate presets, blended by climate across the map');
+      }
+      getElevationPresetNames().filter(function(name) { return !climate.includes(name); }).forEach(addPreset);
+    }
+
+    // colors: null for a checkered strip (transparent)
+    // menu: the palette menu, by default
+    function addPaletteItem(name, colors, selected, onSelect, menu) {
       var item = El('div').addClass('color-scheme-palette-item').attr('role', 'button')
-        .classed('selected', selected).appendTo(paletteMenu)
+        .classed('selected', selected).appendTo(menu || paletteMenu)
         .on('click', function() {
           hidePaletteMenu();
           onSelect();
         });
-      El('div').addClass('color-scheme-strip').appendTo(item)
-        .css('background-image', getStripBackground(colors));
+      var strip = El('div').addClass('color-scheme-strip').classed('transparent', !colors).appendTo(item);
+      if (colors) strip.css('background-image', getStripBackground(colors));
       El('span').appendTo(item).text(name);
+      return item;
     }
 
     function changeScheme(next) {
       var prevSize = getSchemeTiles(scheme).length;
-      scheme = updateDivergingLayout(next, targetLayer);
+      scheme = updateDivergingLayout(setSchemeLayerType(next, targetLayer), targetLayer);
       if (getSchemeTiles(scheme).length != prevSize) {
         picker.hide();
         selectedTile = -1;
@@ -24065,7 +26061,7 @@
         sessionLayer = lyr;
         baseScheme = getLayerScheme(lyr);
       }
-      cmd = formatSchemeCommand(scheme, colors, {target: getTargetOption(lyr)});
+      cmd = formatSchemeCommand(scheme, colors, {target: getTargetOption(lyr), layer: lyr});
       extra = opts.getExtraCommands ? opts.getExtraCommands() : '';
       if (extra) cmd += ' ' + extra;
       runGuiEditCommand(gui, cmd, {
@@ -24076,6 +26072,28 @@
           opts.onUpdate();
         }
       });
+    }
+
+    // In the session, so that the panel's edits and the clearing are one undo
+    // state; the panel closes, since it would apply a palette again
+    function clearRasterStyle() {
+      var lyr = targetLayer;
+      var target = lyr ? getTargetOption(lyr) : '';
+      if (!lyr || !gui.console) return;
+      getSession();
+      if (!session || !session.isPending()) {
+        sessionLayer = lyr;
+        baseScheme = getLayerScheme(lyr);
+      }
+      runGuiEditCommand(gui, '-style clear' + (target ? ' target=' + target : ''), {
+        title: 'Clear style',
+        session: session,
+        onDone: function(err) {
+          if (!err) setLayerScheme(lyr, null);
+          opts.onUpdate();
+        }
+      });
+      close();
     }
 
     // The scheme on each side of the session's undo state, to go with the fills
@@ -25707,7 +27725,9 @@
     if (hit) {
       hit.on('change', function(e) {
         if (!selectionChanged(getSelectionIds())) return;
-        if (e.mode == 'point_style') {
+        // a selection carried into this mode arrives before turnOn(), and
+        // updateControls() would drop it as belonging to another layer
+        if (active && e.mode == 'point_style') {
           updateControls();
         }
       });
@@ -26267,10 +28287,516 @@
 
   }
 
+  // Scaled-down copies of RGBA preview images. Kept free of browser and
+  // mapshaper dependencies so it can be tested directly.
+
+  // The whole-number factor that brings a @width x @height image down to at
+  // most @maxPixels pixels (1 if it is already small enough)
+  function getShrinkFactor(width, height, maxPixels) {
+    var k = 1;
+    while (Math.ceil(width / k) * Math.ceil(height / k) > maxPixels) k++;
+    return k;
+  }
+
+  // Averages each @k x @k block of RGBA @pixels into one pixel; blocks at the
+  // right and bottom edges may be partial. Colors are weighted by alpha, so
+  // transparent pixels (e.g. nodata) do not darken the edges of an image.
+  // Returns {pixels, width, height, coverWidth, coverHeight}, pixels being a
+  // Uint8ClampedArray. A partial block stands for less than a whole pixel of
+  // the copy, so the copy covers the original image with coverWidth x
+  // coverHeight of its pixels (fractional if there are partial blocks).
+  function shrinkRgbaPixels(pixels, width, height, k) {
+    var w2 = Math.ceil(width / k);
+    var h2 = Math.ceil(height / k);
+    var out = new Uint8ClampedArray(w2 * h2 * 4);
+    var x2, y2, x, y, x1, y1, xmax, ymax, i, o, a, r, g, b, asum, n;
+    for (y2 = 0; y2 < h2; y2++) {
+      y1 = y2 * k;
+      ymax = Math.min(y1 + k, height);
+      for (x2 = 0; x2 < w2; x2++) {
+        x1 = x2 * k;
+        xmax = Math.min(x1 + k, width);
+        r = g = b = asum = n = 0;
+        for (y = y1; y < ymax; y++) {
+          i = (y * width + x1) * 4;
+          for (x = x1; x < xmax; x++, i += 4) {
+            a = pixels[i + 3];
+            r += pixels[i] * a;
+            g += pixels[i + 1] * a;
+            b += pixels[i + 2] * a;
+            asum += a;
+            n++;
+          }
+        }
+        o = (y2 * w2 + x2) * 4;
+        if (asum > 0) {
+          out[o] = r / asum;
+          out[o + 1] = g / asum;
+          out[o + 2] = b / asum;
+          out[o + 3] = asum / n;
+        }
+      }
+    }
+    return {pixels: out, width: w2, height: h2, coverWidth: width / k, coverHeight: height / k};
+  }
+
+  // Tone settings being previewed on a raster layer, while the tone panel is
+  // open. The raster's data is not changed: the map draws a toned copy of
+  // whichever preview of the raster it is drawing.
+  //
+  // Settings change many times a second while a slider is dragged, so each
+  // preview keeps its toned canvases (and their pixel buffers) from one
+  // setting to the next, and a large preview is toned at a reduced size until
+  // the slider is let go of.
+  var DRAG_MAX_PIXELS = 1e6;
+  var DRAG_TABLE_STEPS = 17; // a coarse lookup table, as it is rebuilt for every setting
+  var tonePreviews = new WeakMap();
+  var shrunkPreviews = new WeakMap(); // preview -> reduced copy, made once
+
+  // @opts toneRgbPixels() options, or null to leave the colors alone
+  // @opacity 0-1, multiplies the alpha of each pixel when the preview is drawn
+  // @exact tone each pixel of the full preview as -tone does, rather than
+  //   with a lookup table, which is a few times faster and close but not
+  //   exact at the edge of the gamut -- good enough while a slider is being
+  //   dragged, as is a reduced copy of a large preview
+  function setRasterTonePreview(layer, opts, opacity, exact) {
+    var tone = tonePreviews.get(layer);
+    if (!tone) {
+      tone = {version: 0, buffers: new WeakMap()}; // preview -> toned canvases
+      tonePreviews.set(layer, tone);
+    }
+    tone.opts = opts;
+    tone.opacity = opacity;
+    tone.exact = !!exact;
+    tone.table = opts && !exact ? internal.getToneColorTable(opts, DRAG_TABLE_STEPS) : null;
+    tone.version++;
+  }
+
+  function clearRasterTonePreview(layer) {
+    tonePreviews.delete(layer);
+  }
+
+  function getRasterTonePreview(layer) {
+    return tonePreviews.get(layer) || null;
+  }
+
+  // Returns {canvas, width, height}: the canvas may be a reduced copy while a
+  // slider is being dragged, which covers the preview with the (possibly
+  // fractional) width and height of its pixels
+  function getTonedRasterCanvas(preview, tone) {
+    var buffers = tone.buffers.get(preview);
+    var src, target;
+    if (!buffers) {
+      buffers = {version: -1, image: null, full: null, reduced: null};
+      tone.buffers.set(preview, buffers);
+    }
+    if (buffers.version == tone.version) return buffers.image;
+    src = tone.exact ? preview : getDragSource(preview);
+    if (src == preview) {
+      target = buffers.full || (buffers.full = makeTarget(src, preview.width, preview.height));
+    } else {
+      target = buffers.reduced || (buffers.reduced = makeTarget(src, src.coverWidth, src.coverHeight));
+    }
+    if (tone.table) {
+      internal.applyToneColorTable(tone.table, src.pixels, target.imageData.data);
+    } else {
+      internal.toneRgbPixels(src.pixels, 4, tone.opts, target.imageData.data);
+    }
+    target.ctx.putImageData(target.imageData, 0, 0);
+    buffers.image = target.image;
+    buffers.version = tone.version;
+    return target.image;
+  }
+
+  function getDragSource(preview) {
+    var k, copy = shrunkPreviews.get(preview);
+    if (copy) return copy;
+    k = getShrinkFactor(preview.width, preview.height, DRAG_MAX_PIXELS);
+    copy = k > 1 ? shrinkRgbaPixels(preview.pixels, preview.width, preview.height, k) : preview;
+    shrunkPreviews.set(preview, copy);
+    return copy;
+  }
+
+  // @src a preview or a reduced copy
+  // @coverWidth, @coverHeight the part of @src that covers the preview
+  function makeTarget(src, coverWidth, coverHeight) {
+    var canvas = document.createElement('canvas');
+    var ctx;
+    canvas.width = src.width;
+    canvas.height = src.height;
+    ctx = canvas.getContext('2d');
+    return {
+      ctx: ctx,
+      imageData: ctx.createImageData(src.width, src.height),
+      image: {canvas: canvas, width: coverWidth, height: coverHeight}
+    };
+  }
+
+  // The tone panel's sliders (gui-raster-tone-tool.mjs) and the -tone command
+  // they add up to.
+  //
+  // contrast= and gamma= are multipliers, so their sliders are logarithmic:
+  // the middle is 1, and a step either way is the same factor.
+  //
+  // A slider's name is its key in the settings object, which is the parsed
+  // name of its -tone option; @option is the option as typed, if different.
+  // @value is the default, which leaves the image alone (1 if missing).
+  // @color: the slider changes colors, so a grayscale image doesn't have it.
+  var LOG_RANGE = 3; // a log slider goes from 1/LOG_RANGE to LOG_RANGE
+
+  var TONE_SLIDERS = [
+    {name: 'lightness', label: 'Lightness', scale: 'linear', min: 0, max: 2},
+    {name: 'saturation', label: 'Saturation', scale: 'linear', min: 0, max: 2, color: true},
+    {name: 'contrast', label: 'Contrast', scale: 'log'},
+    {name: 'gamma', label: 'Gamma', scale: 'log'},
+    {name: 'hue_shift', option: 'hue-shift', label: 'Hue', scale: 'linear', min: -1, max: 1, value: 0, color: true},
+    {name: 'opacity', label: 'Opacity', scale: 'linear', min: 0, max: 1}
+  ];
+
+  function getDefaultToneValue(slider) {
+    return 'value' in slider ? slider.value : 1;
+  }
+
+  function getDefaultToneSettings() {
+    return TONE_SLIDERS.reduce(function(memo, slider) {
+      memo[slider.name] = getDefaultToneValue(slider);
+      return memo;
+    }, {});
+  }
+
+  function toneValueIsDefault(slider, settings) {
+    return settings[slider.name] == getDefaultToneValue(slider);
+  }
+
+  // The range input's min and max, in slider units
+  function getToneSliderRange(slider) {
+    return slider.scale == 'log' ? [-1, 1] : [slider.min, slider.max];
+  }
+
+  function sliderPosToToneValue(slider, pos) {
+    var val = slider.scale == 'log' ? Math.pow(LOG_RANGE, pos) : pos;
+    return roundToneValue(val);
+  }
+
+  function toneValueToSliderPos(slider, val) {
+    if (slider.scale == 'log') {
+      return val > 0 ? Math.max(-1, Math.min(1, Math.log(val) / Math.log(LOG_RANGE))) : -1;
+    }
+    return Math.max(slider.min, Math.min(slider.max, val));
+  }
+
+  function roundToneValue(val) {
+    return Math.round(val * 100) / 100;
+  }
+
+  function toneSettingsAreDefault(settings) {
+    return TONE_SLIDERS.every(function(slider) {
+      return toneValueIsDefault(slider, settings);
+    });
+  }
+
+  // True if the settings leave the colors alone (opacity aside)
+  function toneColorsAreDefault(settings) {
+    return TONE_SLIDERS.every(function(slider) {
+      return slider.name == 'opacity' || toneValueIsDefault(slider, settings);
+    });
+  }
+
+  // Returns '' if the settings change nothing
+  function getToneCommand(settings) {
+    var opts = TONE_SLIDERS.filter(function(slider) {
+      return !toneValueIsDefault(slider, settings);
+    }).map(function(slider) {
+      return (slider.option || slider.name) + '=' + settings[slider.name];
+    });
+    return opts.length > 0 ? '-tone ' + opts.join(' ') : '';
+  }
+
+  // The 'tone' mode: sliders that preview -tone settings on an RGB or grayscale
+  // image (which has no saturation and hue sliders). The
+  // map shows a toned copy of the raster's preview, and the raster itself is
+  // not changed until Apply runs -tone, which is what goes into the session
+  // history and the undo stack. Leaving the mode any other way -- Cancel, the
+  // panel's ×, another tool, another layer -- drops the preview.
+  function RasterToneTool(gui) {
+    var parent = gui.container.findChild('.mshp-main-map');
+    var panel = El('div').addClass('label-style-panel raster-tone-panel').appendTo(parent).hide();
+    var controls = {}; // slider name -> {input, readout}
+    var settings = getDefaultToneSettings();
+    var targetLayer = null;
+    var pivots; // the image's lightness pivots, once contrast or gamma needs them
+    var applyBtn, titleEl;
+    var pendingFrame = null;
+    var pendingExact = false;
+    var keepPreview = false;
+
+    initPanel();
+
+    gui.on('interaction_mode_change', function(e) {
+      if (e.mode == 'tone' && activeLayerCanBeToned()) {
+        turnOn();
+      } else {
+        turnOff();
+      }
+    });
+
+    gui.model.on('update', function() {
+      if (!targetLayer) return;
+      if (!activeLayerCanBeToned()) {
+        gui.interaction.turnOff();
+      } else if (getActiveLayer() != targetLayer) {
+        // another image was selected, which starts over on that one
+        turnOff();
+        turnOn();
+      }
+    });
+
+    function initPanel() {
+      var header = El('div').addClass('label-style-panel-title').appendTo(panel);
+      var section, btnRow;
+      titleEl = El('span').appendTo(header).text('Color & tone');
+      El('button').addClass('label-style-close').appendTo(header).text('×').on('click', cancel);
+      section = El('div').addClass('label-style-section').appendTo(panel);
+      TONE_SLIDERS.forEach(function(slider) {
+        controls[slider.name] = addSliderRow(section, slider);
+      });
+      btnRow = El('div').addClass('label-style-row label-panel-button-row raster-tone-buttons').appendTo(panel);
+      makePanelActionButton(btnRow, 'Cancel', cancel);
+      applyBtn = makePanelActionButton(btnRow, 'Apply', apply);
+    }
+
+    function addSliderRow(parentEl, slider) {
+      var range = getToneSliderRange(slider);
+      var row = El('div').addClass('label-style-row raster-tone-slider-row').appendTo(parentEl);
+      var readout;
+      El('span').addClass('raster-tone-slider-label').appendTo(row).text(slider.label);
+      var input = El('input').attr('type', 'range').attr('min', range[0]).attr('max', range[1])
+        .attr('step', 0.01).attr('aria-label', slider.label).appendTo(row)
+        .on('input', function() {
+          settings[slider.name] = sliderPosToToneValue(slider, +input.node().value);
+          showSliderValue(slider);
+          schedulePreview(false);
+        })
+        .on('change', function() {
+          schedulePreview(true);
+          releaseFocus();
+        });
+      // A double-click puts the slider back at its default, which is hard to
+      // find by dragging on the log sliders
+      input.on('dblclick', function() {
+        settings[slider.name] = getDefaultToneValue(slider);
+        updateSlider(slider);
+        schedulePreview(true);
+      });
+      readout = El('span').addClass('raster-tone-slider-value').appendTo(row);
+      return {row: row, input: input, readout: readout};
+    }
+
+    function updateSlider(slider) {
+      var input = controls[slider.name].input.node();
+      input.value = toneValueToSliderPos(slider, settings[slider.name]);
+      showSliderValue(slider);
+    }
+
+    function showSliderValue(slider) {
+      var input = controls[slider.name].input.node();
+      var min = +input.min, max = +input.max;
+      var fill = max > min ? (input.value - min) / (max - min) : 0;
+      input.style.setProperty('--fill', 'calc(6px + (100% - 12px) * ' + Math.round(fill * 1000) / 1000 + ')');
+      controls[slider.name].readout.text(settings[slider.name].toFixed(2));
+      applyBtn.classed('disabled', toneSettingsAreDefault(settings));
+    }
+
+    function turnOn() {
+      var gray;
+      targetLayer = getActiveLayer();
+      gray = internal.rasterIsGrayImage(targetLayer.raster);
+      titleEl.text(gray ? 'Tone' : 'Color & tone');
+      settings = getDefaultToneSettings();
+      pivots = undefined;
+      TONE_SLIDERS.forEach(function(slider) {
+        controls[slider.name].row.classed('hidden', gray && !!slider.color);
+        updateSlider(slider);
+      });
+      panel.show();
+    }
+
+    function turnOff() {
+      if (!targetLayer) return;
+      if (pendingFrame !== null) {
+        cancelAnimationFrame(pendingFrame);
+        pendingFrame = null;
+      }
+      pendingExact = false;
+      if (!keepPreview) {
+        clearRasterTonePreview(targetLayer);
+        gui.dispatchEvent('map-needs-refresh');
+      }
+      targetLayer = null;
+      releaseFocus();
+      panel.hide();
+    }
+
+    function exitMode() {
+      if (gui.interaction.getMode() == 'tone') {
+        gui.interaction.turnOff();
+      } else {
+        turnOff();
+      }
+    }
+
+    function cancel() {
+      exitMode();
+    }
+
+    // The preview stays on the map while -tone runs, which replaces the layer
+    // with a toned one, so that the original does not flash up in between
+    function apply() {
+      var cmd = getToneCommand(settings);
+      var lyr = targetLayer;
+      if (!cmd) return cancel();
+      updatePreviewNow();
+      keepPreview = true;
+      exitMode();
+      keepPreview = false;
+      runGuiEditCommand(gui, cmd, {
+        title: 'Tone error',
+        onDone: function() {
+          clearRasterTonePreview(lyr);
+          gui.dispatchEvent('map-needs-refresh');
+        }
+      });
+    }
+
+    // Slider events come faster than the map can be redrawn on a large image.
+    // @exact the slider was let go of (see setRasterTonePreview())
+    function schedulePreview(exact) {
+      pendingExact = pendingExact || exact;
+      if (pendingFrame !== null) return;
+      pendingFrame = requestAnimationFrame(function() {
+        pendingFrame = null;
+        updatePreview();
+      });
+    }
+
+    function updatePreviewNow() {
+      if (pendingFrame === null) return;
+      cancelAnimationFrame(pendingFrame);
+      pendingFrame = null;
+      updatePreview();
+    }
+
+    function updatePreview() {
+      var exact = pendingExact;
+      pendingExact = false;
+      if (!targetLayer) return;
+      if (toneSettingsAreDefault(settings)) {
+        clearRasterTonePreview(targetLayer);
+      } else {
+        setRasterTonePreview(targetLayer, toneColorsAreDefault(settings) ? null : {
+          lightness: settings.lightness,
+          saturation: settings.saturation,
+          contrast: settings.contrast,
+          gamma: settings.gamma,
+          hueShift: settings.hue_shift,
+          pivots: getPivots()
+        }, settings.opacity, exact);
+      }
+      gui.dispatchEvent('map-needs-refresh');
+    }
+
+    // Computed from the whole raster, as -tone does, rather than from the
+    // preview, so that the preview matches what Apply makes
+    function getPivots() {
+      if (settings.contrast == 1 && settings.gamma == 1) return null;
+      if (pivots === undefined) {
+        pivots = internal.getTonePivots(internal.getRasterGrid(targetLayer.raster));
+      }
+      return pivots;
+    }
+
+    function releaseFocus() {
+      releasePanelFocus(panel.node());
+    }
+
+    function getActiveLayer() {
+      var o = gui.model.getActiveLayer();
+      return o && o.layer || null;
+    }
+
+    function activeLayerCanBeToned() {
+      var lyr = getActiveLayer();
+      return !!(lyr && internal.layerHasRaster(lyr) && (internal.rasterCanBeToned(lyr.raster) ||
+        internal.rasterIsGrayImage(lyr.raster)));
+    }
+  }
+
+  // The 'palette' mode: the color palettes panel on a data raster (a DEM, a land
+  // cover raster...), which colors a band with -classify. As on a polygon
+  // layer, the time the panel is open is one undo state and one command in the
+  // session history. Closing the panel leaves the mode, and leaving the mode
+  // (another tool, a layer that can't take a palette) closes the panel.
+  // See docs/development/raster-palette-design.md
+  function RasterPaletteTool(gui) {
+    var targetLayer = null;
+    var schemePanel = null; // made when first needed
+
+    gui.on('interaction_mode_change', function(e) {
+      if (e.mode == 'palette' && layerHasPaletteRaster(getActiveLayer())) {
+        turnOn();
+      } else {
+        turnOff();
+      }
+    });
+
+    gui.model.on('update', function() {
+      var lyr;
+      if (!targetLayer) return;
+      lyr = getActiveLayer();
+      if (!layerHasPaletteRaster(lyr)) {
+        gui.interaction.turnOff();
+      } else if (lyr != targetLayer) {
+        // another raster was selected, which the panel moves to
+        turnOn();
+      }
+    });
+
+    function turnOn() {
+      targetLayer = getActiveLayer();
+      getPanel().open(targetLayer);
+    }
+
+    function getPanel() {
+      if (!schemePanel) {
+        schemePanel = new ColorSchemePanel(gui, {
+          onUpdate: function() {},
+          onClose: function() {
+            targetLayer = null;
+            if (gui.interaction.getMode() == 'palette') gui.interaction.turnOff();
+          }
+        });
+      }
+      return schemePanel;
+    }
+
+    function turnOff() {
+      if (!targetLayer) return;
+      targetLayer = null;
+      schemePanel.close();
+    }
+
+    function getActiveLayer() {
+      var o = gui.model.getActiveLayer();
+      return o && o.layer || null;
+    }
+  }
+
   function Model(gui) {
     var self = new internal.Catalog();
     var deleteLayer = self.deleteLayer;
     var setDefaultTargets = self.setDefaultTargets;
+    var seenLayers = new WeakSet();
+    var prevActive = null;
     utils.extend(self, EventDispatcher.prototype);
 
     // A map frame (and its furniture) is composition state, not editable content. Commands may
@@ -26338,7 +28864,10 @@
       }
       // Before anything hears of the update, so that the map draws a layer that
       // has just arrived along with the ones already showing.
-      showNewLayers(self.getLayers());
+      showNewLayers(self.getLayers(), active,
+        active && !seenLayers.has(active.layer) ? prevActive : null);
+      self.getLayers().forEach(function(o) { seenLayers.add(o.layer); });
+      prevActive = active;
       if (flags.select) {
         self.dispatchEvent('select', active);
       }
@@ -27123,6 +29652,47 @@
 
   }
 
+  // Whether a feature belongs to the tool of @mode, on a layer the label tool and
+  // the symbol tool share: a numbered marker is a label to the data and a symbol
+  // to the GUI (see featureIsMarker()). Every feature belongs in the other modes.
+  // rec: the feature's data record, or null
+  function featureBelongsToMode(mode, rec) {
+    var svg = internal.svg;
+    if (mode == 'label') return !svg.featureIsMarker(rec);
+    if (mode == 'symbols') return !svg.featureIsTextLabel(rec);
+    return true;
+  }
+
+  function modeHasOwnedFeatures(mode) {
+    return mode == 'label' || mode == 'symbols';
+  }
+
+  // The modes a selection can be carried into when the user switches tools.
+  // Inspect ('info', and the older 'data') takes the first feature as its pinned
+  // one. Left out: modes that do not select ('edit_points', where a click adds a
+  // point and Delete removes whatever is selected, unseen), modes with a drawing
+  // or reshaping tool armed, and the older 'label_style' mode.
+  var carryModes = ['info', 'data', 'selection', 'label', 'symbols', 'point_style',
+    'line_style', 'polygon_style'];
+
+  // Returns the part of a selection made in one interaction mode that stays
+  // selected when another mode opens on the same layer.
+  // ids: selected feature ids
+  // toolMode: what the pointer does in the new mode (see getToolMode())
+  // lyr: the layer, {shapes, data}
+  function filterSelectionForMode(ids, toolMode, lyr) {
+    var records, n;
+    if (!ids || ids.length === 0 || !lyr || !lyr.shapes) return [];
+    if (!carryModes.includes(toolMode)) return [];
+    records = lyr.data ? lyr.data.getRecords() : null;
+    n = lyr.shapes.length;
+    return ids.filter(function(id) {
+      // a feature with no geometry cannot be seen or clicked on the map
+      return id >= 0 && id < n && !!lyr.shapes[id] &&
+        featureBelongsToMode(toolMode, records ? records[id] : null);
+    });
+  }
+
   function getPointerHitTest(mapLayer, ext, interactionMode, featureFilter) {
     var shapeTest, ownerTest;
     // need hit test on empty layers, in case we are drawing shapes
@@ -27159,15 +29729,11 @@
   // what it edits: a numbered marker is a label to the data and a symbol to the
   // GUI (see featureIsMarker()). Null in the other modes, which hit everything.
   function getOwnerTest(mapLayer, interactionMode) {
-    var svg = internal.svg;
-    var test = interactionMode == 'label' ? function(rec) { return !svg.featureIsMarker(rec); } :
-      interactionMode == 'symbols' ? function(rec) { return !svg.featureIsTextLabel(rec); } :
-      null;
-    if (!test) return null;
+    if (!modeHasOwnedFeatures(interactionMode)) return null;
     return function(id) {
       var data = mapLayer.gui.displayLayer.data;
       var records = data ? data.getRecords() : null;
-      return test(records ? records[id] : null);
+      return featureBelongsToMode(interactionMode, records ? records[id] : null);
     };
   }
 
@@ -27188,6 +29754,7 @@
     var suppressChangeEvent = false;
     // set while a panel that acts on the whole layer is open (e.g. color palettes)
     var selectionDisabled = false;
+    var carriedSelection = null; // {ids, layer} while the interaction mode changes
 
     // event priority is higher than navigation, so stopping propagation disables
     // pan navigation
@@ -27495,6 +30062,20 @@
       triggerChangeEvent();
     }
 
+    // A selection made in one mode is carried into the next, as far as the next
+    // mode can select those features (see filterSelectionForMode()). It is taken
+    // here, before the tools hear of the change -- leaving a tool clears the
+    // selection -- and put back below, when hit detection turns on.
+    gui.on('interaction_mode_change', function(e) {
+      var ids = selectionIds.length > 0 ? selectionIds : pinnedId() > -1 ? [pinnedId()] : [];
+      carriedSelection = ids.length > 0 ? {ids: ids.concat(), layer: targetLayer} : null;
+    }, null, 20);
+
+    // A command or an undo while the mode changes can renumber the features.
+    gui.model.on('update', function() {
+      carriedSelection = null;
+    }, null, 20);
+
     // make sure popup is unpinned and turned off when switching editing modes
     // (some modes do not support pinning)
     gui.on('interaction_mode_change', function(e) {
@@ -27502,11 +30083,29 @@
       clearSelectionSilently();
       if (gui.interaction.modeUsesHitDetection(e.mode)) {
         turnOn(e.mode);
+        restoreCarriedSelection();
       } else {
         turnOff();
       }
+      carriedSelection = null;
       gui.dispatchEvent('map-needs-refresh');
     });
+
+    // Tools that turn on after this hear of the selection from 'change' events
+    // or read it as they turn on.
+    function restoreCarriedSelection() {
+      var carried = carriedSelection;
+      var ids;
+      if (!carried || carried.layer != targetLayer) return;
+      ids = filterSelectionForMode(carried.ids, interactionMode(), targetLayer);
+      if (ids.length === 0) return;
+      if (pinnable()) {
+        // inspect mode pins one feature; the popup steps through the rest
+        updateSelectionState({ids: ids, id: ids[0], pinned: true});
+      } else {
+        self.setSelectionIds(ids);
+      }
+    }
 
     // Arming a tool changes what a click means, so the selection made for
     // styling goes, and the hit test is remade for the tool.
@@ -29044,10 +31643,13 @@
       _on = true;
     }
 
+    // Leaves the selection alone: it goes with the user into the next mode (see
+    // HitControl), and this runs after the hit control has handed it over.
     function turnOff() {
       dataBtn.turnOff();
       box.turnOff();
-      reset();
+      hidePopup();
+      setPinning(false);
       _on = false;
       if (gui.interaction.getMode() == 'selection') {
         // mode change was not initiated by interactive menu -- turn off interactivity
@@ -39800,14 +42402,7 @@
 
     this.zoomToFrameMagnification = function(targetScale) {
       if (!_frame || !(targetScale > 0)) return;
-      var currentScale = this.getSymbolScale();
-      var frameBounds = new Bounds(_frame.bbox);
-      var p = this.translateCoords(frameBounds.centerX(), frameBounds.centerY());
-      this.zoomByPct(
-        targetScale / currentScale,
-        p[0] / this.width(),
-        p[1] / this.height()
-      );
+      this.zoomByPct(targetScale / this.getSymbolScale());
     };
 
     // convert pixel coords (0,0 is top left corner of map) to display CRS coords
@@ -40029,7 +42624,8 @@
       recipe.type,
       recipe.scaling,
       recipe.scaleRange && recipe.scaleRange.join(','),
-      recipe.percentileRange && recipe.percentileRange.join(',')
+      recipe.percentileRange && recipe.percentileRange.join(','),
+      internal.getRasterPaletteKey(recipe.palette)
     ].join('|');
     return {
       key: key,
@@ -40150,6 +42746,8 @@
   }
 
   var MAX_REPROJECTED_PREVIEW_PIXELS = 6e6;
+  // cells on the long side of a blended palette's weights, across the view
+  var BLEND_FIELD_CELLS = 96;
   var cache = new WeakMap();
   var requestId = 0;
 
@@ -40176,12 +42774,13 @@
       if (!current || current.pending != id) return;
       timing = {};
       try {
-        grid = internal.projectRasterGridForward({grid: params.grid}, params.sourceCRS, params.displayCRS, {
+        grid = internal.projectRasterGridForward({grid: getPaletteBandGrid(params)}, params.sourceCRS, params.displayCRS, {
           raster_mesh_interval: params.meshInterval,
           output_bbox: params.bbox,
           output_width: params.width,
           output_height: params.height,
           sample_method: params.sampleMethod,
+          fill_uncovered: false,
           timing: timing
         });
       } catch(e) {
@@ -40192,7 +42791,8 @@
         return;
       }
       timing.renderStart = getTimer();
-      preview = internal.renderRasterPreview(grid, params.recipe, grid.width, grid.height, params.stats);
+      preview = internal.renderRasterPreview(grid, params.recipe, grid.width, grid.height, params.stats,
+        getBlendOptions(params, grid));
       preview.sourcePixels = params.sourcePixels;
       applyCoverageMask(preview, grid.coverage);
       timing.renderMs = getTimer() - timing.renderStart;
@@ -40203,6 +42803,15 @@
       cache.set(layer, getRasterReprojectedCacheEntry(params, {preview: preview}));
       onReady();
     }, 0);
+  }
+
+  // A blended palette's weights are in the raster's coordinates; the
+  // reprojected grid needs them in the display's (or none, to draw the palette
+  // unblended)
+  function getBlendOptions(params, grid) {
+    var palette = params.recipe.palette;
+    if (!palette || !palette.blend) return null;
+    return {blendField: internal.getClimateWeightField(grid.bbox, params.displayCRS, BLEND_FIELD_CELLS)};
   }
 
   function getRasterReprojectedPreviewParams(layer, ext) {
@@ -40233,9 +42842,26 @@
       recipe: recipe,
       stats: stats,
       sourcePixels: sourcePixels,
-      sampleMethod: getRasterReprojectionSampleMethod(sourcePixels),
+      sampleMethod: getRasterReprojectionSampleMethod(sourcePixels, recipe),
       meshInterval: 32
     };
+  }
+
+  // Only the band that a palette colors is reprojected. The band is copied once
+  // for each grid (and palette band), not for each view.
+  var paletteBandGrids = new WeakMap();
+
+  function getPaletteBandGrid(params) {
+    var grid = params.grid;
+    var palette = params.recipe.palette;
+    var entry = paletteBandGrids.get(grid);
+    if (!palette) return grid;
+    if (!entry || entry.band != palette.band || entry.samples != grid.samples) {
+      entry = {band: palette.band, samples: grid.samples,
+        grid: internal.getRasterPaletteBandGrid(grid, params.recipe)};
+      paletteBandGrids.set(grid, entry);
+    }
+    return entry.grid;
   }
 
   // True if the reprojected grid has room for every source pixel in view, so that
@@ -40301,7 +42927,8 @@
       recipe.scaling,
       recipe.scaleRange && recipe.scaleRange.join(','),
       recipe.percentileRange && recipe.percentileRange.join(','),
-      getRasterReprojectionSampleMethod(sourcePixels),
+      internal.getRasterPaletteKey(recipe.palette),
+      getRasterReprojectionSampleMethod(sourcePixels, recipe),
       layer.raster && layer.raster.grid && layer.raster.grid.samples && layer.raster.grid.samples.length
     ].join('|');
   }
@@ -40329,10 +42956,13 @@
     }
   }
 
-  function getRasterReprojectionSampleMethod(sourcePixels) {
+  // Categories are never interpolated, which would give the codes of other
+  // categories
+  function getRasterReprojectionSampleMethod(sourcePixels, recipe) {
     var vars = GUI.getUrlVars();
     var val = vars['raster-bilinear'] ?? vars.raster_bilinear;
     if (val === false || val == '0') return 'nearest';
+    if (internal.rasterPaletteIsCategorical(recipe && recipe.palette)) return 'nearest';
     // Interpolating between pixels when there is room for all of them would blur
     // the data away for nothing.
     return sourcePixels ? 'nearest' : 'bilinear';
@@ -40884,6 +43514,8 @@
       var raster = layer.raster;
       var options = opts || {};
       var preview = null;
+      var tone = getRasterTonePreview(layer);
+      var opacity = internal.getRasterViewOpacity(raster) * (tone && tone.opacity >= 0 ? tone.opacity : 1);
       var bbox, grid, sourcePixels;
       if (layer.gui && layer.gui.dynamic_crs) {
         preview = getCachedRasterReprojectedPreview(layer, _ext);
@@ -40895,7 +43527,7 @@
         }
         bbox = preview.bbox;
         if (!preview.pixels || !bbox) return;
-        drawRasterPreview(preview, bbox, preview.sourcePixels);
+        drawRasterPreview(preview, bbox, preview.sourcePixels, tone, opacity);
         if (options.action != 'nav' && options.onViewportPreviewReady) {
           scheduleRasterReprojectedPreview(layer, _ext, options.onViewportPreviewReady);
         }
@@ -40917,7 +43549,7 @@
         }
       }
       if (!preview || !preview.pixels || !bbox) return;
-      drawRasterPreview(preview, bbox, sourcePixels);
+      drawRasterPreview(preview, bbox, sourcePixels, tone, opacity);
     };
 
     /*
@@ -41286,14 +43918,21 @@
     // sourcePixels: true if one pixel of the preview is one pixel of the raster,
     // so that drawing it as squares shows the data rather than an artifact of
     // whatever it was scaled down to.
-    function drawRasterPreview(preview, bbox, sourcePixels) {
-      var img = getRasterCanvas(preview);
+    // tone: settings previewed by the tone panel (see gui-raster-tone-preview)
+    // opacity: the raster's display opacity, times any being previewed
+    function drawRasterPreview(preview, bbox, sourcePixels, tone, opacity) {
+      var img = tone && tone.opts ? getTonedRasterCanvas(preview, tone) :
+        {canvas: getRasterCanvas(preview), width: preview.width, height: preview.height};
       var t = _ext.getTransform(GUI.getPixelRatio());
+      if (img.width < preview.width) sourcePixels = false; // a reduced copy, while dragging
       var p1 = t.transform(bbox[0], bbox[3]);
       var p2 = t.transform(bbox[2], bbox[1]);
       var magnification = Math.abs(p2[0] - p1[0]) / img.width / GUI.getPixelRatio();
       _ctx.imageSmoothingEnabled = rasterPreviewIsSmoothed(sourcePixels, magnification);
-      _ctx.drawImage(img, p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+      if (opacity < 1) _ctx.globalAlpha = opacity;
+      _ctx.drawImage(img.canvas, 0, 0, img.width, img.height,
+        p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+      _ctx.globalAlpha = 1;
     }
 
     // TODO: consider using drawStyledPaths(), which draws paths in batches
@@ -42291,9 +44930,12 @@
       }
       var startTime = performance.now();
       var needSvgRedraw = action != 'nav' && action != 'hover';
+      // a 'nav' render of a raster only rescales its previous preview, so it
+      // doesn't satisfy a pending settle the way a vector render does
+      var settleRaster = action == 'nav' && _settleRequested && _rasterNavRefreshPending;
       cancelSettle();
       _redrawPending = false;
-      _settleRequested = false; // a full render satisfies any pending settle
+      _settleRequested = false;
       clearFastTransform();
       _mainCanv.prep(_ext);
       if (needSvgRedraw) {
@@ -42315,8 +44957,7 @@
       flushCanvas(_mainCanv);
       _lastFrameMs = performance.now() - startTime;
       captureSnapshot();
-      if (action == 'nav' && _settleRequested && _rasterNavRefreshPending) {
-        _settleRequested = false;
+      if (settleRaster) {
         settleRasterNow();
       }
     };
@@ -43606,7 +46247,7 @@
         var q = ext.translateCoords(p[0], p[1]);
         var cmd = started ? 'L' : 'M';
         started = true;
-        return cmd + round(q[0]) + ' ' + round(q[1]);
+        return cmd + round$1(q[0]) + ' ' + round$1(q[1]);
       }).filter(Boolean).join(' ');
       path.setAttribute('d', d);
     }
@@ -43647,8 +46288,8 @@
         return;
       }
       p = ext.translateCoords(point.display[0], point.display[1]);
-      marker.setAttribute('cx', round(p[0]));
-      marker.setAttribute('cy', round(p[1]));
+      marker.setAttribute('cx', round$1(p[0]));
+      marker.setAttribute('cy', round$1(p[1]));
       marker.setAttribute('r', 4);
       marker.classList.toggle('ruler-great-circle-endpoint', !!useGreatCircleStyle);
       marker.removeAttribute('display');
@@ -43664,7 +46305,7 @@
     return document.createElementNS(SVG_NS$1, name);
   }
 
-  function round(n) {
+  function round$1(n) {
     return Math.round(n * 10) / 10;
   }
 
@@ -44325,7 +46966,8 @@
       prevViewKey = _viewKey;
       _viewKey = getViewKey();
 
-      if (prevLyr?.gui.tabular || _activeLyr?.gui.tabular) {
+      // prevLyr has no display data if it is a frame whose copy was discarded above
+      if (prevLyr?.gui?.tabular || _activeLyr?.gui.tabular) {
         needReset = true;
       } else if (prevLyr && prevLyr != _activeLyr && prevViewKey !== null &&
           prevViewKey != _viewKey) {
@@ -44982,6 +47624,7 @@
     var on = false;
     var drawing = false;
     var drawingRequested = false;
+    var drawName = '';
     var drawWidth = '800px';
     var drawAspect = '';
     var drawSource = null;
@@ -45323,6 +47966,12 @@
       El('p').appendTo(content)
         .text('Sets the size and crop of exported maps.');
 
+      var defaultName = getNewFrameName(gui.model);
+      var nameInput = makeCreateField(content, 'Frame name',
+        'Name of the frame layer.')
+        .addClass('frame-create-name-input');
+      nameInput.node().value = defaultName;
+
       var widthInput = makeCreateField(content, 'Output width',
         'Width of the exported map.\nExamples: 800px, 5in, 10cm.')
         .addClass('frame-create-width-input');
@@ -45343,7 +47992,7 @@
         var aspect = getAspect();
         if (aspect === null) return;
         popup.close();
-        createFromVisibleLayers(getWidth(), aspect, getMargin());
+        createFromVisibleLayers(getName(), getWidth(), aspect, getMargin());
       });
       var marginCell = El('label').addClass('frame-create-margin').appendTo(fitRow);
       El('span').appendTo(marginCell).text('Margin');
@@ -45361,8 +48010,12 @@
         var aspect = getAspect();
         if (aspect === null) return;
         popup.close();
-        beginFrameDrawing(getWidth(), aspect);
+        beginFrameDrawing(getName(), getWidth(), aspect);
       });
+
+      function getName() {
+        return nameInput.node().value.trim() || defaultName;
+      }
 
       function getWidth() {
         var value = widthInput.node().value.trim();
@@ -45402,7 +48055,7 @@
       return input;
     }
 
-    function beginFrameDrawing(width, aspect) {
+    function beginFrameDrawing(name, width, aspect) {
       drawSource = getSourceLayer();
       if (!drawSource) {
         showPopupAlert(
@@ -45411,6 +48064,7 @@
         );
         return;
       }
+      drawName = name;
       drawWidth = width;
       drawAspect = aspect || '';
       // Without this the box is drawn freehand and -frame silently pads it out to
@@ -45447,7 +48101,7 @@
         '-frame',
         'bbox=' + quoteCommandValue(bbox.join(',')),
         'width=' + quoteCommandValue(drawWidth),
-        getFrameNameOption()
+        getFrameNameOption(drawName)
       ];
       if (drawAspect) parts.push('aspect-ratio=' + drawAspect);
       // The box is in the source layer's CRS, so the source is listed first;
@@ -45461,7 +48115,7 @@
       runCreateCommand(parts.join(' '));
     }
 
-    function createFromVisibleLayers(width, aspect, margin) {
+    function createFromVisibleLayers(name, width, aspect, margin) {
       var entries = getCompositionEntries();
       if (!entries.length) {
         showPopupAlert(getNoSourceMessage(), 'Map frame');
@@ -45470,15 +48124,15 @@
       var ids = entries.map(function(o) {
         return internal.getLayerTargetId(gui.model, o.layer);
       });
-      var parts = ['-frame', 'width=' + quoteCommandValue(width), getFrameNameOption()];
+      var parts = ['-frame', 'width=' + quoteCommandValue(width), getFrameNameOption(name)];
       if (aspect) parts.push('aspect-ratio=' + aspect);
       if (margin) parts.push('margin=' + quoteCommandValue(margin));
       parts.push('target=' + internal.formatOptionValue(ids.join(',')));
       runCreateCommand(parts.join(' '));
     }
 
-    function getFrameNameOption() {
-      return 'name=' + internal.formatOptionValue(getNewFrameName(gui.model));
+    function getFrameNameOption(name) {
+      return 'name=' + internal.formatOptionValue(name || getNewFrameName(gui.model));
     }
 
     function runCreateCommand(cmd) {
@@ -46536,6 +49190,493 @@
     });
   }
 
+  // Pure helpers for the basemap's place search, which uses the Mapbox
+  // Geocoding API (v6). Kept free of GUI dependencies so they can be tested
+  // directly.
+
+  var GEOCODE_ENDPOINT = 'https://api.mapbox.com/search/geocode/v6/forward';
+
+  var PLACE_TYPES = ['country', 'region', 'district', 'place', 'locality', 'neighborhood'];
+
+  // Mapbox GL zoom levels for results that come without a bounding box
+  var ZOOM_BY_TYPE = {
+    country: 4,
+    region: 6,
+    district: 9,
+    postcode: 12,
+    place: 11,
+    locality: 13,
+    neighborhood: 14,
+    street: 15,
+    address: 16
+  };
+  var DEFAULT_ZOOM = 12;
+
+  // The basemap is not drawn beyond these latitudes
+  var MAX_LAT = 84;
+
+  //   opts.query: text typed by the user
+  //   opts.token: Mapbox access token
+  //   opts.proximity: optional [lon, lat] to rank nearby results first
+  //   opts.limit: optional maximum number of results
+  //   opts.language: optional language of the results (see getSearchLanguage());
+  //     without it, Mapbox gives English names where it has them
+  function buildGeocodeUrl(opts) {
+    var params = [
+      'q=' + encodeURIComponent(opts.query),
+      'access_token=' + encodeURIComponent(opts.token),
+      'autocomplete=true',
+      'limit=' + (opts.limit || 5),
+      'types=' + PLACE_TYPES.join(',')
+    ];
+    var p = opts.proximity;
+    if (p && isFinite(p[0]) && isFinite(p[1])) {
+      params.push('proximity=' + round(p[0]) + ',' + round(p[1]));
+    }
+    if (opts.language) {
+      params.push('language=' + encodeURIComponent(opts.language));
+    }
+    return GEOCODE_ENDPOINT + '?' + params.join('&');
+  }
+
+  // Scripts that are written in only one of the languages Mapbox supports.
+  // Kana and Hangul are checked before Han characters, which Japanese and Korean
+  // text can also contain.
+  var SCRIPT_LANGUAGES = [
+    [/[\u3040-\u30ff\u31f0-\u31ff\uff66-\uff9f]/, 'ja'],
+    [/[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/, 'ko'],
+    [/[\u0e00-\u0e7f]/, 'th'],
+    [/[\u0e80-\u0eff]/, 'lo'],
+    [/[\u1780-\u17ff]/, 'km'],
+    [/[\u1000-\u109f]/, 'my'],
+    [/[\u10a0-\u10ff]/, 'ka'],
+    [/[\u0370-\u03ff\u1f00-\u1fff]/, 'el'],
+    [/[\u0590-\u05ff]/, 'he'],
+    [/[\u0980-\u09ff]/, 'bn'],
+    [/[\u0c00-\u0c7f]/, 'te'],
+    [/[\u0900-\u097f]/, 'hi']
+  ];
+  var HAN = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+  var CYRILLIC = /[\u0400-\u04ff]/;
+  var ARABIC = /[\u0600-\u06ff\u0750-\u077f]/;
+  var CYRILLIC_LANGUAGES = ['ru', 'uk', 'be', 'bg', 'sr', 'mk', 'mn', 'kk'];
+  var ARABIC_LANGUAGES = ['ar', 'fa', 'ur'];
+  // Languages not written in the Latin alphabet: a browser that prefers one of
+  // them gives no hint about the language of a query in Latin letters
+  var NON_LATIN_LANGUAGES = ['ja', 'ko', 'zh', 'th', 'lo', 'km', 'my', 'ka', 'el', 'he', 'bn',
+    'te', 'hi'].concat(CYRILLIC_LANGUAGES, ARABIC_LANGUAGES);
+
+  // The language to ask for results in, from the script of the query: a script
+  // used by a single language gives that language; otherwise the browser's
+  // preferred languages decide among those written in the script, e.g. whether
+  // Chinese characters are Chinese or Japanese, or Latin letters French or
+  // English.
+  //   query: text typed by the user
+  //   browserLanguages: e.g. navigator.languages, most preferred first
+  // Returns a language tag
+  function getSearchLanguage(query, browserLanguages) {
+    var prefs = (browserLanguages || []).filter(function(tag) {
+      return typeof tag == 'string' && tag.length > 0;
+    });
+    var match = SCRIPT_LANGUAGES.find(function(o) { return o[0].test(query); });
+    var tag;
+    if (match) return match[1];
+    if (HAN.test(query)) {
+      tag = findPreferred(prefs, ['zh', 'ja']);
+      if (tag && getPrimaryLanguage(tag) == 'ja') return 'ja';
+      return tag && /^zh-(hant|tw|hk|mo)\b/i.test(tag) ? 'zh-Hant' : 'zh-Hans';
+    }
+    if (CYRILLIC.test(query)) {
+      return getPrimaryLanguage(findPreferred(prefs, CYRILLIC_LANGUAGES) || 'ru');
+    }
+    if (ARABIC.test(query)) {
+      return getPrimaryLanguage(findPreferred(prefs, ARABIC_LANGUAGES) || 'ar');
+    }
+    return prefs.find(function(tag) {
+      return !NON_LATIN_LANGUAGES.includes(getPrimaryLanguage(tag));
+    }) || 'en';
+  }
+
+  function findPreferred(prefs, languages) {
+    return prefs.find(function(tag) {
+      return languages.includes(getPrimaryLanguage(tag));
+    }) || null;
+  }
+
+  function getPrimaryLanguage(tag) {
+    return tag.split(/[-_]/)[0].toLowerCase();
+  }
+
+  function round(n) {
+    return Math.round(n * 1e4) / 1e4;
+  }
+
+  // Converts a Geocoding v6 response into a list of places:
+  //   {name, detail, type, center: [lon, lat], bbox: [xmin, ymin, xmax, ymax] or null}
+  function parseGeocodeResponse(json) {
+    var features = json && Array.isArray(json.features) ? json.features : [];
+    return features.map(parseFeature).filter(Boolean);
+  }
+
+  function parseFeature(f) {
+    var props = f.properties || {};
+    var center = getFeatureCenter(f);
+    if (!center) return null;
+    var bbox = props.bbox || f.bbox || null;
+    if (!isValidBBox(bbox)) bbox = null;
+    return {
+      name: props.name_preferred || props.name || props.full_address || '',
+      detail: props.place_formatted || '',
+      type: props.feature_type || '',
+      center: center,
+      bbox: bbox
+    };
+  }
+
+  function getFeatureCenter(f) {
+    var coords = f.properties?.coordinates;
+    if (coords && isFinite(coords.longitude) && isFinite(coords.latitude)) {
+      return [coords.longitude, coords.latitude];
+    }
+    coords = f.geometry?.coordinates;
+    if (Array.isArray(coords) && isFinite(coords[0]) && isFinite(coords[1])) {
+      return [coords[0], coords[1]];
+    }
+    return null;
+  }
+
+  function isValidBBox(bbox) {
+    return Array.isArray(bbox) && bbox.length == 4 && bbox.every(function(n) {
+      return typeof n == 'number' && isFinite(n);
+    });
+  }
+
+  // Returns the lon/lat box to show for a place, or null if the place should
+  // instead be centered at the zoom level given by getPlaceZoom(). A box that
+  // crosses the antimeridian (xmin > xmax) is returned with xmax past 180.
+  function getPlaceBBox(place) {
+    var bbox = place.bbox;
+    if (!bbox) return null;
+    var xmin = bbox[0], xmax = bbox[2];
+    if (xmin > xmax) xmax += 360;
+    var ymin = clampLat(bbox[1]), ymax = clampLat(bbox[3]);
+    if (xmax - xmin <= 0 || ymax - ymin <= 0) return null;
+    return [xmin, ymin, xmax, ymax];
+  }
+
+  function clampLat(lat) {
+    return Math.max(-MAX_LAT, Math.min(MAX_LAT, lat));
+  }
+
+  function getPlaceZoom(place) {
+    return ZOOM_BY_TYPE[place.type] || DEFAULT_ZOOM;
+  }
+
+  // Web Mercator meters per pixel at a Mapbox GL zoom level (512px tiles),
+  // the inverse of scaleToZoom() in gui-dynamic-crs
+  function zoomToMetersPerPixel(zoom) {
+    return 40075017 / 512 / Math.pow(2, zoom);
+  }
+
+  var SEARCH_ICON = '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round"><circle cx="5.8" cy="5.8" r="4.3"/><line x1="9" y1="9" x2="12.6" y2="12.6"/></svg>';
+
+  var MIN_CHARS = 2;
+  var DEBOUNCE_MS = 250;
+
+  // A place-name search box in the basemap buttons in the lower right. It is only
+  // shown while a basemap is on: the map is in Web Mercator then, and the results
+  // are shown on a Mapbox map, as Mapbox's terms ask.
+  //   parent: the basemap buttons
+  //   getToken: returns the Mapbox access token
+  function PlaceSearch(gui, parent, getToken) {
+    var wrapper = El('div').addClass('place-search').hide();
+    var btn = El('div').addClass('place-search-btn').attr('title', 'Search for a place')
+      .html(SEARCH_ICON).appendTo(wrapper);
+    var input = El('input').addClass('place-search-input')
+      .attr('type', 'text')
+      .attr('placeholder', 'Search for a place')
+      .attr('spellcheck', 'false')
+      .attr('autocomplete', 'off')
+      .appendTo(wrapper);
+    var list = El('div').addClass('place-search-results').appendTo(wrapper).hide();
+    var enabled = false;
+    var open = false;
+    var places = [];
+    var selected = -1;
+    var timer = null;
+    var requestId = 0;
+    var controller = null;
+    var selectWhenReady = false;
+    // ?search-language=ja sets the language of results, in place of detecting it
+    // from the query (for debugging)
+    var languageOverride = getLanguageOverride();
+    var unsupportedLanguages = {};
+
+    parent.node().insertBefore(wrapper.node(), parent.node().firstChild);
+
+    btn.on('click', function() {
+      if (open) {
+        collapse();
+      } else {
+        expand();
+      }
+    });
+
+    // While an input method is composing (e.g. "tai bei" on the way to 台北), the
+    // box holds unfinished text: search for what is committed when it's done
+    input.on('input', function(e) {
+      if (e.isComposing) return;
+      scheduleSearch();
+    });
+    input.on('compositionstart', function() {
+      cancelPending();
+    });
+    input.on('compositionend', function() {
+      scheduleSearch();
+    });
+
+    // Keystrokes in the box are the box's, not the map's shortcuts
+    input.on('keydown', function(e) {
+      e.stopPropagation();
+      // the input method's own keys, such as the Enter that picks a candidate
+      // (Safari reports that Enter with keyCode 229 rather than isComposing)
+      if (e.isComposing || e.keyCode == 229) return;
+      if (e.key == 'ArrowDown' || e.key == 'ArrowUp') {
+        e.preventDefault();
+        moveSelection(e.key == 'ArrowDown' ? 1 : -1);
+      } else if (e.key == 'Enter') {
+        e.preventDefault();
+        onEnter();
+      } else if (e.key == 'Escape') {
+        e.preventDefault();
+        if (input.node().value) {
+          input.node().value = '';
+          clearResults();
+        } else {
+          collapse();
+        }
+      }
+    });
+    input.on('keyup', function(e) {
+      e.stopPropagation();
+    });
+
+    // Picking a result shouldn't take focus from the box first
+    list.on('mousedown', function(e) {
+      e.preventDefault();
+    });
+
+    gui.on('map_click', function() {
+      if (open) collapse();
+    });
+
+    function setEnabled(on) {
+      if (on == enabled) return;
+      enabled = on;
+      if (on) {
+        wrapper.show();
+      } else {
+        collapse();
+        wrapper.hide();
+      }
+    }
+
+    function expand() {
+      open = true;
+      wrapper.addClass('open');
+      input.node().focus();
+      input.node().select();
+    }
+
+    function collapse() {
+      if (!open) return;
+      open = false;
+      wrapper.removeClass('open');
+      clearResults();
+      input.node().blur();
+    }
+
+    function cancelPending() {
+      clearTimeout(timer);
+      timer = null;
+      selectWhenReady = false;
+      if (controller) {
+        controller.abort();
+        controller = null;
+      }
+      requestId++;
+    }
+
+    function clearResults() {
+      cancelPending();
+      places = [];
+      selected = -1;
+      list.empty().hide();
+    }
+
+    function getQuery() {
+      return input.node().value.trim();
+    }
+
+    function scheduleSearch() {
+      cancelPending();
+      if (getQuery().length < MIN_CHARS) {
+        places = [];
+        selected = -1;
+        list.empty().hide();
+        return;
+      }
+      timer = setTimeout(runSearch, DEBOUNCE_MS);
+    }
+
+    function getLanguageOverride() {
+      var val = GUI.getUrlVars()['search-language'];
+      return typeof val == 'string' && val ? val : null;
+    }
+
+    function getLanguage(query) {
+      var lang;
+      if (languageOverride) return languageOverride;
+      lang = getSearchLanguage(query, navigator.languages || [navigator.language]);
+      return unsupportedLanguages[lang] ? null : lang;
+    }
+
+    function fetchPlaces(opts) {
+      return fetch(buildGeocodeUrl(opts), controller ? {signal: controller.signal} : undefined);
+    }
+
+    async function runSearch() {
+      var query = getQuery();
+      var id = ++requestId;
+      var language = getLanguage(query);
+      var opts, json, resp;
+      timer = null;
+      if (query.length < MIN_CHARS) return;
+      opts = {query, token: getToken(), proximity: getMapCenter(), language: language};
+      controller = typeof AbortController == 'function' ? new AbortController() : null;
+      try {
+        resp = await fetchPlaces(opts);
+        // Mapbox rejects language codes it doesn't know (422), which a browser's
+        // languages can include
+        if (resp.status == 422 && language && !languageOverride) {
+          unsupportedLanguages[language] = true;
+          resp = await fetchPlaces(Object.assign({}, opts, {language: null}));
+        }
+        if (!resp.ok) throw Error('HTTP ' + resp.status);
+        json = await resp.json();
+      } catch(e) {
+        if (id != requestId) return;
+        controller = null;
+        showMessage('Search is not available right now');
+        return;
+      }
+      if (id != requestId || !open) return;
+      controller = null;
+      places = parseGeocodeResponse(json);
+      selected = places.length > 0 ? 0 : -1;
+      if (selectWhenReady) {
+        selectWhenReady = false;
+        if (places.length > 0) {
+          choose(places[0]);
+          return;
+        }
+      }
+      renderResults();
+    }
+
+    function onEnter() {
+      if (places.length > 0) {
+        choose(places[Math.max(selected, 0)]);
+      } else if (getQuery().length >= MIN_CHARS) {
+        // results haven't arrived yet; search now and take the first one
+        if (timer || !controller) {
+          cancelPending();
+          runSearch();
+        }
+        selectWhenReady = true;
+      }
+    }
+
+    function showMessage(msg) {
+      places = [];
+      selected = -1;
+      list.empty().show();
+      El('div').addClass('place-search-message').text(msg).appendTo(list);
+    }
+
+    function renderResults() {
+      list.empty();
+      if (places.length === 0) {
+        showMessage('No places found');
+        return;
+      }
+      places.forEach(function(place, i) {
+        var row = El('div').addClass('place-search-result').appendTo(list);
+        El('span').addClass('place-search-name').text(place.name).appendTo(row);
+        if (place.detail) {
+          El('span').addClass('place-search-detail').text(place.detail).appendTo(row);
+        }
+        row.on('mouseenter', function() {
+          selected = i;
+          updateSelection();
+        });
+        row.on('click', function() {
+          choose(place);
+        });
+      });
+      list.show();
+      updateSelection();
+    }
+
+    function moveSelection(d) {
+      if (places.length === 0) return;
+      selected = (selected + d + places.length) % places.length;
+      updateSelection();
+    }
+
+    function updateSelection() {
+      list.findChildren('.place-search-result').forEach(function(el, i) {
+        el.classed('selected', i == selected);
+      });
+    }
+
+    function choose(place) {
+      input.node().value = place.name;
+      clearResults();
+      input.node().blur();
+      zoomToPlace(place);
+    }
+
+    function zoomToPlace(place) {
+      var ext = gui.map.getExtent();
+      var bbox = getPlaceBBox(place);
+      var bounds, p1, p2, c, w, h;
+      if (bbox) {
+        p1 = toWebMercator(bbox[0], bbox[1]);
+        p2 = toWebMercator(bbox[2], bbox[3]);
+        bounds = new Bounds(p1[0], p1[1], p2[0], p2[1]);
+        bounds.scale(1.1); // a little margin around the place
+      } else {
+        c = toWebMercator(place.center[0], clampLat(place.center[1]));
+        w = zoomToMetersPerPixel(getPlaceZoom(place)) * ext.width() / 2;
+        h = w * ext.height() / ext.width();
+        bounds = new Bounds(c[0] - w, c[1] - h, c[0] + w, c[1] + h);
+      }
+      ext.zoomToBounds(bounds);
+    }
+
+    function getMapCenter() {
+      var b = gui.map.getExtent().getBounds();
+      if (!b.hasBounds()) return null;
+      var p = fromWebMercator(b.centerX(), b.centerY());
+      p[0] = ((p[0] + 180) % 360 + 360) % 360 - 180; // the view may be over a world copy
+      return p;
+    }
+
+    return {setEnabled};
+  }
+
   var EMPTY_STYLE = {
       version: 8,
       sources: {},
@@ -46578,6 +49719,7 @@
     // var fadeBtn, clearBtn; // not in use
     var addBtn, addLayerBtn, cancelBtn;
     var customStyles = [];
+    var placeSearch;
 
     if (params) {
       //  TODO: check page URL for compatibility with mapbox key
@@ -46688,6 +49830,13 @@
           updateButtons();
         }
       });
+
+      placeSearch = new PlaceSearch(gui, overlayButtons, getDefaultAccessToken);
+    }
+
+    function getDefaultAccessToken() {
+      return (window.location.hostname == 'localhost' ?
+        params.localhost_key : params.production_key) || params.key;
     }
 
     // close and turn off mode
@@ -46761,8 +49910,7 @@
 
     function setStyle(style) {
       // update mapbox access token (user-defined styles may have a different key)
-      window.mapboxgl.accessToken = style.key || (window.location.hostname == 'localhost' ?
-        params.localhost_key : params.production_key) || params.key;
+      window.mapboxgl.accessToken = style.key || getDefaultAccessToken();
 
       if (style.type == 'mapbox' || !style.type) {
         map.setStyle(style.url);
@@ -46800,6 +49948,8 @@
       menuWrapper.findChildren('.basemap-list-item').forEach(function(el, i) {
         el.classed('active', el.node().getAttribute('data-slug') == (activeStyle ? getStyleId(activeStyle) : ''));
       });
+
+      placeSearch?.setEnabled(!!activeStyle && !overlayButtons.hasClass('disabled'));
     }
 
     function onUpdate() {
@@ -47310,6 +50460,7 @@
     // at startup must not be drawn or exported unmeasured.
     initLabelMeasurement();
     startRasterSourceStoreLifecycle();
+    registerRasterSourceReader();
     cleanupStaleUndoPayloads(gui).catch(function() {});
     gui.map.init();
 
@@ -47326,6 +50477,8 @@
     gui.labelTool = new LabelTool(gui);
     gui.layerStyleTool = new LayerStyleTool(gui);
     gui.pointStyleTool = new PointStyleTool(gui);
+    gui.rasterToneTool = new RasterToneTool(gui);
+    gui.rasterPaletteTool = new RasterPaletteTool(gui);
 
     gui.showProgressMessage = function(msg) {
       if (!gui.progressMessage) {
@@ -47611,6 +50764,8 @@
           shapeCount: lyr.shapes ? lyr.shapes.length : 0,
           fields: lyr.data ? lyr.data.getFields() : [],
           records: lyr.data ? lyr.data.getRecords() : [],
+          // a raster's palette (set by -classify), copied
+          rasterPalette: getRasterPalette(lyr),
           geometryTypes: (lyr.shapes || []).map(function(shp) {
             if (!shp) return null;
             return shp.length > 1 ? 'MultiPoint' : 'Point';
@@ -47967,6 +51122,11 @@
 
   function getLayerName(lyr) {
     return lyr.name || null;
+  }
+
+  function getRasterPalette(lyr) {
+    var palette = lyr.raster && lyr.raster.view && lyr.raster.view.recipe && lyr.raster.view.recipe.palette;
+    return palette ? JSON.parse(JSON.stringify(palette)) : null;
   }
 
   // The label tool's guide layers, out of everything the overlay last drew.

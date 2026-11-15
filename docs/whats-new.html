@@ -50,12 +50,33 @@
       
       <h1 id="whats-new">What&#39;s new</h1>
 <p>This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the <a href="https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md">changelog</a> on GitHub.</p>
-<h2 id="october-2026">October 2026</h2>
-<div class="whats-new-entry"><p><strong>New style effects in the web UI.</strong></p>
+<h2 id="november-2026">November 2026</h2>
+<div class="whats-new-entry"><p><strong>Fetch imagery and DEMs.</strong> Download elevation or imagery tiles for the area of a map frame from sources such as Mapterhorn, Copernicus, USGS 3DEP, NAIP, Sentinel-2, Landsat and Blue Marble. → See <a href="/docs/reference.html#-fetch"><code>-fetch</code></a>.</p>
+</div><div class="whats-new-entry"><p><strong>Hillshades.</strong> Convert an elevation raster to shaded relief, with control over light direction and other settings. → See <a href="/docs/reference.html#-hillshade"><code>-hillshade</code></a>.</p>
+<ul>
+<li><code>smoothing=</code> (0-4) removes minor terrain detail while keeping larger landforms distinct.</li>
+<li><code>ambient=</code> darkens terrain with a partially occluded view of the sky, such as valleys and canyons, for a more three-dimensional look.</li>
+<li><code>texture=</code> adds texture shading, which emphasizes the ridges and valleys of rugged terrain.</li>
+<li>Many other options change the appearance of the hillshade, including the colors of shadows and highlights and the shape of the tone curve.</li>
+</ul>
+</div><div class="whats-new-entry"><p><strong>Color adjustment.</strong> Change the saturation, lightness, hue and contrast of an RGB image. In the web UI, there are sliders for adjusting color interactively. → See <a href="/docs/reference.html#-tone"><code>-tone</code></a>.</p>
+</div><div class="whats-new-entry"><p><strong>Hypsometric tints.</strong> Color an elevation raster by climate-based palettes (desert, steppe, tropical, temperate, boreal, polar or blended), or atlas, lowland and highland palettes, continuously or in classes. → See the <code>hypsometric=</code> option of <a href="/docs/reference.html#-classify"><code>-classify</code></a>.</p>
+</div><div class="whats-new-entry"><p><strong>Blending.</strong> Combine a hillshade with an image or with rasterized vector layers (such as choropleth fills) to add shaded relief. → See <a href="/docs/reference.html#-blend"><code>-blend</code></a>.</p>
+<ul>
+<li><code>strength=</code> modifies the opacity of the shading.</li>
+<li><code>chroma=</code> controls how the hillshade&#39;s shadow and highlight colors are composited with the base layer. At 0, the shading layer is blended using alpha transparency, which reduces the saturation of the base layer&#39;s colors. At 1, the result keeps the layer&#39;s original hue and saturation, akin to a luminosity blend mode. Decimal values between 0 and 1 keep a proportional share of the base layer&#39;s saturation, and values above 1 boost saturation beyond the original colors.</li>
+<li>Both <code>strength=</code> and <code>chroma=</code> accept either one value or separate values for shadows and highlights.</li>
+</ul>
+</div><div class="whats-new-entry"><p><strong>Shadow removal (experimental).</strong> Remove terrain shadows from an aerial image, using an elevation raster to find shadowed areas and dark slopes and bring them to a consistent brightness. This is useful before blending the image with a hillshade, so the image’s own shadows don’t clash with the hillshade’s. Results are less reliable on composite images with inconsistent lighting, and on images without distinct shadow areas. → See <a href="/docs/reference.html#-deshadow"><code>-deshadow</code></a>.</p>
+</div><div class="whats-new-entry"><p><strong>Sharpening.</strong> Sharpen an image or hillshade with an unsharp mask. → See <a href="/docs/reference.html#-sharpen"><code>-sharpen</code></a>.</p>
+</div><h2 id="october-2026">October 2026</h2>
+<div class="whats-new-entry"><p><strong>Curve drawing tool.</strong> The line drawing toolbar in the web UI has a curve tool for drawing smooth lines. Click to place points, and the line is drawn as a smooth curve through them. Option-click (Alt-click) places a corner point where the line turns sharply. After a curve is drawn, its points can be dragged to reshape it, and clicking an end point continues the curve.</p>
+</div><div class="whats-new-entry"><p><strong>New style effects in the web UI.</strong></p>
 <ul>
 <li>Inner and outer glows.</li>
 <li>Dashed lines.</li>
-<li>Arrowheads or dots at the ends of lines, with an optional fade-in along the line&#39;s tail.</li>
+<li>Cased lines.</li>
+<li>Arrowheads or dots at the ends of lines, with optional fade and taper effects along the line&#39;s tail.</li>
 <li>Pattern fills: hatches, dots, squares and dashes.</li>
 </ul>
 <p>→ See <a href="/docs/reference.html#-style"><code>-style</code></a> to create the same effects on the command line.</p>
@@ -69,6 +90,7 @@
 <p>→ See <a href="/docs/reference.html#-classify"><code>-classify</code></a> for the command line syntax.</p>
 </div><div class="whats-new-entry"><p><strong>HTML, PNG and JPEG output</strong></p>
 <p>Maps can now be exported as an HTML fragment plus an image, in the manner of the <a href="https://github.com/newsdev/ai2html">ai2html</a> script for Adobe Illustrator. Options control the image format and resolution, whether the map has a fixed size or fills the width of its container, and whether labels are rendered in SVG or HTML.</p>
+<p>Exporting several map frames of different widths creates a single HTML file that displays whichever frame best fits the width of its container, like ai2html&#39;s artboards.</p>
 <p>Maps can also be exported as PNG or JPEG images, labels included.</p>
 <p>→ See <a href="/docs/reference.html#-o"><code>-o</code></a> for the <code>format=html</code>, <code>format=png</code> and <code>format=jpg</code> output options.</p>
 </div><h2 id="september-2026">September 2026</h2>
@@ -159,7 +181,7 @@
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#october-2026">October 2026</a></li><li class="lvl-2"><a href="#september-2026">September 2026</a></li><li class="lvl-2"><a href="#august-2026">August 2026</a></li><li class="lvl-2"><a href="#july-2026">July 2026</a></li><li class="lvl-2"><a href="#june-2026">June 2026</a></li><li class="lvl-2"><a href="#may-2026">May 2026</a></li><li class="lvl-2"><a href="#april-2026">April 2026</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#november-2026">November 2026</a></li><li class="lvl-2"><a href="#october-2026">October 2026</a></li><li class="lvl-2"><a href="#september-2026">September 2026</a></li><li class="lvl-2"><a href="#august-2026">August 2026</a></li><li class="lvl-2"><a href="#july-2026">July 2026</a></li><li class="lvl-2"><a href="#june-2026">June 2026</a></li><li class="lvl-2"><a href="#may-2026">May 2026</a></li><li class="lvl-2"><a href="#april-2026">April 2026</a></li></ul>
   </aside>
 
 </div>

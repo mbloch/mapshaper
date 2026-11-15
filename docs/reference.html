@@ -84,8 +84,17 @@ mapshaper states.geojson \
 <p><strong>File I/O</strong></p>
 <p><a href="#-i-input">-i (input)</a>
 <a href="#-o-output">-o (output)</a></p>
+<p><strong>Layers</strong></p>
+<p><a href="#-add-layer">-add-layer</a>
+<a href="#-copy">-copy</a>
+<a href="#-drop">-drop</a>
+<a href="#-frame">-frame</a>
+<a href="#-merge-layers">-merge-layers</a>
+<a href="#-rename-layers">-rename-layers</a>
+<a href="#-target">-target</a></p>
 <p><strong>Editing</strong></p>
-<p><a href="#-affine">-affine</a>
+<p><a href="#-add-shape">-add-shape</a>
+<a href="#-affine">-affine</a>
 <a href="#-buffer">-buffer</a>
 <a href="#-classify">-classify</a>
 <a href="#-clean">-clean</a>
@@ -94,10 +103,8 @@ mapshaper states.geojson \
 <a href="#-dashlines">-dashlines</a>
 <a href="#-densify">-densify</a>
 <a href="#-dissolve">-dissolve</a>
-<a href="#-dissolve2">-dissolve2</a>
 <a href="#-divide">-divide</a>
 <a href="#-dots">-dots</a>
-<a href="#-drop">-drop</a>
 <a href="#-each">-each</a>
 <a href="#-erase">-erase</a>
 <a href="#-explode">-explode</a>
@@ -105,7 +112,6 @@ mapshaper states.geojson \
 <a href="#-filter-fields">-filter-fields</a>
 <a href="#-filter-islands">-filter-islands</a>
 <a href="#-filter-slivers">-filter-slivers</a>
-<a href="#-frame">-frame</a>
 <a href="#-graticule">-graticule</a>
 <a href="#-grid">-grid</a>
 <a href="#-include">-include</a>
@@ -114,7 +120,6 @@ mapshaper states.geojson \
 <a href="#-join">-join</a>
 <a href="#-labels">-labels</a>
 <a href="#-lines">-lines</a>
-<a href="#-merge-layers">-merge-layers</a>
 <a href="#-mosaic">-mosaic</a>
 <a href="#-point-grid">-point-grid</a>
 <a href="#-points">-points</a>
@@ -123,30 +128,41 @@ mapshaper states.geojson \
 <a href="#-rectangle">-rectangle</a>
 <a href="#-rectangles">-rectangles</a>
 <a href="#-rename-fields">-rename-fields</a>
-<a href="#-rename-layers">-rename-layers</a>
 <a href="#-repel">-repel</a>
 <a href="#-require">-require</a>
-<a href="#-run">-run</a>
 <a href="#-scalebar">-scalebar</a>
-<a href="#-shape">-shape</a>
 <a href="#-simplify">-simplify</a>
 <a href="#-smooth">-smooth</a>
 <a href="#-snap">-snap</a>
 <a href="#-sort">-sort</a>
 <a href="#-split">-split</a>
-<a href="#-split-on-grid">-split-on-grid</a>
-<a href="#-subdivide">-subdivide</a>
 <a href="#-style">-style</a>
 <a href="#-symbols">-symbols</a>
 <a href="#-union">-union</a>
 <a href="#-uniq">-uniq</a></p>
+<p><strong>Raster</strong></p>
+<p><a href="#-blend">-blend</a>
+<a href="#-blur">-blur</a>
+<a href="#-contours">-contours</a>
+<a href="#-deshadow">-deshadow</a>
+<a href="#-fetch">-fetch</a>
+<a href="#-hillshade">-hillshade</a>
+<a href="#-sharpen">-sharpen</a>
+<a href="#-tone">-tone</a></p>
+<p><strong>Experimental</strong></p>
+<p><a href="#-cluster">-cluster</a>
+<a href="#-data-fill">-data-fill</a>
+<a href="#-fuzzy-join">-fuzzy-join</a>
+<a href="#-shape">-shape</a>
+<a href="#-split-on-grid">-split-on-grid</a>
+<a href="#-subdivide">-subdivide</a></p>
 <p><strong>Control Flow</strong></p>
 <p><a href="#-if">-if</a>
 <a href="#-elif">-elif</a>
 <a href="#-else">-else</a>
 <a href="#-endif">-endif</a>
-<a href="#-stop">-stop</a>
-<a href="#-target">-target</a></p>
+<a href="#-run">-run</a>
+<a href="#-stop">-stop</a></p>
 <p><strong>Information</strong></p>
 <p><a href="#-calc">-calc</a>
 <a href="#-colors">-colors</a>
@@ -163,7 +179,7 @@ mapshaper states.geojson \
 <a href="#-verbose">-verbose</a>
 <a href="#-version">-version</a></p>
 <h2 id="i-o-commands" class="cmd-category">I/O Commands</h2>
-<section class="cmd-section" data-id="-i-input" data-name="-i (input)" data-options="mapshaper combine-files batch-mode files merge-files snap snap-interval precision no-topology encoding id-field string-fields field-types csv-skip-lines csv-lines csv-field-names csv-fields decimal-comma csv-dedup-fields csv-filter json-path layers none percentile scale-range percentile-range image categorical continuous rendition full overview-1 resolution name"><h3 id="-i-input">-i (input)</h3>
+<section class="cmd-section" data-id="-i-input" data-name="-i (input)" data-options="mapshaper combine-files batch-mode files merge-files snap snap-interval precision no-topology encoding id-field string-fields field-types csv-skip-lines csv-lines csv-field-names csv-fields decimal-comma csv-dedup-fields csv-filter json-path layers none percentile scale-range percentile-range image categorical continuous rendition full overview-1 bands all resolution vertical-units ft us-ft cm mm km pixel-size name"><h3 id="-i-input">-i (input)</h3>
 <p>Input one or more files in a supported vector, table, or raster data format. Supported file types include: Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML, JSON data records, DBF, CSV/TSV, GeoTIFF, PNG and JPEG images with world files.</p>
 <p>The <code>-i</code> command is assumed if <code>mapshaper</code> is followed by the path of an input data file.</p>
 <p>Mapshaper does not fully support M and Z type Shapefiles. The M and Z data is lost when these files are imported.</p>
@@ -202,9 +218,12 @@ mapshaper states.geojson \
 <p><code>scaling=none|minmax|percentile</code> [Raster] Display scaling method for raster imports. The default is <code>none</code> for 8-bit rasters and <code>percentile</code> for non-8-bit rasters.</p>
 <p><code>scale-range=</code> [Raster] Output intensity range for raster display scaling, as normalized percentages. The default is <code>0,100</code>.</p>
 <p><code>percentile-range=</code> [Raster] Input percentile range used with <code>scaling=percentile</code>. The default is <code>2,98</code>.</p>
-<p><code>raster-type=image|categorical|continuous</code> [Raster] Semantic raster type. This sets the default resampling method for later raster reprojection, and how uncovered pixels are filled. <code>image</code> (the default) uses bilinear resampling and fills with a color. <code>categorical</code> uses nearest-neighbor resampling to preserve class/code values, and fills with the source nodata value. <code>continuous</code> is for measurement rasters such as elevation models: it uses bilinear resampling like <code>image</code> but fills with the source nodata value like <code>categorical</code>, so uncovered pixels do not become a color value mixed in with the data.</p>
+<p><code>raster-type=image|categorical|continuous</code> [Raster] Semantic raster type. This sets the default resampling method for later raster reprojection, and how empty pixels are filled after reprojection or clipping. <code>image</code> (the default) uses bilinear resampling, and makes empty pixels transparent, using the nodata value or an alpha band. <code>categorical</code> uses nearest-neighbor resampling to preserve class/code values, and fills with the nodata value. <code>continuous</code> is for measurement rasters such as elevation models: it uses bilinear resampling like <code>image</code>, and fills with the nodata value like <code>categorical</code>, so empty pixels are never given a color value mixed in with the data.</p>
 <p><code>rendition=</code> [GeoTIFF] Import a specific GeoTIFF rendition, using a slug such as <code>full</code> or <code>overview-1</code>. When a GeoTIFF has internal overviews, Mapshaper lists the available slugs during import. By default, large GeoTIFFs are imported from the best available reduced-resolution overview under Mapshaper&#39;s import size limit, or resampled during import if no suitable overview is available. Use <code>rendition=full</code> to force full-resolution import.</p>
-<p><code>resolution=</code> [Raster] Width in pixels to import a GeoTIFF, PNG or JPEG raster at (e.g. <code>resolution=2000</code> or <code>resolution=2000px</code>), or <code>full</code> to import at full resolution. The height follows from the raster&#39;s aspect ratio, and a raster is never enlarged. By default, rasters larger than 16 million pixels are reduced to fit that size. A GeoTIFF is read from the smallest internal overview that is at least as wide as the requested width.</p>
+<p><code>bands=</code> [GeoTIFF] Bands to import: <code>all</code>, or a comma-separated list of band numbers, starting from 1 (e.g. <code>bands=1,4,5</code>). By default, an image imports the bands it displays (gray, RGB or RGBA), and a data raster imports every band. A raster is treated as data if it is imported with <code>raster-type=continuous</code> or <code>raster-type=categorical</code>, or if its values are wider than 8 bits and it isn&#39;t a color image. A data raster displays its first imported band in gray. Commands that read a band, such as <code>-hillshade band=</code>, refer to bands by their number in the file. The import size limit is shared by the bands, so a raster with more than four bands is reduced further than one with fewer; <code>-info</code> lists the imported bands, with any band descriptions in the file.</p>
+<p><code>resolution=</code> [Raster] Width in pixels to import a GeoTIFF, PNG or JPEG raster at (e.g. <code>resolution=2000</code> or <code>resolution=2000px</code>), or <code>full</code> to import at full resolution. The height follows from the raster&#39;s aspect ratio, and a raster is never enlarged. By default, rasters larger than 16 million pixels are reduced to fit that size (rasters with more than four bands are reduced to 64 million samples, i.e. pixels times bands). A GeoTIFF is read from the smallest internal overview that is at least as wide as the requested width.</p>
+<p><code>vertical-units=</code> [Raster] Units of an elevation raster&#39;s values: <code>m</code>, <code>ft</code>, <code>us-ft</code>, <code>cm</code>, <code>mm</code> or <code>km</code>. This overrides any units given in a GeoTIFF&#39;s metadata. Without either, elevations are taken to be in meters.</p>
+<p><code>pixel-size=</code> [Raster] Ground size of a pixel, for a raster with no CRS (e.g. <code>pixel-size=30m</code> or <code>pixel-size=100ft</code>; a number without units is in meters). This lets <code>-hillshade</code> shade a DEM to scale when it was saved without georeferencing, for example from an image editor. Without it, <code>-hillshade</code> scales the relief of such a DEM to a typical steepness.</p>
 <p><code>name=</code>  Rename the imported layer (or layers).</p>
 <p><strong>Example</strong> </p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Input a Shapefile with text data in the latin1 encoding</span>
@@ -216,7 +235,7 @@ mapshaper countries_wgs84.shp encoding=latin1 -info
 <p>Save content of the target layer(s) to a file or files.</p>
 <p><strong>Options</strong></p>
 <p><code>&lt;file&gt;|&lt;directory&gt;|-</code>  Name of output file or directory. Use <code>-</code> to export text-based formats to <code>/dev/stdout</code>.</p>
-<p><code class="is-wrappable">format=shapefile|<wbr>geojson|<wbr>topojson|<wbr>flatgeobuf|<wbr>geopackage|<wbr>geoparquet|<wbr>geotiff|<wbr>json|<wbr>dbf|<wbr>csv|<wbr>tsv|<wbr>svg|<wbr>html</code> Specify output format. If the <code>format=</code> option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format.</p>
+<p><code class="is-wrappable">format=shapefile|<wbr>geojson|<wbr>topojson|<wbr>flatgeobuf|<wbr>geopackage|<wbr>geoparquet|<wbr>geotiff|<wbr>json|<wbr>dbf|<wbr>csv|<wbr>tsv|<wbr>svg|<wbr>html</code> Specify output format. If the <code>format=</code> option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. A frame, which has no input format, is exported as SVG.</p>
 <p>The <code>json</code> format is an array of objects containing data properties for each feature.</p>
 <p>The <code>html</code> format writes a map as an HTML fragment and an image, in the manner of the <a href="https://github.com/newsdev/ai2html">ai2html</a> script for Adobe Illustrator.</p>
 <p><code>target=</code> Specify layer(s) to export (comma-separated list). The default target is the output layer(s) of the previous command. Use <code>target=*</code> to select all layers.</p>
@@ -279,7 +298,89 @@ mapshaper countries_wgs84.shp encoding=latin1 -info
 mapshaper -i shapefiles/*.shp batch-mode -o geojson/ format=geojson
 </code></pre>
 </section>
+<h2 id="layer-commands" class="cmd-category">Layer Commands</h2>
+<section class="cmd-section" data-id="-add-layer" data-name="-add-layer" data-options="geometry-type name target"><h3 id="-add-layer">-add-layer</h3>
+<p>Create an empty layer, for adding shapes (with <code>-add-shape</code>) or labels to. If there is a target layer, the new layer uses its coordinate system.</p>
+<p><code>geometry-type=</code>  (required) Type of geometry: point, polygon or polyline.</p>
+<p><code>name=</code>  Name of the new layer.</p>
+<p>Common options: <code>target=</code></p>
+</section>
+<section class="cmd-section" data-id="-copy" data-name="-copy" data-options="name target"><h3 id="-copy">-copy</h3>
+<p>Copy the target layer or layers, of any kind: vector, raster or data-only. Each copy is added to the same dataset as its original, and the copies become the target of the next command. Copying a frame copies the layers in the frame as well.</p>
+<p><code>name=</code>  Name of the copy. By default, a copy has the same name as its original. Can only be used when copying a single layer. Required when copying a frame, because frames have unique names.</p>
+<p><a href="#common-options"><code>target=</code></a></p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Keep the states, and make a layer of the borders between them</span>
+mapshaper states.json -copy name=borders -innerlines -o output.svg
+
+<span class="hljs-comment"># Make a second map from the same layers, at a smaller size</span>
+mapshaper -i states.json -frame width=800 name=main \
+  -copy target=main name=small \
+  -frame target=small width=300 \
+  -o maps/ target=main,small
+</code></pre>
+</section>
+<section class="cmd-section" data-id="-drop" data-name="-drop" data-options="fields geometry holes target"><h3 id="-drop">-drop</h3>
+<p>Delete the target layer(s) or elements within the target layer(s).</p>
+<p><code>fields=</code>  Delete a (comma-separated) list of attribute data fields. To delete all fields, use <code>fields=*</code>.</p>
+<p><code>geometry</code>  Delete all geometry.</p>
+<p><code>holes</code>  Delete any holes from a polygon layer.</p>
+<p><code>target=</code>  Layer(s) to target.</p>
+</section>
+<section class="cmd-section" data-id="-frame" data-name="-frame" data-options="bbox width height aspect-ratio margin offset offsets ignore-symbols name target"><h3 id="-frame">-frame</h3>
+<p>Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the <code>bbox=</code> option or the bounding box of the target layer or layers, if <code>bbox=</code> is omitted. When fitting to target layers, the extent includes room for the point symbols and labels in those layers, and for the strokes and outer glows of their lines and polygons, as drawn at the frame&#39;s display size. With no margin, everything drawn falls inside the frame.</p>
+<p><code>width=</code>  Width of frame (e.g. 5in, 10cm, 600px; default is 800px)</p>
+<p><code>height=</code>  Height of frame (in addition to or instead of width= option)</p>
+<p><code>aspect-ratio=</code>  Aspect ratio of frame (optional)</p>
+<p><code>bbox=</code> Bounding coordinates of frame contents in projected map coordinates (xmin,ymin,xmax,ymax). If omitted, the bounding box of the target layer(s) is used.</p>
+<p><code>margin=</code> Padding around the frame&#39;s <code>bbox</code> in display units or as a percentage of the frame&#39;s width, e.g. 5cm 20px 5%. As in CSS, a percentage is of the width on every side (top and bottom included), so a single value gives an even margin. Takes one to four values in CSS order: all sides (<code>5%</code>); vertical and horizontal (<code>margin=10%,2%</code>); top, horizontal and bottom; or top, right, bottom and left (<code>margin=&#39;40px 2% 2% 2%&#39;</code>). When the frame has a fixed width and height, the content is centered and the padding is a minimum on two sides. (The older <code>offset=</code> and <code>offsets=</code> options still work; they take a single value or a list in l,b,r,t order.)</p>
+<p><code>ignore-symbols</code>  Fit the frame to the coordinates of the target layers, without making room for symbols, labels and strokes</p>
+<p>Other options: <code>name=</code> <code>target=</code></p>
+</section>
+<section class="cmd-section" data-id="-merge-layers" data-name="-merge-layers" data-options="force undefined flatten name target"><h3 id="-merge-layers">-merge-layers</h3>
+<p>Merge features from several layers into a single layer. Layers can only be merged if they have compatible geometry types. Target layers should also have compatible data fields, unless the <code>force</code> option is used.</p>
+<p><code>force</code>  Allow merging layers with inconsistent fields. When a layer is missing a particular field, the field will be added, with the values set to <code>undefined</code>. Using this option, you are still prevented from merging fields with different data types (e.g. a field containing numbers in one layer and strings in another). You are also still prevented from merging layers containing different geometry types.</p>
+<p><code>flatten</code> (polygon layers) Remove polygon overlaps by assigning overlapping areas to the last overlapping polygon (the topmost feature if features are rendered in sequence).</p>
+<p>Common options: <code>name=</code> <code>target=</code></p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Example: Combine features from several Shapefiles into a single Shapefile.</span>
+<span class="hljs-comment"># -i combine-files is used because files are processed separately by default.</span>
+mapshaper -i OR.shp WA.shp CA.shp AK.shp combine-files \
+	-merge-layers \
+	-o pacific_states.shp
+</code></pre>
+</section>
+<section class="cmd-section" data-id="-rename-layers" data-name="-rename-layers" data-options="names target"><h3 id="-rename-layers">-rename-layers</h3>
+<p>Assign new names to layers. If fewer names are given than there are layers, the last name in the list is repeated with numbers appended (e.g. layer1, layer2).</p>
+<p><code>&lt;names&gt;</code> or <code>names=</code>  One or more layer names (comma-separated).</p>
+<p><code>target=</code>  Rename a subset of all layers.</p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Example: Create a TopoJSON file with sensible object names.</span>
+mapshaper ne_50m_rivers_lake_centerlines.shp ne_50m_land.shp combine-files \
+  -rename-layers water,land -o target=* layers.topojson 
+</code></pre>
+</section>
+<section class="cmd-section" data-id="-target" data-name="-target" data-options="target type name"><h3 id="-target">-target</h3>
+<p>Set the target layer or layers for the following command.</p>
+<p><code>&lt;target&gt;</code> or <code>target=</code>  Name or id of a layer (first layer is 1).</p>
+<p><code>type=</code>  Type of layer(s) to match (polygon, polyline or point). This is useful when importing GeoJSON files containing several types of geometry.</p>
+<p><code>name=</code>   Rename the target layer.</p>
+</section>
 <h2 id="editing-commands" class="cmd-category">Editing Commands</h2>
+<section class="cmd-section" data-id="-add-shape" data-name="-add-shape" data-options="coordinates offsets closed extend geojson properties fill stroke stroke-width name target"><h3 id="-add-shape">-add-shape</h3>
+<p>Add a point, polyline or polygon to the target layer, or create a new layer containing the shape. Coordinates are in the target layer&#39;s coordinate system. When there is no target layer (e.g. when <code>-add-shape</code> is the first command), a new layer is created.</p>
+<p><code>coordinates=</code>  Vertices as a comma-separated list: <code>x,y</code> for a point, <code>x,y,x,y,...</code> for a polyline. A path that ends where it starts makes a polygon. Also accepts JSON arrays, e.g. <code>[[0,0],[1,1]]</code>.</p>
+<p><code>offsets=</code>  Additional vertices given as <code>dx,dy,...</code>, each one offset from the previous vertex, starting from the last vertex in <code>coordinates=</code>.</p>
+<p><code>closed</code>  Close an open path to make a polygon.</p>
+<p><code>extend</code>  Join a polyline to the polyline in the target layer that ends where the new line starts or ends, instead of adding a new feature.</p>
+<p><code>geojson=</code>  A GeoJSON Feature, FeatureCollection or geometry, as an alternative to <code>coordinates=</code>.</p>
+<p><code>properties=</code>  Attributes as a JSON object, e.g. <code>properties=&#39;{&quot;name&quot;:&quot;Route 1&quot;}&#39;</code>.</p>
+<p><code>+</code>  Add the shape to a new layer instead of the target layer.</p>
+<p>Style options: any of the literal style properties accepted by <a href="#-style"><code>-style</code></a>, such as <code>fill=</code>, <code>stroke=</code> and <code>stroke-width=</code>, are added to the new feature.</p>
+<p>Common options: <code>name=</code> <code>target=</code></p>
+<h4 id="example-3">Example</h4>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Add a square to a new layer, using offsets</span>
+mapshaper -add-shape coordinates=0,0 offsets=0,10,10,0,0,-10 closed \
+  fill=pink name=square -o square.json
+</code></pre>
+</section>
 <section class="cmd-section" data-id="-affine" data-name="-affine" data-options="shift scale rotate anchor where target"><h3 id="-affine">-affine</h3>
 <p>Transform coordinates by shifting, scaling and rotating. Not recommended for unprojected datasets.</p>
 <p><code>shift=</code>  X,Y shift in source units (e.g. 5000,-5000)</p>
@@ -287,18 +388,6 @@ mapshaper -i shapefiles/*.shp batch-mode -o geojson/ format=geojson
 <p><code>rotate=</code>  Angle of rotation in degrees (default is 0)</p>
 <p><code>anchor=</code>  Center of rotation/scaling (default is center of the bounding box of the selected content)</p>
 <p><code>where=</code>  Use a JS expression to select a subset of features.</p>
-<p>Common options: <code>target=</code></p>
-</section>
-<section class="cmd-section" data-id="-blur" data-name="-blur" data-options="px radius target"><h3 id="-blur">-blur</h3>
-<p>Apply a Gaussian-like blur to raster layers. The command only works on projected
-rasters; unprojected lat-long rasters should be reprojected first with <code>-proj</code>.</p>
-<p><code>&lt;radius&gt;</code> Blur amount, given either in pixels or as a real-world distance. This
-value corresponds to <code>2 * sigma</code> of a Gaussian curve. Pixels can be written as
-plain numbers or with a <code>px</code> suffix (<code>radius=10</code>, <code>radius=10px</code>); distances carry
-units (<code>radius=500m</code>, <code>radius=2km</code>) and are converted using the size of a pixel
-on the ground, so the same command gives a comparable amount of blur on rasters
-of differing resolution. The radius can be given without the <code>radius=</code> prefix,
-for example <code>-blur 5px</code> or <code>-blur 500m</code>.</p>
 <p>Common options: <code>target=</code></p>
 </section>
 <section class="cmd-section" data-id="-buffer" data-name="-buffer" data-options="radius tolerance vertices quad-segs round topological fill-gaps max-widening merge-islands geodesic name target"><h3 id="-buffer">-buffer</h3>
@@ -349,9 +438,11 @@ mapshaper counties.shp -buffer 100m topological -o counties_buffer.geojson
 mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-classify" data-name="-classify" data-options="quantile equal-interval hybrid nice field save-as fill stroke class values classes breaks colors random non-adjacent stops null-value pivot median mean auto pivot-range no-pivot-class pivot-class continuous outer-breaks method categorical indexed index-field categories invert interpolation rgb oklch vibrance precision other key-style key-width key-font-size key-tile-height key-tic-length key-label-suffix key-last-suffix"><h3 id="-classify">-classify</h3>
+<section class="cmd-section" data-id="-classify" data-name="-classify" data-options="quantile equal-interval hybrid nice field band2 band categorical save-as fill stroke class values classes breaks colors random non-adjacent stops null-value pivot median mean auto pivot-range no-pivot-class pivot-class continuous outer-breaks method indexed index-field categories invert interpolation oklch vibrance rgb precision other hypsometric desert steppe tropical temperate boreal polar atlas lowland highland none sea blended classed transparent land pale blue gray key-style key-width key-font-size key-tile-height key-tic-length key-label-suffix key-last-suffix"><h3 id="-classify">-classify</h3>
 <p>Assign colors or data values to each feature using one of several classification methods. Methods for sequential data include <code>quantile</code>, <code>equal-interval</code>, <code>hybrid</code> and <code>nice</code> or categorical classification to a data field.</p>
-<p><code>&lt;field&gt;</code> or <code>field=</code> Name of the data field to classify.</p>
+<p><code>&lt;field&gt;</code> or <code>field=</code> Name of the data field to classify. On a raster layer, the band to color, e.g. <code>band2</code> (see <strong>Classifying rasters</strong>, below).</p>
+<p><code>band=</code>  [raster] Band to color, numbered from 1. An alternative to naming the band as a field.</p>
+<p><code>categorical</code>  Use categorical classification. Shortcut for <code>method=categorical</code>.</p>
 <p><code>save-as=</code>      Name of a (new or existing) field to receive the output of classification. The default output field for colors is <code>fill</code> or <code>stroke</code> (depending on geometry type) and <code>class</code> for non-color output.</p>
 <p><code>values=</code>       List of values to assign to data classes. If the number of values differs from the number of classes given by the (optional) <code>classes</code> or <code>breaks</code> option, then interpolated values will be calculated. Mapshaper uses d3 for interpolation.</p>
 <p><code>colors=</code> Takes a list of CSS colors, the name of a predefined color scheme, or <code>random</code>. Run the <a href="#-colors">-colors</a> command to list all of the built-in color schemes. Similar to the <code>values=</code> option, if the number of listed colors is different from the number of requested classes, interpolated colors are calculated.</p>
@@ -363,7 +454,7 @@ mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
 <p><code>pivot-range=</code>  A pair of comma-separated numbers giving the range of the pivot class. By default, the pivot class is centered on the pivot and is one class wide (for <code>quantile</code>, it holds an average class&#39;s share of the features nearest the pivot). With <code>pivot-range=</code>, <code>pivot=</code> defaults to the middle of the range.</p>
 <p><code>no-pivot-class</code> Omit the pivot class: the two sides meet at the pivot.</p>
 <p><code>pivot-class</code> Add a pivot class to <code>continuous</code> output, which has none by default. The pivot class gets the center color, without interpolation.</p>
-<p><code>breaks=</code>       Specify user-defined sequential class breaks (an alternative to automatic classification using <code>quantile</code>, <code>equal-interval</code>, etc.).</p>
+<p><code>breaks=</code>       Specify user-defined sequential class breaks (an alternative to automatic classification using <code>quantile</code>, <code>equal-interval</code>, etc.). Breaks can be values or percentages of the data range, or a mix, e.g. <code>breaks=0,30%,60%</code>; <code>30%</code> is 30% of the way from the lowest value to the highest (or between the <code>outer-breaks=</code> values, if given). The values that percentages resolve to are printed.</p>
 <p><code>outer-breaks=</code>  A pair of comma-separated numbers setting min and max breakpoints to use when computing class breaks. This setting overrides the default behavior, which is to use the min and max values of the data field being classified. This setting can be used to prevent extreme data values (outliers) from affecting equal-interval classification. Also useful for setting outside breakpoints for continuous color ramps (when using the <code>continuous</code> option).</p>
 <p><code>method=</code>       Classification method. One of: <code>quantile</code>, <code>equal-interval</code>, <code>nice</code>, <code>hybrid</code> (sequential data), <code>categorical</code>, <code>non-adjacent</code> and <code>indexed</code>. This parameter is not required if the classification method can be inferred from other options. For example, the <code>index-field=</code> parameter implies indexed classification, the <code>categories=</code> parameter implies categorical classification.</p>
 <p><code>quantile</code>      Use quantile classification. Shortcut for <code>method=quantile</code>.</p>
@@ -371,13 +462,23 @@ mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
 <p><code>nice</code>          Same as <code>method=nice</code>. This scheme finds equally spaced, round breakpoints that roughly divide the dataset into equal parts (similar to quantile classification).</p>
 <p><code>invert</code>        Reverse the order of colors/values.</p>
 <p><code>continuous</code>    Output continuously interpolated values, for unclassed/continuous-color maps. Discrete color values are treated as control points, determining the shape of the continuously interpolated color gradient. With <code>method=quantile</code>, each value is placed on the gradient by its rank among the data (tied values share their average rank), so the number of colors affects only the shape of the gradient; with a pivot, each side is ranked separately. With other methods, values are interpolated linearly between the class breaks.</p>
-<p><code>interpolation=</code>    How intermediate colors are calculated when colors are interpolated. <code>rgb</code> (the default) mixes colors in RGB space. <code>oklch</code> uses the perceptually uniform OKLCH color space. Lightness, chroma and hue are interpolated separately. This gives evenly spaced steps in lightness and color saturation, avoiding the dull midtones that RGB mixing can produce. Where an <code>oklch</code> color falls outside the sRGB gamut, it is fitted as described under <code>vibrance=</code>.</p>
-<p><code>vibrance=</code>    Boost the chroma (vividness or saturation) of colors interpolated with <code>interpolation=oklch</code>. The sRGB gamut holds little chroma near black and white, so a linear ramp between a dark color and a light one may appear under-saturated. The value of <code>vibrance</code>, which varies from <code>0</code> to <code>1</code>, determines how much OKLCH chroma is added to every color of the interpolation. The default is <code>0</code>.</p>
-<p>With <code>interpolation=oklch</code>, when a color falls outside the sRGB gamut, its hue is held constant and chroma is reduced to fit. Lightness may be shifted by a small amount.</p>
+<p><code>interpolation=</code>    How intermediate colors are calculated when colors are interpolated. <code>oklch</code> (the default) uses the perceptually uniform OKLCH color space. Lightness, chroma and hue are interpolated separately. This gives evenly spaced steps in lightness and color saturation, avoiding the dull midtones that RGB mixing can produce. Where an <code>oklch</code> color falls outside the sRGB gamut, it is fitted as described under <code>vibrance=</code>. <code>rgb</code> mixes colors in RGB space, which was the default before v0.8.0.</p>
+<p><code>vibrance=</code>    Boost the chroma (vividness or saturation) of colors interpolated in OKLCH (not available with <code>interpolation=rgb</code>). The sRGB gamut holds little chroma near black and white, so a linear ramp between a dark color and a light one may appear under-saturated. The value of <code>vibrance</code>, which varies from <code>0</code> to <code>1</code>, determines how much OKLCH chroma is added to every color of the interpolation. The default is <code>0</code>.</p>
+<p>With OKLCH interpolation, when a color falls outside the sRGB gamut, its hue is held constant and chroma is reduced to fit. Lightness may be shifted by a small amount.</p>
 <p><code>index-field=</code>  Use class ids that have been precalculated and assigned to this field. Values should be integers from <code>0 ... n-1</code> (where n is the number of classes). <code>-1</code> is the null value.</p>
 <p><code>precision=</code>    Round data values before classification (e.g. <code>precision=0.1</code>).</p>
 <p><code>categories=</code>   List of values in the source data field. Using this option triggers categorical classification. If <code>colors=</code> lists fewer colors than there are categories, the colors are repeated in order. Without <code>categories=</code> (or with <code>categories=*</code>), the categories are the field&#39;s values, except empty ones (null, undefined, empty strings and NaN), which get <code>null-value=</code>.</p>
 <p><code>other=</code>  Default value for categorical classification. This value is used when the value of the source data field is not present in the list of values given by <code>categories=</code>. Defaults to <code>null-value=</code> or null.</p>
+<p><strong>Classifying rasters</strong></p>
+<p>On a data raster (such as a DEM or a land cover raster), <code>-classify</code> sets a color palette for displaying the raster in the web UI and in SVG and image output. To remove a palette, use <code>-style clear</code>.</p>
+<p>A raster with one band is classified without naming a band. Otherwise name the band, e.g. <code>-classify band2</code> or <code>-classify band=2</code>.</p>
+<p>Some options are not available for rasters: <code>save-as=</code>, <code>values=</code>, <code>index-field=</code>, <code>non-adjacent</code>, <code>method=indexed</code>, <code>method=blacki</code> and the key options.</p>
+<p>Breaks are calculated from a sample of up to one million pixels. Categorical classification requires an integer band; by default the categories are all the band&#39;s values. <code>null-value=</code> sets the color of nodata pixels, which are transparent by default. <code>other=</code> colors values that are not listed in <code>categories=</code>. With <code>continuous quantile</code>, the gradient is calculated from up to 32 quantiles (or from every value, if the band has few of them).</p>
+<p><code>hypsometric=</code>  [raster] Color an elevation raster with hypsometric tints, at fixed elevations. There are six climate zone presets (<code>desert</code>, <code>steppe</code>, <code>tropical</code>, <code>temperate</code>, <code>boreal</code> and <code>polar</code>) and three miscellaneous presets (<code>atlas</code>, <code>lowland</code> and <code>highland</code>). <code>none</code> colors only the sea (see <code>sea=</code>, which then needs bathymetric colors). <code>blended</code> mixes the six climate presets by climate zone/ The zones are derived from the Köppen-Geiger classification for 1991-2020 (Beck et al. 2023, Scientific Data 10, 724, CC BY 4.0). It is meant for maps of the world and of large regions.</p>
+<p>With <code>hypsometric=</code>, <code>colors=</code> recolors the preset, with a color for each of its elevations, and <code>breaks=</code> moves its elevations, in the band&#39;s units, giving every one of them, lowest first. With <code>blended</code>, <code>breaks=</code> moves the elevations of all six presets, which they share, and a preset is recolored by giving its name before its colors, e.g. <code class="is-wrappable">colors=desert:#c9b98a,<wbr>...,<wbr>polar:#f4efe6,<wbr>...</code>; presets that aren&#39;t named keep their own colors.</p>
+<p>Several lists can be given in one <code>colors=</code> or <code>breaks=</code> option: a name and a colon start a named list, which runs to the next name, e.g. <code>colors=#b2c9ba,...,sea:#003366,...</code>. The sea&#39;s list is named <code>sea:</code> (see <code>sea=</code>). Named lists work only with rasters.</p>
+<p><code>classed</code>  [raster] With <code>hypsometric=</code> and a single preset, color in classes rather than continuously: each class runs from one elevation up to the next, and the first one also takes everything below its elevation.</p>
+<p><code>sea=</code>  [raster] What to do with the sea area of an elevation raster. <code>transparent</code> leaves sea areas uncolored (the default with <code>hypsometric=</code>); <code>land</code> colors them like other values; <code>pale</code>, <code>blue</code> or <code>gray</code> colors them by depth, with bathymetric tints at fixed depths. Basins below sea level enclosed by land, such as the Dead Sea, are not treated as sea. <code>colors=sea:...</code> and <code>breaks=sea:...</code> recolor a bathymetric preset and move its depths (deepest first, in the band&#39;s units).</p>
 <p><strong>Options for generating SVG keys</strong></p>
 <p><code>key-style=</code>         One of: simple, gradient, dataviz</p>
 <p><code>key-name= </code>         Name of output SVG file</p>
@@ -388,7 +489,17 @@ mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
 <p><code>key-label-suffix=</code>  String to append to each label</p>
 <p><code>key-last-suffix=</code>   String to append to the last label</p>
 <p><strong>Examples</strong></p>
-<pre><code class="hljs language-bash"><span class="hljs-comment"># Apply a sequential color ramp to a polygon dataset using quantiles.</span>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Color a DEM with a continuous ramp from 0m to 3000m</span>
+mapshaper dem.tif -classify colors=#2b5c3f,#c9b98a,#f4efe6 continuous \
+  equal-interval outer-breaks=0,3000 -o out.png
+
+<span class="hljs-comment"># Color a world DEM with tints that blend between climate regions</span>
+mapshaper world-dem.tif -classify hypsometric=blended -proj +proj=eqearth -o world.png
+
+<span class="hljs-comment"># The same, with the ocean colored by depth</span>
+mapshaper world-dem.tif -classify hypsometric=blended sea=pale -proj +proj=eqearth -o world.png
+
+<span class="hljs-comment"># Apply a sequential color ramp to a polygon dataset using quantiles.</span>
 mapshaper covid_cases.geojson \
   -classify save-as=fill quantile color-scheme=Oranges classes=6 \
   -o out.geojson
@@ -420,13 +531,15 @@ mapshaper counties.shp \
 <p><code>allow-empty</code>  Allow null geometries, which are removed by default.</p>
 <p>Common options: <code>target=</code></p>
 </section>
-<section class="cmd-section" data-id="-clip" data-name="-clip" data-options="source bbox2 bbox remove-slivers name target"><h3 id="-clip">-clip</h3>
+<section class="cmd-section" data-id="-clip" data-name="-clip" data-options="source bbox2 bbox remove-slivers nodata-color name target"><h3 id="-clip">-clip</h3>
 <p>Remove features or portions of features that fall outside a clipping area.</p>
 <p><code>&lt;source&gt;</code> or <code>source=</code> Clip to a set of polygon features. Takes the filename or layer id of the clip polygons.</p>
 <p><code>bbox=&lt;xmin,ymin,xmax,ymax&gt;</code> Delete features or portions of features that fall outside a bounding box.</p>
 <p><code>bbox2=</code> Faster bounding box clipping than <code>bbox=</code> (experimental).</p>
 <p><code>remove-slivers</code> Remove tiny sliver polygons created by clipping.</p>
+<p><code>nodata-color=</code> (raster) Color for raster pixels removed by clipping. The default is transparent, as with <a href="#-proj"><code>-proj</code></a> <code>nodata-color=</code>.</p>
 <p>Common options: <a href="#common-options"><code>name=</code> <code>+</code> <code>target=</code></a></p>
+<p>Raster layers are cropped to the bounding box of the clip polygons, and pixels whose centers are outside the polygons are removed. Clipping to a layer that is not a polygon layer crops a raster to the layer&#39;s bounding box.</p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Example: Clip a polygon layer using another polygon layer.</span>
 mapshaper usa_counties.shp -clip land-area.shp -o clipped.shp
 </code></pre>
@@ -456,65 +569,6 @@ mapshaper data.json \
     categories=<span class="hljs-string">&#x27;Republican,Democrat,Other&#x27;</span> \
   -style fill=<span class="hljs-string">&#x27;calcFill(PARTY)&#x27;</span> \
   -o output.svg
-</code></pre>
-</section>
-<section class="cmd-section" data-id="-contours" data-name="-contours" data-options="closed no-smoothing interval levels base band field value lower upper name no-replace target"><h3 id="-contours">-contours</h3>
-<p>Convert a raster layer to a polyline layer of contour lines (isolines). Add
-<code>closed</code> to create polygon bands between the contour lines instead. This is most
-often used with a digital elevation model, but it works on any continuous
-raster.</p>
-<p>Running <code>-blur</code> before <code>-contours</code> produces smoother lines than contouring the raw data.</p>
-<p>Values are read at pixel centers, so ordinary contour lines span from the center
-of the first pixel to the center of the last, half a pixel inside the raster&#39;s
-bounds. Closed bands extend lines that reach this outer lattice to the raster
-bounds and use the bounds as a fixed outer frame.</p>
-<p><code>-contours</code> finishes by smoothing the lines, using an interval of a quarter of a
-pixel. Where smoothing causes lines to cross, the intersecting lines are left unsmoothed. Use <code>no-smoothing</code> to
-skip the step and keep the raw traced geometry, which you can then smooth
-yourself with <code>-smooth</code>.</p>
-<p>By default the contour layer replaces the raster layer. Use <code>+</code> to keep the
-raster as well.</p>
-<p><code>interval=</code> Spacing between contour levels. Levels are multiples of this value,
-so <code>interval=100</code> gives levels at 100, 200, 300 and so on. If neither
-<code>interval=</code> nor <code>levels=</code> is given, mapshaper picks a round interval that
-divides the raster&#39;s value range into roughly fifteen steps.</p>
-<p><code>levels=</code> Explicit comma-separated list of contour levels, for example
-<code>levels=0,100,500,1000</code>. Overrides <code>interval=</code>.</p>
-<p><code>base=</code> Value to align <code>interval=</code> to (the default is 0). For example
-<code>interval=100 base=50</code> gives levels at 50, 150, 250 and so on.</p>
-<p><code>band=</code> Index of the band to read values from (the default is 0). Elevation
-models normally have a single band.</p>
-<p><code>field=</code> Name of the output field holding each line&#39;s contour value. The default
-is <code>value</code>. This option applies to line output, not <code>closed</code> output.</p>
-<p><code>closed</code> Create polygon bands instead of contour lines. Each feature has
-<code>lower</code> and <code>upper</code> fields. Interior bands are lower-inclusive and
-upper-exclusive; the highest band includes the raster maximum. The lowest and
-highest bounds are the minimum and maximum valid raster values, while interior
-bounds come from <code>interval=</code> or <code>levels=</code>.</p>
-<p><code>no-smoothing</code> Skip contour smoothing. With <code>closed</code>, the contour boundaries are
-smoothed by default but the raster and nodata closure boundaries are not.</p>
-<p>Common options: <code>name=</code>, <code>no-replace</code>, <code>target=</code></p>
-<pre><code class="hljs language-bash"><span class="hljs-comment"># Trace 100-meter contours from an elevation model</span>
-mapshaper dem.tif -contours interval=100 -o contours.json
-
-<span class="hljs-comment"># Blur the data first, then label the output field ELEV</span>
-mapshaper dem.tif raster-type=continuous \
-  -proj webmercator \
-  -blur radius=3 \
-  -contours interval=50 field=ELEV \
-  -o contours.json
-
-<span class="hljs-comment"># Keep the raster and draw specific contours over it</span>
-mapshaper dem.tif -contours levels=500,1000,1500 + name=contours \
-  -o output.svg
-
-<span class="hljs-comment"># Create smoothed, closed elevation bands</span>
-mapshaper dem.tif -contours interval=100 closed -o bands.json
-
-<span class="hljs-comment"># Trace raw lines, then smooth them by hand</span>
-mapshaper dem.tif -contours interval=100 no-smoothing \
-  -smooth 40 no-corners no-prefilter \
-  -o contours.json
 </code></pre>
 </section>
 <section class="cmd-section" data-id="-dashlines" data-name="-dashlines" data-options="dash-length gap-length scaled planar where"><h3 id="-dashlines">-dashlines</h3>
@@ -595,13 +649,6 @@ mapshaper counties.shp \
 <p><code>copy-fields=</code> List of fields to copy from the original polygon layer to each dot feature.</p>
 <p><code>multipart</code> Combine groups of same-color dots into multi-part features.</p>
 <p>Other options: <code>name=</code> <code>+</code> <code>target=</code></p>
-</section>
-<section class="cmd-section" data-id="-drop" data-name="-drop" data-options="fields geometry holes target"><h3 id="-drop">-drop</h3>
-<p>Delete the target layer(s) or elements within the target layer(s).</p>
-<p><code>fields=</code>  Delete a (comma-separated) list of attribute data fields. To delete all fields, use <code>fields=*</code>.</p>
-<p><code>geometry</code>  Delete all geometry.</p>
-<p><code>holes</code>  Delete any holes from a polygon layer.</p>
-<p><code>target=</code>  Layer(s) to target.</p>
 </section>
 <section class="cmd-section" data-id="-each" data-name="-each" data-options="this expression where target"><h3 id="-each">-each</h3>
 <p>Apply a JavaScript expression to each feature in a layer. Data properties are available as local variables; the feature&#39;s geometry-derived properties are available on the <code>this</code> object (e.g. <code>this.area</code>, <code>this.centroidX</code>, <code>this.bbox</code>).</p>
@@ -717,16 +764,6 @@ mapshaper states.shp -filter-fields FID,NAME -o out.shp
 <p><code>remove-empty</code> Delete features with null geometry.</p>
 <p><a href="#common-options"><code>target=</code></a></p>
 </section>
-<section class="cmd-section" data-id="-frame" data-name="-frame" data-options="bbox width height aspect-ratio margin offset offsets ignore-symbols name target"><h3 id="-frame">-frame</h3>
-<p>Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the <code>bbox=</code> option or the bounding box of the target layer or layers, if <code>bbox=</code> is omitted. When fitting to target layers, the extent includes room for the point symbols and labels in those layers, and for the strokes and outer glows of their lines and polygons, as drawn at the frame&#39;s display size. With no margin, everything drawn falls inside the frame.</p>
-<p><code>width=</code>  Width of frame (e.g. 5in, 10cm, 600px; default is 800px)</p>
-<p><code>height=</code>  Height of frame (in addition to or instead of width= option)</p>
-<p><code>aspect-ratio=</code>  Aspect ratio of frame (optional)</p>
-<p><code>bbox=</code> Bounding coordinates of frame contents in projected map coordinates (xmin,ymin,xmax,ymax). If omitted, the bounding box of the target layer(s) is used.</p>
-<p><code>margin=</code> Padding around the frame&#39;s <code>bbox</code> in display units or as a percentage of the frame&#39;s width, e.g. 5cm 20px 5%. As in CSS, a percentage is of the width on every side (top and bottom included), so a single value gives an even margin. Takes one to four values in CSS order: all sides (<code>5%</code>); vertical and horizontal (<code>margin=10%,2%</code>); top, horizontal and bottom; or top, right, bottom and left (<code>margin=&#39;40px 2% 2% 2%&#39;</code>). When the frame has a fixed width and height, the content is centered and the padding is a minimum on two sides. (The older <code>offset=</code> and <code>offsets=</code> options still work; they take a single value or a list in l,b,r,t order.)</p>
-<p><code>ignore-symbols</code>  Fit the frame to the coordinates of the target layers, without making room for symbols, labels and strokes</p>
-<p>Other options: <code>name=</code> <code>target=</code></p>
-</section>
 <section class="cmd-section" data-id="-graticule" data-name="-graticule" data-options="polygon outline interval base"><h3 id="-graticule">-graticule</h3>
 <p>Create a graticule layer appropriate for the target dataset&#39;s projection. Bounded and interrupted projections include matching outline paths.</p>
 <p><code>polygon</code> Create a polygon enclosing the entire area of the graticule. Useful for creating background or outline shapes for bounded and interrupted projections.</p>
@@ -763,16 +800,16 @@ mapshaper states.shp -filter-fields FID,NAME -o out.shp
 mapshaper states.shp -filter <span class="hljs-string">&#x27;STATE==&quot;OR&quot; || STATE==&quot;WA&quot;&#x27;</span> -innerlines -o out.shp
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-join" data-name="-join" data-options="keys source calc where fields prefix interpolate point-method largest-overlap min-overlap-pct min-overlap-area max-distance duplication sum-fields string-fields field-types force unjoined unmatched encoding target"><h3 id="-join">-join</h3>
-<p>Join attribute data from a source layer or file to a target layer. If the <code>keys=</code> option is used, Mapshaper will join records by matching the values of key fields. If the <code>keys=</code> option is missing, Mapshaper will perform a polygon-to-polygon, point-to-polygon, polygon-to-point or point-to-point spatial join.</p>
-<p><code>&lt;file|layer&gt;</code> or <code>source=</code> File or layer containing data records to join.</p>
+<section class="cmd-section" data-id="-join" data-name="-join" data-options="keys source calc where fields prefix interpolate point-method largest-overlap min-overlap-pct min-overlap-area max-distance duplication sum-fields string-fields field-types force unjoined unmatched encoding target band1 band2 coverage"><h3 id="-join">-join</h3>
+<p>Join attribute data from a source layer or file to a target layer. If the <code>keys=</code> option is used, Mapshaper will join records by matching the values of key fields. If the <code>keys=</code> option is missing, Mapshaper will perform a polygon-to-polygon, point-to-polygon, polygon-to-point or point-to-point spatial join. A raster source can be joined to a polygon layer (see <a href="#joining-a-raster">Joining a raster</a> below).</p>
+<p><code>&lt;file|layer&gt;</code> or <code>source=</code> File or layer containing data records to join, or a raster.</p>
 <p><code>keys=</code>  Names of two fields to use as join keys, separated by a comma. The key field from the destination table is followed by the key field from the source table. If the <code>keys=</code> option is missing, mapshaper performs a spatial join.</p>
 <p><code>calc=</code> Use JS assignments and built-in functions to convert values from the source table to (new) fields the target table. See the <a href="#-calc"><code>-calc</code> command reference</a> for a list of supported functions. Useful for handling many-to-one joins. See example below.</p>
 <p><code>where=</code>  Use a boolean JS expression to filter records from the source table. The expression has the same syntax as the expression used by the <code>-filter</code> command. The functions <code>isMax(&lt;field&gt;)</code> <code>isMin(&lt;field&gt;)</code> and <code>isMode(&lt;field&gt;)</code> can be used in many-to-one joins to select among source records.</p>
 <p><code>fields=</code>  A comma-separated list of fields to copy from the external table. If both <code>fields</code> and <code>calc</code> are absent, all source fields are copied (except the source key field when joining with <code>keys=</code>). If <code>calc</code> is present and <code>fields</code> is absent, no fields are copied by default unless assigned by <code>calc</code>. Use <code>fields=*</code> to copy all source fields, including any key field. Use <code>fields=</code> (empty list) to copy no fields.</p>
 <p><code>prefix=</code> Add a prefix to the names of fields joined from the external attribute table.</p>
 <p><code>interpolate=</code>  (polygon-to-polygon joins only) A list of fields to interpolate/reaggregate based on area of overlap. Interpolates fields containing count data, such as population counts or vote counts. Treats data as being uniformly distributed within polygon areas. Also interpolates string fields containing categorical data. The value associated with the largest area of overlap between source and target polygons gets copied to the target feature.</p>
-<p><code>point-method</code> (polygon-to-polygon joins only) Use an alternate method for joining two polygon layers. The default polygon-polygon join method detects areas of overlap between two polygon layers by compositing the two layers internally. This method is simpler -- it generates a temporary point layer from the source layer with the greater number of features (using the same inner-point method as the <code>-points inner</code> command), and then performs a point-to-polygon or polygon-to-point join. This method does not support the <code>interpolate=</code> option.</p>
+<p><code>point-method</code> (polygon-to-polygon and raster joins only) When joining a raster, join each pixel to the polygons that contain its center, instead of weighting pixels by area. When joining two polygon layers, use an alternate method. The default polygon-polygon join method detects areas of overlap between two polygon layers by compositing the two layers internally. This method is simpler -- it generates a temporary point layer from the source layer with the greater number of features (using the same inner-point method as the <code>-points inner</code> command), and then performs a point-to-polygon or polygon-to-point join. This method does not support the <code>interpolate=</code> option.</p>
 <p><code>largest-overlap</code> (polygon-to-polygon joins only) selects a single polygon to join when multiple source polygons overlap a target polygon, based on largest area of overlap.</p>
 <p><code>min-overlap-pct=</code> (polygon-to-polygon joins only) Only source features with at least this percentage overlap of the target feature (by area) get joined.</p>
 <p><code>min-overlap-area=</code> (polygon-to-polygon joins only) Only source features with at least this much areal overlap of the target feature get joined.</p>
@@ -785,7 +822,16 @@ mapshaper states.shp -filter <span class="hljs-string">&#x27;STATE==&quot;OR&quo
 <p><code>unjoined</code>  Copy unjoined records from the source table to a layer named &quot;unjoined&quot;.</p>
 <p><code>unmatched</code>  Copy unmatched records from the destination table to a layer named &quot;unmatched&quot;.</p>
 <p>Other options: <code>encoding=</code> <code>target=</code></p>
+<h4 id="joining-a-raster">Joining a raster</h4>
+<p>When the source is a raster layer or file (such as a GeoTIFF) and the target is a polygon layer, <code>calc=</code> is required, and it aggregates the values of the pixels that overlap each polygon. Band values are available as <code>band1</code>, <code>band2</code>, etc., numbered after the bands of the source file. Nodata is tested band by band: a band value equal to the nodata value (or NaN) is ignored by <code>sum()</code>, <code>mean()</code>, <code>median()</code>, <code>min()</code>, <code>max()</code> and the other numeric functions, and by <code>mode()</code>, while <code>count()</code> counts every pixel that has a valid value in some band. Pixels that are nodata in every band, or outside the area covered by a projected or clipped raster, are skipped.</p>
+<p>By default, each pixel is treated as a rectangle and weighted by the fraction of its area inside the polygon. Aggregate functions use the weights: <code>sum()</code> is the weighted sum, which apportions count data like population between polygons; <code>mean()</code> is the weighted mean, suitable for measurements like elevation; <code>count()</code> is the total weight (the number of pixels covered, which can be fractional); <code>median()</code> and <code>quantile()</code> are weighted quantiles; and <code>mode()</code> returns the value covering the largest area. <code>min()</code>, <code>max()</code> and <code>collect()</code> ignore the weights. The weight is also available as <code>coverage</code>, e.g. <code>where=&#39;coverage &gt; 0.5&#39;</code>. With <code>point-method</code>, pixels are joined to the polygons that contain their centers, and every weight is 1.</p>
+<p><code>where=</code> filters pixels, and can refer to the target record as <code>target</code>. Only the <code>calc=</code>, <code>where=</code>, <code>point-method</code>, <code>unmatched</code> and <code>target=</code> options apply. The raster and the polygons must use the same coordinate system, and rotated rasters are not supported.</p>
 <p><strong>Examples</strong></p>
+<p>Sum population counts from a population grid.</p>
+<pre><code class="hljs language-bash">mapshaper counties.shp \
+  -<span class="hljs-built_in">join</span> population.tif calc=<span class="hljs-string">&#x27;population = sum(band1)&#x27;</span> \
+  -o out.shp
+</code></pre>
 <p>Join a point layer to a polygon layer (spatial join), using the <code>calc=</code> option to handle many-to-one matches.</p>
 <pre><code class="hljs language-bash">mapshaper states.shp \
   -<span class="hljs-built_in">join</span> points.shp calc=<span class="hljs-string">&#x27;median_score = median(SCORE),
@@ -880,18 +926,6 @@ mapshaper countries.geojson \
   -o borders.geojson
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-merge-layers" data-name="-merge-layers" data-options="force undefined flatten name target"><h3 id="-merge-layers">-merge-layers</h3>
-<p>Merge features from several layers into a single layer. Layers can only be merged if they have compatible geometry types. Target layers should also have compatible data fields, unless the <code>force</code> option is used.</p>
-<p><code>force</code>  Allow merging layers with inconsistent fields. When a layer is missing a particular field, the field will be added, with the values set to <code>undefined</code>. Using this option, you are still prevented from merging fields with different data types (e.g. a field containing numbers in one layer and strings in another). You are also still prevented from merging layers containing different geometry types.</p>
-<p><code>flatten</code> (polygon layers) Remove polygon overlaps by assigning overlapping areas to the last overlapping polygon (the topmost feature if features are rendered in sequence).</p>
-<p>Common options: <code>name=</code> <code>target=</code></p>
-<pre><code class="hljs language-bash"><span class="hljs-comment"># Example: Combine features from several Shapefiles into a single Shapefile.</span>
-<span class="hljs-comment"># -i combine-files is used because files are processed separately by default.</span>
-mapshaper -i OR.shp WA.shp CA.shp AK.shp combine-files \
-	-merge-layers \
-	-o pacific_states.shp
-</code></pre>
-</section>
 <section class="cmd-section" data-id="-mosaic" data-name="-mosaic" data-options="calc name target"><h3 id="-mosaic">-mosaic</h3>
 <p>Flatten a polygon layer by converting overlapping areas to separate polygons.</p>
 <p><code>calc=</code> Use a JavaScript expression to handle many-to-one aggregation (similar to the <code>calc=</code> option of the<code>-join</code> and <code>-dissolve</code> functions). See <a href="#-calc">-calc</a> for a list of supported functions.</p>
@@ -933,13 +967,13 @@ mapshaper counties.shp \
 <p><code>from-rings</code>  Convert a layer of closed polyline rings into polygons. Nested rings in multipart features are converted into holes.</p>
 <p>Common options: <code>target=</code></p>
 </section>
-<section class="cmd-section" data-id="-proj" data-name="-proj" data-options="crs densify match init nodata-color transparent background bilinear nearest target lat_0 narukawa2022 markley calm dymaxion dymaxion2 butterfly butterfly2 cahill_keyes"><h3 id="-proj">-proj</h3>
+<section class="cmd-section" data-id="-proj" data-name="-proj" data-options="crs densify match init nodata-color background bilinear nearest target lat_0 narukawa2022 markley calm dymaxion dymaxion2 butterfly butterfly2 cahill_keyes"><h3 id="-proj">-proj</h3>
 <p>Project a dataset using a PROJ string, EPSG code or alias. This command affects all layers in the dataset(s) containing the targeted layer or layers. Information on PROJ string syntax can be found on the <a href="https://proj.org/usage/index.html">PROJ website</a>.</p>
 <p><code>&lt;crs&gt;</code> or <code>crs=</code>  Target CRS, given as a Proj.4 definition or an alias. Use the <a href="#-projections"><code>-projections</code></a> command to list available projections and aliases. In some projections that require additional parameters, Mapshaper can fit parameters automatically from the data extent, for example <code>crs=utm</code> selects a UTM zone. You can also pass a Proj4 string enclosed in quotes, for example <code>crs=&#39;+proj=utm +zone=27&#39;</code>.</p>
 <p><code>densify</code> Interpolate vertices along long line segments as needed to approximate curved lines.</p>
 <p><code>match=</code> Match the projection of the given layer or .prj file.</p>
 <p><code>init=</code> Define the pre-projected coordinate system, if unknown. This option is not needed if the source coordinate system is defined by a .prj file, or if the source CRS is WGS84. As with <code>crs</code>, you can pass a Proj4 string enclosed in quotes if the selected projection requires extra parameters, for example <code>init=&#39;+proj=utm +zone=33&#39;</code>.</p>
-<p><code>nodata-color=</code> (raster) Color for output pixels that do not receive source raster content after reprojection. The default is white for image rasters and the source nodata value, when available, for categorical and continuous rasters. Use <code>transparent</code> for transparent output.</p>
+<p><code>nodata-color=</code> (raster) Color for output pixels that do not receive source raster content after reprojection. By default these pixels are transparent: they get the raster&#39;s nodata value, or for an 8-bit image without one, an alpha band is added. A raster that has no nodata value and is not an 8-bit image is given a nodata value that its data does not use, such as -9999.</p>
 <p><code>background=</code> (raster) Alias for <code>nodata-color=</code>.</p>
 <p><code>resampling=nearest|bilinear</code> (raster) Resampling method for raster reprojection. Overrides the default set by <code>-i raster-type=</code>. Use <code>bilinear</code> for smooth continuous-tone imagery and elevation data, and <code>nearest</code> for categorical rasters or exact cell values. Bilinear resampling skips nodata source pixels and renormalizes the remaining weights, so a nodata value is never averaged into a real one.</p>
 <p><code>target=</code> Layer(s) to target. All layers belonging to the same dataset as a targeted layer will be reprojected. To reproject all datasets, use <code>target=*</code>.</p>
@@ -1036,15 +1070,6 @@ their default central meridians of 157.5°E and 20°W, respectively.
 mapshaper states.shp -rename-fields FIPS=STATE_FIPS,NAME=STATE_NAME -o out.shp
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-rename-layers" data-name="-rename-layers" data-options="names target"><h3 id="-rename-layers">-rename-layers</h3>
-<p>Assign new names to layers. If fewer names are given than there are layers, the last name in the list is repeated with numbers appended (e.g. layer1, layer2).</p>
-<p><code>&lt;names&gt;</code> or <code>names=</code>  One or more layer names (comma-separated).</p>
-<p><code>target=</code>  Rename a subset of all layers.</p>
-<pre><code class="hljs language-bash"><span class="hljs-comment"># Example: Create a TopoJSON file with sensible object names.</span>
-mapshaper ne_50m_rivers_lake_centerlines.shp ne_50m_land.shp combine-files \
-  -rename-layers water,land -o target=* layers.topojson 
-</code></pre>
-</section>
 <section class="cmd-section" data-id="-repel" data-name="-repel" data-options="radius width max-shift padding margin polygons ticks strength target"><h3 id="-repel">-repel</h3>
 <p>Move colliding point symbols apart. The target must be a projected point layer containing symbols from <a href="#-symbols"><code>-symbols</code></a>, from <a href="#-style"><code>-style</code></a> or from the <code>radius=</code> option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.</p>
 <p>The command supports symbols with a circular outline: circles, pies, donuts and &quot;ring&quot;-type symbols. Other symbols created with the <code>-symbols</code> command, like arrows and polygons, are also supported if a <code>radius=</code> option is provided.</p>
@@ -1087,80 +1112,6 @@ $ mapshaper data.json \
   -o data2.json
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-run" data-name="-run" data-options="target io undefined targets"><h3 id="-run">-run</h3>
-<p>Run mapshaper commands from a <a href="/docs/essentials/command-line.html#command-files">command file</a> or generated on-the-fly from a JS expression.</p>
-<p><code>&lt;file|expression&gt;</code>  Either:</p>
-<ul>
-<li>A path to a mapshaper <a href="/docs/essentials/command-line.html#command-files">command file</a>.</li>
-<li>A JS expression or template containing embedded expressions, for generating one or more mapshaper commands.</li>
-</ul>
-<ul>
-<li>Embedded expressions are enclosed in curly braces (see below).</li>
-<li>Expressions can access <code>target</code> and <code>io</code> objects.</li>
-<li>Expressions can also access functions and data loaded with the <code>-require</code> command.</li>
-<li>Functions can be async.</li>
-</ul>
-<p>Expression context:</p>
-<p>If command has a single target layer:
-<code>target</code> object provides data and information about the command&#39;s target layer</p>
-<ul>
-<li><code>target.layer_name</code>  Name of layer</li>
-<li><code>target.geojson</code>  (getter/setter) Returns a GeoJSON FeatureCollection for the layer (getter) or replaces the layer with the contents of a GeoJSON object (setter).</li>
-<li><code>target.geometry_type</code> One of: polygon, polyline, point, <code>undefined</code></li>
-<li><code>target.feature_count</code> Number of features in the layer</li>
-<li><code>target.null_shape_count</code> Number of features with null geometry</li>
-<li><code>target.null_data_count</code> Number of features with no attribute data</li>
-<li><code>target.bbox</code> GeoJSON-style bounding box</li>
-<li><code>target.proj4</code> PROJ-formatted string giving the CRS (coordinate reference system) of the layer</li>
-</ul>
-<p><code>targets</code> object gives access to all layers targetted by the run command.</p>
-<ul>
-<li>by numerical index, like an array (<code>targets[0]</code> refers to the first target layer)</li>
-<li>by layer name (<code>targets.states</code> refers to a layer named &quot;states&quot;)</li>
-</ul>
-<p><code>io</code> object has a method for passing data to the <code>-i</code> command.</p>
-<ul>
-<li><code>io.ifile(&lt;filename&gt;, &lt;data&gt;)</code> Create a temp file to use as input in a <code>-run</code> command (see example 2 below)</li>
-</ul>
-<p><strong>Example 1:</strong> Apply a custom projection based on the layer extent.</p>
-<pre><code class="hljs language-bash">$ mapshaper -i country.shp \
-    -require projection.js \
-    -run <span class="hljs-string">&#x27;-proj {tmerc(target.bbox)}&#x27;</span> \
-    -o
-</code></pre>
-<pre><code class="hljs language-javascript"><span class="hljs-comment">// contents of projection.js file</span>
-<span class="hljs-variable language_">module</span>.<span class="hljs-property">exports</span>.<span class="hljs-property">tmerc</span> = <span class="hljs-keyword">function</span>(<span class="hljs-params">bbox</span>) {
-  <span class="hljs-keyword">var</span> lon0 = (bbox[<span class="hljs-number">0</span>] + bbox[<span class="hljs-number">2</span>]) / <span class="hljs-number">2</span>,
-      lat0 = (bbox[<span class="hljs-number">1</span>] + bbox[<span class="hljs-number">3</span>]) / <span class="hljs-number">2</span>;
-  <span class="hljs-keyword">return</span> <span class="hljs-string">`+proj=tmerc lat_0=<span class="hljs-subst">${lat0}</span> lon_0=<span class="hljs-subst">${lon0}</span>`</span>;
-};
-</code></pre>
-<p><strong>Example 2:</strong> Convert points to a Voronoi diagram using a template expression
-together with an external script.</p>
-<pre><code class="hljs language-bash">$ mapshaper points.geojson \
-  -require script.js \
-  -run <span class="hljs-string">&#x27;-i {io.ifile(&quot;voronoi.json&quot;, voronoi(target.geojson, target.bbox))}&#x27;</span> \
-  -o
-</code></pre>
-<pre><code class="hljs language-javascript"><span class="hljs-comment">// contents of script.js file</span>
-<span class="hljs-variable language_">module</span>.<span class="hljs-property">exports</span>.<span class="hljs-property">voronoi</span> = <span class="hljs-keyword">async</span> <span class="hljs-keyword">function</span>(<span class="hljs-params">points, bbox</span>) {
-  <span class="hljs-keyword">const</span> d3 = <span class="hljs-keyword">await</span> <span class="hljs-keyword">import</span>(<span class="hljs-string">&#x27;d3-delaunay&#x27;</span>); <span class="hljs-comment">// installed locally</span>
-  <span class="hljs-keyword">const</span> coords = points.<span class="hljs-property">features</span>.<span class="hljs-title function_">map</span>(<span class="hljs-function"><span class="hljs-params">feat</span> =&gt;</span> feat.<span class="hljs-property">geometry</span>.<span class="hljs-property">coordinates</span>);
-  <span class="hljs-keyword">const</span> voronoi = d3.<span class="hljs-property">Delaunay</span>.<span class="hljs-title function_">from</span>(coords).<span class="hljs-title function_">voronoi</span>(bbox);
-  <span class="hljs-keyword">const</span> features = <span class="hljs-title class_">Array</span>.<span class="hljs-title function_">from</span>(voronoi.<span class="hljs-title function_">cellPolygons</span>()).<span class="hljs-title function_">map</span>(<span class="hljs-keyword">function</span>(<span class="hljs-params">ring, i</span>) {
-    <span class="hljs-keyword">return</span> {
-      <span class="hljs-attr">type</span>: <span class="hljs-string">&#x27;Feature&#x27;</span>,
-      <span class="hljs-attr">properties</span>: points.<span class="hljs-property">features</span>[i].<span class="hljs-property">properties</span>,
-      <span class="hljs-attr">geometry</span>: {
-        <span class="hljs-attr">type</span>: <span class="hljs-string">&#x27;Polygon&#x27;</span>,
-        <span class="hljs-attr">coordinates</span>: [ring]
-      }
-    };
-  });
-  <span class="hljs-keyword">return</span> {<span class="hljs-attr">type</span>: <span class="hljs-string">&#x27;FeatureCollection&#x27;</span>, <span class="hljs-attr">features</span>: features};
-};
-</code></pre>
-</section>
 <section class="cmd-section" data-id="-scalebar" data-name="-scalebar" data-options="label units km meters miles feet style dual-units align left center right label-case upper lower bar-width tic-length color font-size font-family font-style font-weight label-position top bottom position top-left top-center top-right bottom-left bottom-center bottom-right margin remove"><h3 id="-scalebar">-scalebar</h3>
 <p>Add a scale bar to a map. The scale bar&#39;s settings are stored in a data-only layer.</p>
 <p>If a map frame exists (see <a href="#-frame">-frame</a>), the scale bar belongs to the frame: it is stored in the frame&#39;s dataset, running <code>-scalebar</code> again replaces it, and it is exported along with the frame (e.g. <code>-o target=* map.svg</code>). In the web UI, it is drawn in preview mode and included in SVG exports. Without a frame, each <code>-scalebar</code> command adds a standalone scale bar layer, which is included in SVG output if the layer is one of the output layers.</p>
@@ -1179,13 +1130,6 @@ together with an external script.</p>
 <p><code>position=</code> Position of the scalebar on the map: <code>top-left</code> (default), <code>top-center</code>, <code>top-right</code>, <code>bottom-left</code>, <code>bottom-center</code> or <code>bottom-right</code>.</p>
 <p><code>margin=</code> Offset in pixels from edge of map.</p>
 <p><code>remove</code> Remove the map frame&#39;s scale bar.</p>
-</section>
-<section class="cmd-section" data-id="-shape" data-name="-shape" data-options="coordinates closed name"><h3 id="-shape">-shape</h3>
-<p>Create a new layer containing a single polyline or polygon shape.</p>
-<p><code>coordinates=&lt;x,y,...&gt;</code>  Specify vertex coordinates as a comma-separated list.</p>
-<p><code>offsets=&lt;dx,dy,...&gt;</code>   Specify vertex coordinates as a list of offsets from the previous vertex. The first vertex in the list is offset from the last coordinate in the <code>coordinates=</code> list.</p>
-<p><code>closed</code>  Close an open path to form a polygon shape.</p>
-<p><code>name=</code> Assign a name to the newly created layer.</p>
 </section>
 <section class="cmd-section" data-id="-simplify" data-name="-simplify" data-options="visvalingam percentage dp rdp weighted weighting resolution interval planar variable keep-shapes no-repair stats"><h3 id="-simplify">-simplify</h3>
 <p>Mapshaper supports Douglas-Peucker simplification and two kinds of Visvalingam simplification.</p>
@@ -1273,30 +1217,11 @@ mapshaper states.shp name=<span class="hljs-string">&#x27;&#x27;</span> -<span c
 mapshaper states.shp -<span class="hljs-built_in">split</span> -o format=geojson
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-split-on-grid" data-name="-split-on-grid" data-options="target"><h3 id="-split-on-grid">-split-on-grid</h3>
-<p>Split features into separate layers using a grid of cols,rows cells. Useful for dividing a large dataset into smaller files that can be loaded dynamically into an interactive map. Use <code>-o bbox-index</code> to export a file containing the name and bounding box of the shapes in each file. Empty cells are removed from the output.</p>
-<p><code>&lt;cols,rows&gt;</code>  Size of the grid, e.g. <code>-split-on-grid 12,10</code></p>
-<p>Common options: <code>target=</code> </p>
-</section>
-<section class="cmd-section" data-id="-subdivide" data-name="-subdivide" data-options="expression target"><h3 id="-subdivide">-subdivide</h3>
-<p>Recursively divide a layer using a boolean JS expression. The expression is first evaluated against all features in the layer. If true, the features are spatially partitioned either vertically or horizontally, according to whether the aggregate bounding box is relatively tall or wide. See example below.</p>
-<p>Subdivide expressions can call several functions that operate on a group of features. The <code>sum()</code> function takes a feature-level expression as an argument and returns the summed result after applying the expression to each feature in the group. Similar functions include <code>min()</code> <code>max()</code> <code>average()</code> and <code>median()</code>.</p>
-<p><code>&lt;expression&gt;</code> or <code>expression=</code> Boolean JavaScript expression</p>
-<p>Common options:  <code>target=</code></p>
-<p><strong>Example</strong></p>
-<pre><code class="hljs language-bash"><span class="hljs-comment"># Aggregate census tracts into groups of less than 1,000,000 population</span>
-<span class="hljs-comment"># and less than 100 sq km in area.</span>
-mapshaper tracts.shp
-  -subdivide <span class="hljs-string">&quot;sum(&#x27;POPULATION&#x27;) &gt;= 1000000 &amp;&amp; sum(&#x27;this.area&#x27;) &gt; 1e8&quot;</span> \
-  -dissolve sum-fields=POPULATION \
-  -merge-layers \
-  -o tract_groups.shp
-</code></pre>
-</section>
-<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers outer-glow-color outer-glow-width outer-glow-opacity inner-glow-color inner-glow-width inner-glow-opacity stroke stroke-width stroke-dasharray stroke-linecap round butt square line-start arrow wide-arrow open-arrow dot none line-end line-end-size line-fade line-taper casing-color casing-width casing-opacity opacity stroke-opacity label-text font-size text-anchor icon icon-size icon-color icon-opacity target"><h3 id="-style">-style</h3>
+<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear opacity class css style fill pink fill-pattern ortho npers outer-glow-color outer-glow-width outer-glow-opacity inner-glow-color inner-glow-width inner-glow-opacity stroke stroke-width stroke-dasharray stroke-linecap round butt square line-start arrow wide-arrow open-arrow dot none line-end line-end-size line-fade line-taper casing-color casing-width casing-opacity stroke-opacity label-text font-size text-anchor icon icon-size icon-color icon-opacity target"><h3 id="-style">-style</h3>
 <p>Add common SVG attributes for SVG export and display in the web UI. Attribute values take either a literal value or a JS expression. See <a href="/docs/guides/expressions.html">JavaScript expressions</a> for the available context. This command was named <code>-svg-style</code> in earlier versions of mapshaper.</p>
 <p><code>where=</code>           Boolean JS expression for targetting a subset of features.</p>
-<p><code>clear</code> Remove all style properties from a layer.</p>
+<p><code>clear</code> Remove all style properties from a layer. On a raster layer, removes the palette set by <code>-classify</code> and the opacity.</p>
+<p>On a raster layer, <code>-style</code> accepts only <code>opacity=</code> (0-1) and <code>clear</code>.</p>
 <p><code>class=</code>           One or more CSS classes, separated by spaces (e.g. <code>class=&quot;light semi-transparent&quot;</code>)</p>
 <p><code>css=</code>             Inline CSS to use as the <code>style=</code> attribute of each SVG symbol.</p>
 <p><code>fill=</code>            Fill color (e.g. <code>#eee</code> <code>pink</code> <code>rgba(0, 0, 0, 0.2)</code>)</p>
@@ -1401,6 +1326,199 @@ mapshaper polygons.shp \
 	-o out.shp
 </code></pre>
 </section>
+<h2 id="raster-commands" class="cmd-category">Raster Commands</h2>
+<p><code>-join</code>, <code>-proj</code>, <code>-clip</code> and <code>-erase</code> also work with raster layers.</p>
+<section class="cmd-section" data-id="-blend" data-name="-blend" data-options="source strength chroma base-color overlay name target"><h3 id="-blend">-blend</h3>
+<p>Apply the shadows and highlights of a hillshade layer (made by <code>-hillshade</code>) to a raster layer, or to vector layers drawn as a raster. The hillshade layer is removed unless <code>+</code> is used.</p>
+<p><code>&lt;source&gt;</code> or <code>source=</code>  Name of the hillshade layer.</p>
+<p><code>strength=</code>  Multiply the opacity of the shading: one value, or two values for shadows and highlights (default is 1).</p>
+<p><code>chroma=</code>  Share of the target&#39;s color kept under the shading, from 0 (plain stacking) to 1 (color kept); one value, or two values for shadows and highlights (default is 0,1).</p>
+<p><code>base-color=</code>  Color of flat ground in an opaque hillshade not made by <code>-hillshade</code> (default is its most common color).</p>
+<p><code>overlay</code>  Keep the targets and recolor the hillshade, so that drawn over the targets it looks like the blend.</p>
+<p>Common options: <code>name=</code> <code>target=</code> <code>+</code></p>
+</section>
+<section class="cmd-section" data-id="-blur" data-name="-blur" data-options="px radius target"><h3 id="-blur">-blur</h3>
+<p>Apply a Gaussian-like blur to raster layers. The command only works on projected
+rasters; unprojected lat-long rasters should be reprojected first with <code>-proj</code>.</p>
+<p><code>&lt;radius&gt;</code> Blur amount, given either in pixels or as a real-world distance. This
+value corresponds to <code>2 * sigma</code> of a Gaussian curve. Pixels can be written as
+plain numbers or with a <code>px</code> suffix (<code>radius=10</code>, <code>radius=10px</code>); distances carry
+units (<code>radius=500m</code>, <code>radius=2km</code>) and are converted using the size of a pixel
+on the ground, so the same command gives a comparable amount of blur on rasters
+of differing resolution. The radius can be given without the <code>radius=</code> prefix,
+for example <code>-blur 5px</code> or <code>-blur 500m</code>.</p>
+<p>Common options: <code>target=</code></p>
+</section>
+<section class="cmd-section" data-id="-contours" data-name="-contours" data-options="closed no-smoothing interval levels base band field value lower upper name no-replace target"><h3 id="-contours">-contours</h3>
+<p>Convert a raster layer to a polyline layer of contour lines (isolines). Add
+<code>closed</code> to create polygon bands between the contour lines instead. This is most
+often used with a digital elevation model, but it works on any continuous
+raster.</p>
+<p>Running <code>-blur</code> before <code>-contours</code> produces smoother lines than contouring the raw data.</p>
+<p>Values are read at pixel centers, so ordinary contour lines span from the center
+of the first pixel to the center of the last, half a pixel inside the raster&#39;s
+bounds. Closed bands extend lines that reach this outer lattice to the raster
+bounds and use the bounds as a fixed outer frame.</p>
+<p><code>-contours</code> finishes by smoothing the lines, using an interval of a quarter of a
+pixel. Where smoothing causes lines to cross, the intersecting lines are left unsmoothed. Use <code>no-smoothing</code> to
+skip the step and keep the raw traced geometry, which you can then smooth
+yourself with <code>-smooth</code>.</p>
+<p>By default the contour layer replaces the raster layer. Use <code>+</code> to keep the
+raster as well.</p>
+<p><code>interval=</code> Spacing between contour levels. Levels are multiples of this value,
+so <code>interval=100</code> gives levels at 100, 200, 300 and so on. If neither
+<code>interval=</code> nor <code>levels=</code> is given, mapshaper picks a round interval that
+divides the raster&#39;s value range into roughly fifteen steps.</p>
+<p><code>levels=</code> Explicit comma-separated list of contour levels, for example
+<code>levels=0,100,500,1000</code>. Overrides <code>interval=</code>.</p>
+<p><code>base=</code> Value to align <code>interval=</code> to (the default is 0). For example
+<code>interval=100 base=50</code> gives levels at 50, 150, 250 and so on.</p>
+<p><code>band=</code> Band to read values from, numbered from 1 as in the source file (the
+default is 1). Elevation models normally have a single band.</p>
+<p><code>field=</code> Name of the output field holding each line&#39;s contour value. The default
+is <code>value</code>. This option applies to line output, not <code>closed</code> output.</p>
+<p><code>closed</code> Create polygon bands instead of contour lines. Each feature has
+<code>lower</code> and <code>upper</code> fields. Interior bands are lower-inclusive and
+upper-exclusive; the highest band includes the raster maximum. The lowest and
+highest bounds are the minimum and maximum valid raster values, while interior
+bounds come from <code>interval=</code> or <code>levels=</code>.</p>
+<p><code>no-smoothing</code> Skip contour smoothing. With <code>closed</code>, the contour boundaries are
+smoothed by default but the raster and nodata closure boundaries are not.</p>
+<p>Common options: <code>name=</code>, <code>no-replace</code>, <code>target=</code></p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Trace 100-meter contours from an elevation model</span>
+mapshaper dem.tif -contours interval=100 -o contours.json
+
+<span class="hljs-comment"># Blur the data first, then label the output field ELEV</span>
+mapshaper dem.tif raster-type=continuous \
+  -proj webmercator \
+  -blur radius=3 \
+  -contours interval=50 field=ELEV \
+  -o contours.json
+
+<span class="hljs-comment"># Keep the raster and draw specific contours over it</span>
+mapshaper dem.tif -contours levels=500,1000,1500 + name=contours \
+  -o output.svg
+
+<span class="hljs-comment"># Create smoothed, closed elevation bands</span>
+mapshaper dem.tif -contours interval=100 closed -o bands.json
+
+<span class="hljs-comment"># Trace raw lines, then smooth them by hand</span>
+mapshaper dem.tif -contours interval=100 no-smoothing \
+  -smooth 40 no-corners no-prefilter \
+  -o contours.json
+</code></pre>
+</section>
+<section class="cmd-section" data-id="-deshadow" data-name="-deshadow" data-options="dem verbose name target"><h3 id="-deshadow">-deshadow</h3>
+<p>(Experimental) Remove terrain shadows and lighten dark slopes in an RGB aerial image, using an elevation layer to find them. Useful before applying a hillshade with <code>-blend</code>.</p>
+<p><code>&lt;dem&gt;</code> or <code>dem=</code>  Elevation layer covering the image (e.g. from <code>-fetch</code>).</p>
+<p><code>verbose</code>  Print technical details about the correction.</p>
+<p>Common options: <code>name=</code> <code>target=</code> <code>+</code></p>
+</section>
+<section class="cmd-section" data-id="-fetch" data-name="-fetch" data-options="bbox source year encoding scheme zoom raster-res bleed max-tiles name target"><h3 id="-fetch">-fetch</h3>
+<p>Download elevation or imagery tiles and import them as a new raster layer. The area and coordinate system come from the map frame, or else from the target layer, or else from <code>bbox=</code> (in lat-long, when there is no target layer). Run <code>-fetch sources</code> to list the data sources.</p>
+<p><code>&lt;source&gt;</code> or <code>source=</code>  Name of a data source (elevation: tilezen, mapterhorn, copernicus, 3dep, 3dep-1m; imagery: bluemarble, blackmarble, usgs, naip, naip-cir, sentinel2, landsat, eox), or the URL template of a tile service.</p>
+<p><code>year=</code>  Year of imagery, for sources with more than one (default is the latest).</p>
+<p><code>encoding=</code>  How a tile service&#39;s images encode their data: terrarium or mapbox (elevation), rgb (imagery) or bsq (float32 elevation from an ArcGIS exportImage URL).</p>
+<p><code>scheme=</code>  Tile numbering scheme of a tile service: xyz (default) or tms.</p>
+<p><code>zoom=</code>  Tile zoom level (default matches the resolution of the output).</p>
+<p><code>raster-res=</code>  Raster pixels per frame pixel (default is 2).</p>
+<p><code>bleed=</code>  Extra area around the frame, in frame pixels (default is 10).</p>
+<p><code>bbox=</code>  Area to fetch (xmin,ymin,xmax,ymax), instead of the frame.</p>
+<p><code>max-tiles=</code>  Maximum number of tiles to download (default is 500).</p>
+<p>Common options: <code>name=</code> <code>target=</code></p>
+</section>
+<section class="cmd-section" data-id="-hillshade" data-name="-hillshade" data-options="opaque azimuth altitude lighting hard balanced soft gdal exaggeration smoothing ambient texture aerial max-opacity highlights shadow-color highlight-color base-color gamma band name target"><h3 id="-hillshade">-hillshade</h3>
+<p>Convert an elevation raster to shaded relief. By default, the shading is transparent black and white, for overlaying or blending with other layers with <a href="#-blend"><code>-blend</code></a>. Run <code>-hillshade verbose</code> to print all the settings used. To sharpen the result, use <a href="#-sharpen"><code>-sharpen</code></a>.</p>
+<p><code>opaque</code>  Opaque grayscale shading. By default, shading is transparent black and white.</p>
+<p><code>azimuth=</code> <code>altitude=</code>  Direction and height of the main light, in degrees (defaults are 315 and 45).</p>
+<p><code>lighting=</code>  How the main light is supplemented by fainter lights from other directions. <code>hard</code> uses the main light alone, for the most contrast. <code>balanced</code> (the default) softens shadows by adding fill lights from multiple angles. <code>soft</code> adds still more fill light, which brightens slopes facing away from the main light for more midtones and less contrast. <code>gdal</code> imitates the multidirectional hillshade of GDAL.</p>
+<p><code>exaggeration=</code>  Vertical exaggeration (default depends on the map scale).</p>
+<p><code>smoothing=</code>  Terrain smoothing level, from 0 (off) to 4 (default is 1). Higher levels remove larger landforms.</p>
+<p><code>ambient=</code>  Darkening of terrain with a partial view of the sky, 0-1 (default is 0.5).</p>
+<p><code>texture=</code>  Opacity of texture shading, 0-1 (default is 0).</p>
+<p><code>aerial=</code>  Aerial perspective: reduce contrast at low elevations, 0-1 (default is 0).</p>
+<p><code>max-opacity=</code> <code>highlights=</code>  For transparent shading, opacity of the darkest shadows (default is 0.55), and of the brightest highlights relative to it (default is 0.5).</p>
+<p><code>shadow-color=</code> <code>highlight-color=</code> <code>base-color=</code>  Colors of shadows, highlights and (with <code>opaque</code>) flat ground; <code>base-color=</code> implies <code>opaque</code>.</p>
+<p><code>gamma=</code>  Shape of the tone curve; below 1 strengthens faint shading (default is 0.7).</p>
+<p><code>band=</code>  Band containing elevation values, numbered from 1 (default is 1).</p>
+<p>Common options: <code>name=</code> <code>target=</code> <code>+</code></p>
+</section>
+<section class="cmd-section" data-id="-sharpen" data-name="-sharpen" data-options="amount radius threshold name target"><h3 id="-sharpen">-sharpen</h3>
+<p>Sharpen an image or a hillshade with an unsharp mask.</p>
+<p><code>&lt;amount&gt;</code> or <code>amount=</code>  Strength of the sharpening, 0-3 (default is 0.25).</p>
+<p><code>radius=</code>  Radius of the blur that details are measured against, in pixels (default is 3).</p>
+<p><code>threshold=</code>  Skip differences in lightness smaller than this, 0-1 (default is 0), to leave faint texture alone.</p>
+<p>Common options: <code>name=</code> <code>target=</code> <code>+</code></p>
+<h4 id="example-4">Example</h4>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Shaded relief, lightly sharpened</span>
+mapshaper dem.tif -hillshade -sharpen -o hillshade.png
+</code></pre>
+</section>
+<section class="cmd-section" data-id="-tone" data-name="-tone" data-options="saturation lightness contrast gamma hue-shift hue-pivot opacity background name target"><h3 id="-tone">-tone</h3>
+<p>Adjust the colors of an 8-bit RGB or RGBA image, or the tone of an 8-bit grayscale image.</p>
+<p><code>saturation=</code>  Multiply the colorfulness; 0 is gray (default is 1).</p>
+<p><code>lightness=</code>  0-2: below 1 darkens toward black, above 1 lightens toward white (default is 1).</p>
+<p><code>contrast=</code>  Spread (above 1) or flatten (below 1) lightness around the image&#39;s median, without clipping (default is 1).</p>
+<p><code>gamma=</code>  Tone curve between the image&#39;s darks and lights; above 1 lightens midtones (default is 1).</p>
+<p><code>hue-shift=</code>  -1 to 1: move hues toward the pivot hue (positive) or away from it (negative).</p>
+<p><code>hue-pivot=</code>  Hue that <code>hue-shift=</code> moves toward: a color or an OKLCH hue angle (default is 85, yellow-tan).</p>
+<p><code>opacity=</code>  Opacity of the result, 0-1 (default is 1).</p>
+<p><code>background=</code>  Color to place the result over, making it opaque.</p>
+<p>Common options: <code>name=</code> <code>target=</code> <code>+</code></p>
+</section>
+<h2 id="experimental-commands" class="cmd-category">Experimental Commands</h2>
+<p>These commands may give unexpected results.</p>
+<section class="cmd-section" data-id="-cluster" data-name="-cluster" data-options="id-field pct max-width max-height max-area group-by target"><h3 id="-cluster">-cluster</h3>
+<p>Assign a cluster id to each polygon, grouping nearby polygons into compact clusters that can be merged with <code>-dissolve</code>. Results are approximate, e.g. for creating levels of detail on interactive maps.</p>
+<p><code>id-field=</code>  Name of the field for cluster ids (default is &quot;cluster&quot;).</p>
+<p><code>pct=</code>  Percentage of shapes to retain, e.g. 50%.</p>
+<p><code>max-width=</code> <code>max-height=</code> <code>max-area=</code>  Maximum size of a cluster.</p>
+<p><code>group-by=</code>  Only group polygons with the same value in this field.</p>
+<p>Common options: <code>target=</code></p>
+</section>
+<section class="cmd-section" data-id="-data-fill" data-name="-data-fill" data-options="field contiguous weight-field"><h3 id="-data-fill">-data-fill</h3>
+<p>Fill in missing values in a field of a polygon layer, using the values of neighboring polygons.</p>
+<p><code>field=</code>  Name of the field to fill in.</p>
+<p><code>contiguous</code>  Remove non-contiguous islands of data values.</p>
+<p><code>weight-field=</code>  Use this field&#39;s values to weight data islands.</p>
+</section>
+<section class="cmd-section" data-id="-fuzzy-join" data-name="-fuzzy-join" data-options="source field dedup-points no-dropouts contiguous target"><h3 id="-fuzzy-join">-fuzzy-join</h3>
+<p>Copy a field from a point layer to a polygon layer using a spatial join, filling in polygons that contain no points to create a continuous mosaic of values. Point locations are treated as potentially unreliable (e.g. geocoded addresses).</p>
+<p><code>&lt;source&gt;</code> or <code>source=</code>  File or layer containing the points.</p>
+<p><code>field=</code>  Field to join.</p>
+<p><code>dedup-points</code>  Remove points with the same location and field value.</p>
+<p><code>no-dropouts</code>  Try to retain all values from the point layer.</p>
+<p><code>contiguous</code>  Remove non-contiguous islands of data values.</p>
+<p>Common options: <code>target=</code></p>
+</section>
+<section class="cmd-section" data-id="-shape" data-name="-shape" data-options="coordinates offsets closed name"><h3 id="-shape">-shape</h3>
+<p>Deprecated: use <a href="#-add-shape"><code>-add-shape</code></a>, which accepts the same <code>coordinates=</code>, <code>offsets=</code> and <code>closed</code> options. Use <code>-add-shape +</code> to always create a new layer, as <code>-shape</code> does. Existing scripts that use <code>-shape</code> will continue to work but print a deprecation notice.</p>
+<p>Create a new layer containing a single polyline or polygon shape.</p>
+<p><code>coordinates=&lt;x,y,...&gt;</code>  Specify vertex coordinates as a comma-separated list.</p>
+<p><code>offsets=&lt;dx,dy,...&gt;</code>   Specify vertex coordinates as a list of offsets from the previous vertex. The first vertex in the list is offset from the last coordinate in the <code>coordinates=</code> list.</p>
+<p><code>closed</code>  Close an open path to form a polygon shape.</p>
+<p><code>name=</code> Assign a name to the newly created layer.</p>
+</section>
+<section class="cmd-section" data-id="-split-on-grid" data-name="-split-on-grid" data-options="target"><h3 id="-split-on-grid">-split-on-grid</h3>
+<p>Split features into separate layers using a grid of cols,rows cells. Useful for dividing a large dataset into smaller files that can be loaded dynamically into an interactive map. Use <code>-o bbox-index</code> to export a file containing the name and bounding box of the shapes in each file. Empty cells are removed from the output.</p>
+<p><code>&lt;cols,rows&gt;</code>  Size of the grid, e.g. <code>-split-on-grid 12,10</code></p>
+<p>Common options: <code>target=</code> </p>
+</section>
+<section class="cmd-section" data-id="-subdivide" data-name="-subdivide" data-options="expression target"><h3 id="-subdivide">-subdivide</h3>
+<p>Recursively divide a layer using a boolean JS expression. The expression is first evaluated against all features in the layer. If true, the features are spatially partitioned either vertically or horizontally, according to whether the aggregate bounding box is relatively tall or wide. See example below.</p>
+<p>Subdivide expressions can call several functions that operate on a group of features. The <code>sum()</code> function takes a feature-level expression as an argument and returns the summed result after applying the expression to each feature in the group. Similar functions include <code>min()</code> <code>max()</code> <code>average()</code> and <code>median()</code>.</p>
+<p><code>&lt;expression&gt;</code> or <code>expression=</code> Boolean JavaScript expression</p>
+<p>Common options:  <code>target=</code></p>
+<p><strong>Example</strong></p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Aggregate census tracts into groups of less than 1,000,000 population</span>
+<span class="hljs-comment"># and less than 100 sq km in area.</span>
+mapshaper tracts.shp
+  -subdivide <span class="hljs-string">&quot;sum(&#x27;POPULATION&#x27;) &gt;= 1000000 &amp;&amp; sum(&#x27;this.area&#x27;) &gt; 1e8&quot;</span> \
+  -dissolve sum-fields=POPULATION \
+  -merge-layers \
+  -o tract_groups.shp
+</code></pre>
+</section>
 <h2 id="control-flow-commands" class="cmd-category">Control Flow Commands</h2>
 <section class="cmd-section" data-id="-if" data-name="-if" data-options="if expression empty not-empty layer this null"><h3 id="-if">-if</h3>
 <p>The <code>if</code> command runs the following commands if a condition is met.</p>
@@ -1437,6 +1555,80 @@ mapshaper polygons.shp \
 <section class="cmd-section" data-id="-endif" data-name="-endif" data-options=""><h3 id="-endif">-endif</h3>
 <p>Mark the end of an -if/-elif/-else sequence.</p>
 </section>
+<section class="cmd-section" data-id="-run" data-name="-run" data-options="target io undefined targets"><h3 id="-run">-run</h3>
+<p>Run mapshaper commands from a <a href="/docs/essentials/command-line.html#command-files">command file</a> or generated on-the-fly from a JS expression.</p>
+<p><code>&lt;file|expression&gt;</code>  Either:</p>
+<ul>
+<li>A path to a mapshaper <a href="/docs/essentials/command-line.html#command-files">command file</a>.</li>
+<li>A JS expression or template containing embedded expressions, for generating one or more mapshaper commands.</li>
+</ul>
+<ul>
+<li>Embedded expressions are enclosed in curly braces (see below).</li>
+<li>Expressions can access <code>target</code> and <code>io</code> objects.</li>
+<li>Expressions can also access functions and data loaded with the <code>-require</code> command.</li>
+<li>Functions can be async.</li>
+</ul>
+<p>Expression context:</p>
+<p>If command has a single target layer:
+<code>target</code> object provides data and information about the command&#39;s target layer</p>
+<ul>
+<li><code>target.layer_name</code>  Name of layer</li>
+<li><code>target.geojson</code>  (getter/setter) Returns a GeoJSON FeatureCollection for the layer (getter) or replaces the layer with the contents of a GeoJSON object (setter).</li>
+<li><code>target.geometry_type</code> One of: polygon, polyline, point, <code>undefined</code></li>
+<li><code>target.feature_count</code> Number of features in the layer</li>
+<li><code>target.null_shape_count</code> Number of features with null geometry</li>
+<li><code>target.null_data_count</code> Number of features with no attribute data</li>
+<li><code>target.bbox</code> GeoJSON-style bounding box</li>
+<li><code>target.proj4</code> PROJ-formatted string giving the CRS (coordinate reference system) of the layer</li>
+</ul>
+<p><code>targets</code> object gives access to all layers targetted by the run command.</p>
+<ul>
+<li>by numerical index, like an array (<code>targets[0]</code> refers to the first target layer)</li>
+<li>by layer name (<code>targets.states</code> refers to a layer named &quot;states&quot;)</li>
+</ul>
+<p><code>io</code> object has a method for passing data to the <code>-i</code> command.</p>
+<ul>
+<li><code>io.ifile(&lt;filename&gt;, &lt;data&gt;)</code> Create a temp file to use as input in a <code>-run</code> command (see example 2 below)</li>
+</ul>
+<p><strong>Example 1:</strong> Apply a custom projection based on the layer extent.</p>
+<pre><code class="hljs language-bash">$ mapshaper -i country.shp \
+    -require projection.js \
+    -run <span class="hljs-string">&#x27;-proj {tmerc(target.bbox)}&#x27;</span> \
+    -o
+</code></pre>
+<pre><code class="hljs language-javascript"><span class="hljs-comment">// contents of projection.js file</span>
+<span class="hljs-variable language_">module</span>.<span class="hljs-property">exports</span>.<span class="hljs-property">tmerc</span> = <span class="hljs-keyword">function</span>(<span class="hljs-params">bbox</span>) {
+  <span class="hljs-keyword">var</span> lon0 = (bbox[<span class="hljs-number">0</span>] + bbox[<span class="hljs-number">2</span>]) / <span class="hljs-number">2</span>,
+      lat0 = (bbox[<span class="hljs-number">1</span>] + bbox[<span class="hljs-number">3</span>]) / <span class="hljs-number">2</span>;
+  <span class="hljs-keyword">return</span> <span class="hljs-string">`+proj=tmerc lat_0=<span class="hljs-subst">${lat0}</span> lon_0=<span class="hljs-subst">${lon0}</span>`</span>;
+};
+</code></pre>
+<p><strong>Example 2:</strong> Convert points to a Voronoi diagram using a template expression
+together with an external script.</p>
+<pre><code class="hljs language-bash">$ mapshaper points.geojson \
+  -require script.js \
+  -run <span class="hljs-string">&#x27;-i {io.ifile(&quot;voronoi.json&quot;, voronoi(target.geojson, target.bbox))}&#x27;</span> \
+  -o
+</code></pre>
+<pre><code class="hljs language-javascript"><span class="hljs-comment">// contents of script.js file</span>
+<span class="hljs-variable language_">module</span>.<span class="hljs-property">exports</span>.<span class="hljs-property">voronoi</span> = <span class="hljs-keyword">async</span> <span class="hljs-keyword">function</span>(<span class="hljs-params">points, bbox</span>) {
+  <span class="hljs-keyword">const</span> d3 = <span class="hljs-keyword">await</span> <span class="hljs-keyword">import</span>(<span class="hljs-string">&#x27;d3-delaunay&#x27;</span>); <span class="hljs-comment">// installed locally</span>
+  <span class="hljs-keyword">const</span> coords = points.<span class="hljs-property">features</span>.<span class="hljs-title function_">map</span>(<span class="hljs-function"><span class="hljs-params">feat</span> =&gt;</span> feat.<span class="hljs-property">geometry</span>.<span class="hljs-property">coordinates</span>);
+  <span class="hljs-keyword">const</span> voronoi = d3.<span class="hljs-property">Delaunay</span>.<span class="hljs-title function_">from</span>(coords).<span class="hljs-title function_">voronoi</span>(bbox);
+  <span class="hljs-keyword">const</span> features = <span class="hljs-title class_">Array</span>.<span class="hljs-title function_">from</span>(voronoi.<span class="hljs-title function_">cellPolygons</span>()).<span class="hljs-title function_">map</span>(<span class="hljs-keyword">function</span>(<span class="hljs-params">ring, i</span>) {
+    <span class="hljs-keyword">return</span> {
+      <span class="hljs-attr">type</span>: <span class="hljs-string">&#x27;Feature&#x27;</span>,
+      <span class="hljs-attr">properties</span>: points.<span class="hljs-property">features</span>[i].<span class="hljs-property">properties</span>,
+      <span class="hljs-attr">geometry</span>: {
+        <span class="hljs-attr">type</span>: <span class="hljs-string">&#x27;Polygon&#x27;</span>,
+        <span class="hljs-attr">coordinates</span>: [ring]
+      }
+    };
+  });
+  <span class="hljs-keyword">return</span> {<span class="hljs-attr">type</span>: <span class="hljs-string">&#x27;FeatureCollection&#x27;</span>, <span class="hljs-attr">features</span>: features};
+};
+</code></pre>
+</section>
 <section class="cmd-section" data-id="-stop" data-name="-stop" data-options=""><h3 id="-stop">-stop</h3>
 <p>Stop processing (skip remaining commands). Useful when writing scripts, in combination with -if/-elif/-else.</p>
 <p><strong>Example</strong></p>
@@ -1444,12 +1636,6 @@ mapshaper polygons.shp \
 mapshaper -<span class="hljs-keyword">if</span> <span class="hljs-string">&#x27;!file_exists(&quot;boundaries.geojson&quot;)&#x27;</span> -stop -endif \
   -i boundaries.geojson -proj robin -o output/boundaries.shp
 </code></pre>
-</section>
-<section class="cmd-section" data-id="-target" data-name="-target" data-options="target type name"><h3 id="-target">-target</h3>
-<p>Set the target layer or layers for the following command.</p>
-<p><code>&lt;target&gt;</code> or <code>target=</code>  Name or id of a layer (first layer is 1).</p>
-<p><code>type=</code>  Type of layer(s) to match (polygon, polyline or point). This is useful when importing GeoJSON files containing several types of geometry.</p>
-<p><code>name=</code>   Rename the target layer.</p>
 </section>
 <h2 id="informational-commands" class="cmd-category">Informational Commands</h2>
 <section class="cmd-section" data-id="-calc" data-name="-calc" data-options="calc where null global expression name target"><h3 id="-calc">-calc</h3>
@@ -1583,6 +1769,7 @@ mapshaper counties.csv \
 </section>
 <section class="cmd-section" data-id="-info" data-name="-info" data-options="save-to name"><h3 id="-info">-info</h3>
 <p>Print information about a dataset. Useful for seeing the fields in a layer&#39;s attribute data table. Also useful for summarizing the result of a series of commands, or for debugging unexpected output.</p>
+<p>For elevation rasters (single-band numeric rasters, and rasters imported with <code>raster-type=continuous</code>), <code>-info</code> also shows the nodata value and the number of nodata pixels, the range, mean and percentiles of the valid values, and the ground size of a pixel in meters.</p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Example: Get information about an unknown GeoJSON or TopoJSON dataset</span>
 mapshaper mystery_file.json -info
 </code></pre>
@@ -1651,7 +1838,7 @@ mapshaper -vars YEAR=2030 -run build.txt
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#command-line-syntax">Command line syntax</a></li><li class="lvl-3"><a href="#command-options-can-take-three-forms">Command options can take three forms:</a></li><li class="lvl-3"><a href="#common-options">Common options</a></li><li class="lvl-2"><a href="#index-of-commands">Index of commands</a></li><li class="lvl-2"><a href="#i-o-commands">I/O Commands</a></li><li class="lvl-3"><a href="#-i-input">-i (input)</a></li><li class="lvl-3"><a href="#-o-output">-o (output)</a></li><li class="lvl-2"><a href="#editing-commands">Editing Commands</a></li><li class="lvl-3"><a href="#-affine">-affine</a></li><li class="lvl-3"><a href="#-blur">-blur</a></li><li class="lvl-3"><a href="#-buffer">-buffer</a></li><li class="lvl-3"><a href="#-classify">-classify</a></li><li class="lvl-3"><a href="#-clean">-clean</a></li><li class="lvl-3"><a href="#-clip">-clip</a></li><li class="lvl-3"><a href="#-colorizer">-colorizer</a></li><li class="lvl-3"><a href="#-contours">-contours</a></li><li class="lvl-3"><a href="#-dashlines">-dashlines</a></li><li class="lvl-3"><a href="#-densify">-densify</a></li><li class="lvl-3"><a href="#-dissolve">-dissolve</a></li><li class="lvl-3"><a href="#-dissolve2">-dissolve2</a></li><li class="lvl-3"><a href="#-divide">-divide</a></li><li class="lvl-3"><a href="#-dots">-dots</a></li><li class="lvl-3"><a href="#-drop">-drop</a></li><li class="lvl-3"><a href="#-each">-each</a></li><li class="lvl-3"><a href="#-erase">-erase</a></li><li class="lvl-3"><a href="#-explode">-explode</a></li><li class="lvl-3"><a href="#-filter">-filter</a></li><li class="lvl-3"><a href="#-filter-fields">-filter-fields</a></li><li class="lvl-3"><a href="#-filter-islands">-filter-islands</a></li><li class="lvl-3"><a href="#-filter-slivers">-filter-slivers</a></li><li class="lvl-3"><a href="#-frame">-frame</a></li><li class="lvl-3"><a href="#-graticule">-graticule</a></li><li class="lvl-3"><a href="#-grid">-grid</a></li><li class="lvl-3"><a href="#-include">-include</a></li><li class="lvl-3"><a href="#-inlay">-inlay</a></li><li class="lvl-3"><a href="#-innerlines">-innerlines</a></li><li class="lvl-3"><a href="#-join">-join</a></li><li class="lvl-3"><a href="#-labels">-labels</a></li><li class="lvl-3"><a href="#-lines">-lines</a></li><li class="lvl-3"><a href="#-merge-layers">-merge-layers</a></li><li class="lvl-3"><a href="#-mosaic">-mosaic</a></li><li class="lvl-3"><a href="#-point-grid">-point-grid</a></li><li class="lvl-3"><a href="#-points">-points</a></li><li class="lvl-3"><a href="#-polygons">-polygons</a></li><li class="lvl-3"><a href="#-proj">-proj</a></li><li class="lvl-3"><a href="#-rectangle">-rectangle</a></li><li class="lvl-3"><a href="#-rectangles">-rectangles</a></li><li class="lvl-3"><a href="#-rename-fields">-rename-fields</a></li><li class="lvl-3"><a href="#-rename-layers">-rename-layers</a></li><li class="lvl-3"><a href="#-repel">-repel</a></li><li class="lvl-3"><a href="#-require">-require</a></li><li class="lvl-3"><a href="#-run">-run</a></li><li class="lvl-3"><a href="#-scalebar">-scalebar</a></li><li class="lvl-3"><a href="#-shape">-shape</a></li><li class="lvl-3"><a href="#-simplify">-simplify</a></li><li class="lvl-3"><a href="#-smooth">-smooth</a></li><li class="lvl-3"><a href="#-snap">-snap</a></li><li class="lvl-3"><a href="#-sort">-sort</a></li><li class="lvl-3"><a href="#-split">-split</a></li><li class="lvl-3"><a href="#-split-on-grid">-split-on-grid</a></li><li class="lvl-3"><a href="#-subdivide">-subdivide</a></li><li class="lvl-3"><a href="#-style">-style</a></li><li class="lvl-3"><a href="#-symbols">-symbols</a></li><li class="lvl-3"><a href="#-union">-union</a></li><li class="lvl-3"><a href="#-uniq">-uniq</a></li><li class="lvl-2"><a href="#control-flow-commands">Control Flow Commands</a></li><li class="lvl-3"><a href="#-if">-if</a></li><li class="lvl-3"><a href="#-elif">-elif</a></li><li class="lvl-3"><a href="#-else">-else</a></li><li class="lvl-3"><a href="#-endif">-endif</a></li><li class="lvl-3"><a href="#-stop">-stop</a></li><li class="lvl-3"><a href="#-target">-target</a></li><li class="lvl-2"><a href="#informational-commands">Informational Commands</a></li><li class="lvl-3"><a href="#-calc">-calc</a></li><li class="lvl-3"><a href="#-colors">-colors</a></li><li class="lvl-3"><a href="#-comment">-comment</a></li><li class="lvl-3"><a href="#-encodings">-encodings</a></li><li class="lvl-3"><a href="#-help">-help</a></li><li class="lvl-3"><a href="#-info">-info</a></li><li class="lvl-3"><a href="#-inspect">-inspect</a></li><li class="lvl-3"><a href="#-print">-print</a></li><li class="lvl-3"><a href="#-projections">-projections</a></li><li class="lvl-3"><a href="#-quiet">-quiet</a></li><li class="lvl-3"><a href="#-vars">-vars</a></li><li class="lvl-3"><a href="#-defaults">-defaults</a></li><li class="lvl-3"><a href="#-verbose">-verbose</a></li><li class="lvl-3"><a href="#-version">-version</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#command-line-syntax">Command line syntax</a></li><li class="lvl-3"><a href="#command-options-can-take-three-forms">Command options can take three forms:</a></li><li class="lvl-3"><a href="#common-options">Common options</a></li><li class="lvl-2"><a href="#index-of-commands">Index of commands</a></li><li class="lvl-2"><a href="#i-o-commands">I/O Commands</a></li><li class="lvl-3"><a href="#-i-input">-i (input)</a></li><li class="lvl-3"><a href="#-o-output">-o (output)</a></li><li class="lvl-2"><a href="#layer-commands">Layer Commands</a></li><li class="lvl-3"><a href="#-add-layer">-add-layer</a></li><li class="lvl-3"><a href="#-copy">-copy</a></li><li class="lvl-3"><a href="#-drop">-drop</a></li><li class="lvl-3"><a href="#-frame">-frame</a></li><li class="lvl-3"><a href="#-merge-layers">-merge-layers</a></li><li class="lvl-3"><a href="#-rename-layers">-rename-layers</a></li><li class="lvl-3"><a href="#-target">-target</a></li><li class="lvl-2"><a href="#editing-commands">Editing Commands</a></li><li class="lvl-3"><a href="#-add-shape">-add-shape</a></li><li class="lvl-3"><a href="#-affine">-affine</a></li><li class="lvl-3"><a href="#-buffer">-buffer</a></li><li class="lvl-3"><a href="#-classify">-classify</a></li><li class="lvl-3"><a href="#-clean">-clean</a></li><li class="lvl-3"><a href="#-clip">-clip</a></li><li class="lvl-3"><a href="#-colorizer">-colorizer</a></li><li class="lvl-3"><a href="#-dashlines">-dashlines</a></li><li class="lvl-3"><a href="#-densify">-densify</a></li><li class="lvl-3"><a href="#-dissolve">-dissolve</a></li><li class="lvl-3"><a href="#-dissolve2">-dissolve2</a></li><li class="lvl-3"><a href="#-divide">-divide</a></li><li class="lvl-3"><a href="#-dots">-dots</a></li><li class="lvl-3"><a href="#-each">-each</a></li><li class="lvl-3"><a href="#-erase">-erase</a></li><li class="lvl-3"><a href="#-explode">-explode</a></li><li class="lvl-3"><a href="#-filter">-filter</a></li><li class="lvl-3"><a href="#-filter-fields">-filter-fields</a></li><li class="lvl-3"><a href="#-filter-islands">-filter-islands</a></li><li class="lvl-3"><a href="#-filter-slivers">-filter-slivers</a></li><li class="lvl-3"><a href="#-graticule">-graticule</a></li><li class="lvl-3"><a href="#-grid">-grid</a></li><li class="lvl-3"><a href="#-include">-include</a></li><li class="lvl-3"><a href="#-inlay">-inlay</a></li><li class="lvl-3"><a href="#-innerlines">-innerlines</a></li><li class="lvl-3"><a href="#-join">-join</a></li><li class="lvl-3"><a href="#-labels">-labels</a></li><li class="lvl-3"><a href="#-lines">-lines</a></li><li class="lvl-3"><a href="#-mosaic">-mosaic</a></li><li class="lvl-3"><a href="#-point-grid">-point-grid</a></li><li class="lvl-3"><a href="#-points">-points</a></li><li class="lvl-3"><a href="#-polygons">-polygons</a></li><li class="lvl-3"><a href="#-proj">-proj</a></li><li class="lvl-3"><a href="#-rectangle">-rectangle</a></li><li class="lvl-3"><a href="#-rectangles">-rectangles</a></li><li class="lvl-3"><a href="#-rename-fields">-rename-fields</a></li><li class="lvl-3"><a href="#-repel">-repel</a></li><li class="lvl-3"><a href="#-require">-require</a></li><li class="lvl-3"><a href="#-scalebar">-scalebar</a></li><li class="lvl-3"><a href="#-simplify">-simplify</a></li><li class="lvl-3"><a href="#-smooth">-smooth</a></li><li class="lvl-3"><a href="#-snap">-snap</a></li><li class="lvl-3"><a href="#-sort">-sort</a></li><li class="lvl-3"><a href="#-split">-split</a></li><li class="lvl-3"><a href="#-style">-style</a></li><li class="lvl-3"><a href="#-symbols">-symbols</a></li><li class="lvl-3"><a href="#-union">-union</a></li><li class="lvl-3"><a href="#-uniq">-uniq</a></li><li class="lvl-2"><a href="#raster-commands">Raster Commands</a></li><li class="lvl-3"><a href="#-blend">-blend</a></li><li class="lvl-3"><a href="#-blur">-blur</a></li><li class="lvl-3"><a href="#-contours">-contours</a></li><li class="lvl-3"><a href="#-deshadow">-deshadow</a></li><li class="lvl-3"><a href="#-fetch">-fetch</a></li><li class="lvl-3"><a href="#-hillshade">-hillshade</a></li><li class="lvl-3"><a href="#-sharpen">-sharpen</a></li><li class="lvl-3"><a href="#-tone">-tone</a></li><li class="lvl-2"><a href="#experimental-commands">Experimental Commands</a></li><li class="lvl-3"><a href="#-cluster">-cluster</a></li><li class="lvl-3"><a href="#-data-fill">-data-fill</a></li><li class="lvl-3"><a href="#-fuzzy-join">-fuzzy-join</a></li><li class="lvl-3"><a href="#-shape">-shape</a></li><li class="lvl-3"><a href="#-split-on-grid">-split-on-grid</a></li><li class="lvl-3"><a href="#-subdivide">-subdivide</a></li><li class="lvl-2"><a href="#control-flow-commands">Control Flow Commands</a></li><li class="lvl-3"><a href="#-if">-if</a></li><li class="lvl-3"><a href="#-elif">-elif</a></li><li class="lvl-3"><a href="#-else">-else</a></li><li class="lvl-3"><a href="#-endif">-endif</a></li><li class="lvl-3"><a href="#-run">-run</a></li><li class="lvl-3"><a href="#-stop">-stop</a></li><li class="lvl-2"><a href="#informational-commands">Informational Commands</a></li><li class="lvl-3"><a href="#-calc">-calc</a></li><li class="lvl-3"><a href="#-colors">-colors</a></li><li class="lvl-3"><a href="#-comment">-comment</a></li><li class="lvl-3"><a href="#-encodings">-encodings</a></li><li class="lvl-3"><a href="#-help">-help</a></li><li class="lvl-3"><a href="#-info">-info</a></li><li class="lvl-3"><a href="#-inspect">-inspect</a></li><li class="lvl-3"><a href="#-print">-print</a></li><li class="lvl-3"><a href="#-projections">-projections</a></li><li class="lvl-3"><a href="#-quiet">-quiet</a></li><li class="lvl-3"><a href="#-vars">-vars</a></li><li class="lvl-3"><a href="#-defaults">-defaults</a></li><li class="lvl-3"><a href="#-verbose">-verbose</a></li><li class="lvl-3"><a href="#-version">-version</a></li></ul>
   </aside>
 
 </div>

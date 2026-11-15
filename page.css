@@ -51,6 +51,15 @@ body.map-view {
 	background-color: #fff;
 }
 
+/* LastPass puts a 400x600 frame over the top right of the page, at the top of
+   the stacking order, which blocks clicks when its content fails to load and
+   is left blank. Its shadow root is closed, so only the host can be styled;
+   the frame inherits pointer-events from it. LastPass's inline
+   "display: initial !important" rules out hiding the host. */
+[data-lastpass-root] {
+	pointer-events: none !important;
+}
+
 
 .fade-out {
   animation: fadeOut ease forwards 0.6s;
@@ -1014,7 +1023,7 @@ body.sidebar-panels-resizing .sidebar-panels-resize-handle::before,
 	top: 35px; /* 29px header + the 6px offset of .nav-buttons */
 	left: 0;
 	z-index: 40;
-	padding: 3px;
+	padding: 2px;
 	background-color: white;
 	border-radius: 7px;
 	pointer-events: auto;
@@ -1052,12 +1061,10 @@ body:not(.sidebar-open) .intersection-display {
 	fill: var(--theme-col);
 }
 
-.sidebar-tab.layer-tab {
-	padding-bottom: 6px;
-}
-
+.sidebar-tab.layer-tab,
 .sidebar-tab.console-tab {
-	padding-top: 7px;
+	padding-top: 5px;
+	padding-bottom: 7px;
 }
 
 .sidebar-tab:hover .sidebar-icon * {
@@ -1201,6 +1208,23 @@ body.sidebar-open .sidebar-panels {
 
 .console-message {
 	color: #eddd98;
+}
+
+.console-progress-mark {
+	white-space: nowrap;
+}
+
+.console-stop {
+	padding-top: 4px !important;
+	color: #eddd98;
+}
+
+/* more specific than .selectable *, which gives the console a text cursor */
+.console-buffer .console-stop-link {
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	user-select: none;
 }
 
 .console-example {
@@ -1350,6 +1374,10 @@ body.simplify .layer-control-btn {
 	.mshp-main-map .basemap-overlay-buttons {
 		bottom: 58px;
 	}
+
+	.mshp-main-map .place-search-input {
+		width: 140px;
+	}
 }
 
 .layer-control .info-box {
@@ -1408,7 +1436,7 @@ body.simplify .layer-control-btn {
    starts a line has its dot pushed past the left edge of the row and clipped,
    so no line ends or begins with a stray dot. */
 .layer-add-links {
-	margin: 5px 0 8px 0;
+	margin: 4px 0 8px 0;
 	font-size: 13px;
 	line-height: 1.2;
 	overflow: hidden;
@@ -1609,15 +1637,15 @@ body.simplify .layer-control-btn {
 	cursor: pointer;
 }
 
-/* Only the section on the map has working eye icons; the others show which
-   layers are visible in pale grey */
+/* Only the section on the map has working eye icons; the others show every
+   eye in the same faint grey, whether or not the layer is visible */
 .inactive-section img.eye-btn {
 	opacity: 0 !important;
 	cursor: default;
 }
 
-.inactive-section .pinnable.pinned img.black-eye {
-	opacity: 0.15 !important;
+.inactive-section .pinnable img.black-eye {
+	opacity: 0.1 !important;
 }
 
 .pin-all img,
@@ -1694,13 +1722,19 @@ img.eye-btn {
 	opacity: 0;
 }
 
-.pinnable:not(.pinned):not(.active) img.black-eye,
-.pinnable.active.invisible img.black-eye {
+.pinnable:not(.pinned):not(.active) img.black-eye {
 	opacity: 0.2;
 }
 
 .pinnable:not(.pinned) img.black-eye:hover {
 	opacity: 0.3;
+}
+
+/* the selected layer, hidden from the map, in the faint grey of the eyes in
+   sections that are not on the map, hovered or not */
+.pinnable.active.invisible img.black-eye,
+.pinnable.active.invisible img.black-eye:hover {
+	opacity: 0.1;
 }
 
 /*.pinnable.pinned.active img.black-eye {
@@ -1825,6 +1859,15 @@ img.eye-btn {
 
 .layer-item.insert-below:not(.drag-target) {
 	border-bottom: 1px solid black;
+}
+
+/* where a dragged frame will go */
+.frame-section.insert-above {
+	border-top-color: black;
+}
+
+.frame-section.insert-below {
+	box-shadow: 0 1px 0 black;
 }
 
 /* --- Intersection control ----------*/
@@ -2329,6 +2372,103 @@ div.basemap-style-btn.active {
 	width: 65px;
 }
 
+/* Place search, at the left end of the basemap buttons; the text field opens
+   to the left of the magnifier and the results open above the buttons. */
+.place-search {
+	display: inline-block;
+	vertical-align: top;
+	height: 28px;
+	margin-right: 4px;
+	padding-right: 4px;
+	border-right: 1px solid #e3e3e3;
+	line-height: normal;
+}
+
+.place-search-btn {
+	display: inline-block;
+	vertical-align: top;
+	box-sizing: border-box;
+	width: 12px;
+	height: 28px;
+	padding-top: 7px;
+	text-align: center;
+	color: var(--theme-col);
+	cursor: pointer;
+	border-radius: 5px;
+}
+
+.place-search-btn:hover {
+	color: #166689;
+}
+
+.place-search-input {
+	display: none;
+	vertical-align: top;
+	box-sizing: border-box;
+	width: 200px;
+	height: 26px;
+	margin: 1px 0 0 2px;
+	padding: 0 6px;
+	font-size: 13px;
+	border: 1px solid #ddd;
+	border-radius: 5px;
+	outline: none;
+}
+
+.place-search input.place-search-input:focus {
+	border-color: #d3aa00;
+	box-shadow: none;
+	outline: none;
+}
+
+.place-search.open .place-search-input {
+	display: inline-block;
+}
+
+.place-search-results {
+	position: absolute;
+	right: -1px;
+	bottom: calc(100% + 6px);
+	min-width: 100%;
+	max-width: 320px;
+	box-sizing: border-box;
+	padding: 4px 0;
+	background-color: rgba(255, 255, 255, 0.98);
+	border: 1px solid #ddd;
+	border-radius: 8px;
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+	font-size: 13px;
+	line-height: 1.3;
+	text-align: left;
+}
+
+.place-search-result {
+	padding: 5px 10px;
+	cursor: pointer;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.place-search-result.selected {
+	background-color: #eef3fb;
+}
+
+.place-search-name {
+	font-weight: bold;
+	color: #222;
+}
+
+.place-search-detail {
+	margin-left: 6px;
+	color: #888;
+}
+
+.place-search-message {
+	padding: 5px 10px;
+	color: #888;
+}
+
 .add-basemap-menu input[type=text] {
 	width: 222px;
 	margin-top: 3px;
@@ -2822,9 +2962,15 @@ body.pan.panning .map-layers:not(.drawing) {
 	text-align: center;
 	top: 6px;
 	right: 0;
-	padding: 3px; 
+	padding: 2px; 
 	background-color: rgba(255, 255, 255, 1);
 	border-radius: 7px;
+}
+
+/* The mode menu opens over the style panels (21, or 26 with a picker open)
+   and the floating toolbars (25), which share this stacking context */
+.nav-buttons:has(.pointer-btn.open) {
+	z-index: 27;
 }
 
 .nav-btn-wrapper {
@@ -4122,6 +4268,15 @@ body.pan.panning .map-layers:not(.drawing) {
 	background-image: linear-gradient(135deg, #d9d9d9 0 50%, #8c8c8c 50% 100%);
 }
 
+/* A transparent color, e.g. a raster's default no-data color, or the
+   transparent land or sea of an elevation palette */
+.label-style-panel .color-scheme-strip.transparent,
+.label-style-panel .label-color-field .label-color-chit.transparent {
+	background-color: white;
+	background-image: conic-gradient(#ccc 25%, white 0 50%, #ccc 0 75%, white 0);
+	background-size: 7px 7px;
+}
+
 .label-style-panel .label-color-field input[type="text"] {
 	flex: 1;
 	width: auto;
@@ -5371,6 +5526,11 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	background-clip: padding-box;
 }
 
+/* in the button, a swatch, leaving room for the name */
+.color-scheme-palette-btn > .color-scheme-strip.transparent {
+	width: 12px;
+}
+
 .label-style-panel .color-scheme-palette-btn > span,
 .label-style-panel .color-scheme-palette-item > span {
 	display: inline;
@@ -5633,22 +5793,25 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
    track goes. The handle is a 12px box, which sets how far it travels, drawn
    as a 16px circle by its box-shadow rings, so that at either end it covers
    the end of the track. */
-.color-scheme-slider-row input[type=range] {
+.color-scheme-slider-row input[type=range],
+.raster-tone-slider-row input[type=range] {
 	-webkit-appearance: none;
 	appearance: none;
 	flex: 1;
 	min-width: 0;
 	height: 18px;
-	margin: 0 7px 0 4px;
+	margin: 0;
 	background: transparent;
 	cursor: pointer;
 }
 
-.color-scheme-slider-row input[type=range]:focus {
+.color-scheme-slider-row input[type=range]:focus,
+.raster-tone-slider-row input[type=range]:focus {
 	outline: none;
 }
 
-.color-scheme-slider-row input[type=range]::-webkit-slider-runnable-track {
+.color-scheme-slider-row input[type=range]::-webkit-slider-runnable-track,
+.raster-tone-slider-row input[type=range]::-webkit-slider-runnable-track {
 	box-sizing: border-box;
 	height: 7px;
 	border: 1px solid var(--label-field-border);
@@ -5656,7 +5819,8 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	background: linear-gradient(to right, #dadada var(--fill, 0%), white var(--fill, 0%));
 }
 
-.color-scheme-slider-row input[type=range]::-moz-range-track {
+.color-scheme-slider-row input[type=range]::-moz-range-track,
+.raster-tone-slider-row input[type=range]::-moz-range-track {
 	box-sizing: border-box;
 	height: 7px;
 	border: 1px solid var(--label-field-border);
@@ -5664,13 +5828,15 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	background: white;
 }
 
-.color-scheme-slider-row input[type=range]::-moz-range-progress {
+.color-scheme-slider-row input[type=range]::-moz-range-progress,
+.raster-tone-slider-row input[type=range]::-moz-range-progress {
 	height: 5px;
 	border-radius: 3.5px 0 0 3.5px;
 	background: #dadada;
 }
 
-.color-scheme-slider-row input[type=range]::-webkit-slider-thumb {
+.color-scheme-slider-row input[type=range]::-webkit-slider-thumb,
+.raster-tone-slider-row input[type=range]::-webkit-slider-thumb {
 	-webkit-appearance: none;
 	width: 12px;
 	height: 12px;
@@ -5681,7 +5847,8 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	box-shadow: 0 0 0 1px white, 0 0 0 2px #888;
 }
 
-.color-scheme-slider-row input[type=range]::-moz-range-thumb {
+.color-scheme-slider-row input[type=range]::-moz-range-thumb,
+.raster-tone-slider-row input[type=range]::-moz-range-thumb {
 	width: 12px;
 	height: 12px;
 	border: none;
@@ -5690,12 +5857,40 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	box-shadow: 0 0 0 1px white, 0 0 0 2px #888;
 }
 
-.color-scheme-slider-row input[type=range]:focus-visible::-webkit-slider-thumb {
+.color-scheme-slider-row input[type=range]:focus-visible::-webkit-slider-thumb,
+.raster-tone-slider-row input[type=range]:focus-visible::-webkit-slider-thumb {
 	box-shadow: 0 0 0 1px white, 0 0 0 2px #888, 0 0 0 4px var(--theme-col);
 }
 
-.color-scheme-slider-row input[type=range]:focus-visible::-moz-range-thumb {
+.color-scheme-slider-row input[type=range]:focus-visible::-moz-range-thumb,
+.raster-tone-slider-row input[type=range]:focus-visible::-moz-range-thumb {
 	box-shadow: 0 0 0 1px white, 0 0 0 2px #888, 0 0 0 4px var(--theme-col);
+}
+
+/* Tone panel (gui-raster-tone-tool.mjs): a caption, the slider and its value
+   on one line, the captions in a column so the sliders line up */
+.raster-tone-slider-row:not(.hidden) {
+	display: flex;
+	align-items: center;
+}
+
+.label-style-panel .label-style-row .raster-tone-slider-label {
+	flex: none;
+	width: 62px;
+	font-size: 12px;
+}
+
+.label-style-panel .label-style-row .raster-tone-slider-value {
+	flex: none;
+	width: 28px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	font-size: 12px;
+}
+
+.raster-tone-buttons {
+	justify-content: flex-end;
+	margin-top: 8px;
 }
 
 /* Presets have only the reverse button in the vibrance row, and sequential
@@ -5842,7 +6037,8 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 .color-scheme-tile[data-tooltip]:hover::after,
 .color-scheme-slider-label[data-tooltip]:hover::after,
 .color-scheme-hint-label[data-tooltip]:hover::after,
-.color-scheme-icon-btn[data-tooltip]:hover::after {
+.color-scheme-icon-btn[data-tooltip]:hover::after,
+.class-breaks-chip[data-tooltip]:hover::after {
 	content: attr(data-tooltip);
 	box-sizing: border-box;
 	position: absolute;
@@ -5859,6 +6055,17 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	pointer-events: none;
 	z-index: 1;
 }
+
+/* The chips are in the class breaks table's scrolling box, which would clip
+   their tooltips and scroll to show them, so theirs are fixed, below the chip
+   (the script sets --tooltip-x and --tooltip-y on hover) */
+.class-breaks-chip[data-tooltip]:hover::after {
+	position: fixed;
+	top: var(--tooltip-y, 0);
+	left: var(--tooltip-x, 0);
+	z-index: 10;
+}
+
 /* The Breaks row: the method's menu in the left column, the button that opens
    the class breaks dialog in the right */
 .color-scheme-customize-cell > .label-panel-action-btn {
@@ -6035,7 +6242,7 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	position: absolute;
 	top: 11px;
 	left: calc(var(--class-breaks-swatch-width) + 8px);
-	right: 90px;
+	right: 70px;
 	border-top: 1px solid var(--label-field-border);
 }
 
@@ -6048,9 +6255,98 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	top: 0;
 	right: 0;
 	box-sizing: border-box;
-	width: 90px;
+	width: 70px;
 	pointer-events: auto;
 	padding-left: 4px;
+}
+
+/* Fixed elevations: each class's tile is a lane for each run of presets (a
+   column for each preset of a blend), and each stop has a chip for each run
+   on its rule, over the ends of the lanes it colors. Lanes and chips share a
+   grid, so that a chip spanning presets lines up with their lanes. */
+.class-breaks-table.blended {
+	--class-breaks-swatch-width: 60px;
+}
+
+.class-breaks-table.elevation .class-breaks-swatch {
+	display: grid;
+	grid-template-columns: repeat(var(--class-breaks-columns, 1), 1fr);
+	column-gap: 2px;
+	box-shadow: none;
+}
+
+.class-breaks-lane {
+	border-radius: 2px;
+	box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+}
+
+.class-breaks-chips {
+	position: absolute;
+	top: 5px;
+	left: 0;
+	display: grid;
+	grid-template-columns: repeat(var(--class-breaks-columns, 1), 1fr);
+	column-gap: 2px;
+	width: var(--class-breaks-swatch-width);
+	height: 12px;
+	pointer-events: auto;
+}
+
+.class-breaks-chip {
+	position: relative;
+	box-sizing: border-box;
+	border: 1px solid rgba(0,0,0,0.4);
+	border-radius: 2px;
+	cursor: pointer;
+}
+
+.class-breaks-chip:hover {
+	border-color: rgba(0,0,0,0.7);
+}
+
+.class-breaks-chip.selected,
+.class-breaks-chip:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 1px #fff, 0 0 0 3px var(--theme-col);
+}
+
+/* a recolored chip: a dot, like a pinned tile's */
+.class-breaks-chip.edited {
+	background-image: radial-gradient(circle at center, rgba(0,0,0,0.55) 1.5px, transparent 2px);
+}
+
+/* under the table: the chip being recolored, and which presets to recolor */
+.class-breaks-chip-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 8px;
+	margin-top: 6px;
+	font-size: 11px;
+	color: #555;
+}
+
+.class-breaks-chip-bar label {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+}
+
+.class-breaks-chip-bar input {
+	margin: 0;
+}
+
+.class-breaks-chip-reset {
+	margin-left: auto;
+}
+
+/* the color picker opens to the left of the dialog (see selectChip()) */
+.class-breaks-picker-anchor {
+	position: absolute;
+	top: 0;
+	left: -8px;
+	width: 0;
+	height: 0;
 }
 
 /* Export, at the bottom of the color scheme panel: a caption and a button
@@ -6059,9 +6355,9 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	display: flex;
 	align-items: baseline;
 	gap: 6px;
-	margin-top: 10px;
+	margin-top: 8px;
 	margin-bottom: 0;
-	padding-top: 5px;
+	padding-top: 4px;
 	border-top: 1px solid #e4e4e4;
 }
 
