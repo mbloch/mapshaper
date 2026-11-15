@@ -49,7 +49,8 @@ import {
   setRasterPalette,
   validateRasterClassifyOptions
 } from '../rasters/mapshaper-raster-classify';
-import { setRasterPaletteSea, getBlendColorOptionKeys } from '../rasters/mapshaper-raster-hypsometric';
+import { setRasterPaletteSea, splitRampOptions } from '../rasters/mapshaper-raster-hypsometric';
+import { listHasRampNames } from '../cli/mapshaper-option-parsing-utils';
 import { setRasterCategoryNames } from '../rasters/mapshaper-raster-categories';
 
 cmd.classify = function(lyr, dataset, optsArg) {
@@ -65,10 +66,11 @@ cmd.classify = function(lyr, dataset, optsArg) {
   if (opts.category_names) {
     stop('category-names= works with raster layers');
   }
-  if (opts.hypsometric || opts.sea || opts.sea_colors || opts.sea_breaks ||
-      getBlendColorOptionKeys().some(function(key) { return key in opts; })) {
-    stop((opts.hypsometric ? 'hypsometric=' : opts.sea || opts.sea_colors || opts.sea_breaks ? 'sea=' :
-      'hypsometric=blended') + ' works with raster layers');
+  if (opts.hypsometric || opts.sea || opts.classed) {
+    stop((opts.hypsometric ? 'hypsometric=' : opts.sea ? 'sea=' : 'classed') + ' works with raster layers');
+  }
+  if (listHasRampNames(opts.colors) || listHasRampNames(opts.breaks)) {
+    stop('Named lists in colors= and breaks= (e.g. sea:...) work with raster layers');
   }
   if (!lyr.data) {
     initDataTable(lyr);
@@ -294,9 +296,10 @@ function getClassification(data, optsArg) {
 
 // -classify on a raster layer sets a palette, a display setting: the pixels
 // are not changed (see docs/development/raster-palette-design.md)
-function classifyRasterLayer(lyr, dataset, opts) {
+function classifyRasterLayer(lyr, dataset, optsArg) {
   var raster = lyr.raster;
   var grid = getRasterGrid(raster);
+  var opts = splitRampOptions(optsArg);
   var band, bandIndex, categorical, sample, o, palette;
   validateRasterClassifyOptions(raster, grid, opts);
   band = getRasterClassifyBand(grid, opts);

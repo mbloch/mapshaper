@@ -1,10 +1,11 @@
 import { getRasterDisplayBands } from './mapshaper-raster-display-bands';
 
 // The sea of an elevation raster, for palettes with sea= (see
-// mapshaper-raster-palette.mjs): pixels below 0 that are connected, through
-// other pixels below 0, to the edge of the grid or to a pixel without a value
-// (nodata, outside the grid's coverage, or masked by an alpha band), where the
-// sea usually is in a DEM. Basins below sea level that are enclosed by higher
+// mapshaper-raster-palette.mjs): pixels at or below 0 that are connected,
+// through other such pixels, to the edge of the grid or to a pixel without a
+// value (nodata, outside the grid's coverage, or masked by an alpha band),
+// where the sea usually is in a DEM. Many DEMs give the sea's surface 0
+// rather than its depth. Basins below sea level that are enclosed by higher
 // ground (the Dead Sea, Death Valley) are land. A basin that the grid's edge
 // cuts through looks like sea.
 //
@@ -43,12 +44,12 @@ function buildSeaMask(grid, band) {
     return !isFinite(val) || nodata !== null && nodata !== undefined && val == nodata;
   }
 
-  function isBelowSeaLevel(i) {
-    return samples[i * bands + band] < 0;
+  function isAtOrBelowSeaLevel(i) {
+    return samples[i * bands + band] <= 0;
   }
 
   function visit(i) {
-    if (mask[i] === 0 && isBelowSeaLevel(i)) {
+    if (mask[i] === 0 && isAtOrBelowSeaLevel(i)) {
       mask[i] = 1;
       queue[tail++] = i;
     }

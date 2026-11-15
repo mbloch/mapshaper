@@ -5,7 +5,7 @@ import { getRasterUnitsLabel } from './gui-raster-band-values';
 import {
   getSchemeBreaks, setSchemeBreak, getSchemeValues, getBreaksScale, getHistogram, getRoundestNumber,
   getBreakClassSwatches, getBreakClassCounts, formatSchemeCount, isElevationScheme, isBlendedScheme,
-  getElevationStopChips, getElevationClassLanes, setElevationChipColor
+  getElevationStopChips, getElevationClassLanes, setElevationChipColor, getClimatePresetNames
 } from './gui-color-scheme-model';
 
 // A popup beside the color scheme panel for editing a numeric scheme's class
@@ -25,7 +25,7 @@ import {
 // opts.onClose()         the dialog was closed
 // opts.title             the dialog's title ('Class breaks' by default, or
 //                        'Elevations and colors')
-// opts.reversed          list the classes from high to low
+// opts.reversed(scheme)  true to list the classes from high to low
 var numBins = 40;
 
 export function ClassBreaksDialog(gui, opts) {
@@ -38,6 +38,7 @@ export function ClassBreaksDialog(gui, opts) {
   var range = null; // the scale's [min, max]
   var titleEl, chartEl, barsEl, linesEl, handlesEl, minLabel, maxLabel, logToggle, tableEl, noteEl, bodyEl;
   var handles = [], lines = [], pivotLine, inputs = [], rules = [], classRows = [], chipBoxes = [];
+  var reversed = false; // the table's order, from opts.reversed()
   var drag = null;
   var chipBar, pickerAnchor, picker;
   // the chip being recolored: {i, names (the chip's presets), checked (the
@@ -197,11 +198,14 @@ export function ClassBreaksDialog(gui, opts) {
     var breaks = info ? info.breaks : [];
     var scheme = opts.getScheme();
     var elevation = !!scheme && isElevationScheme(scheme);
+    var nextReversed = !!scheme && !!opts.reversed && opts.reversed(scheme);
     var swatches, counts;
     tableEl.classed('elevation', elevation);
     tableEl.classed('blended', elevation && isBlendedScheme(scheme));
-    tableEl.node().style.setProperty('--class-breaks-columns', elevation && isBlendedScheme(scheme) ? 4 : 1);
-    if (inputs.length != breaks.length || classRows.length != breaks.length + 1) {
+    tableEl.node().style.setProperty('--class-breaks-columns',
+      elevation && isBlendedScheme(scheme) ? getClimatePresetNames().length : 1);
+    if (inputs.length != breaks.length || classRows.length != breaks.length + 1 || reversed != nextReversed) {
+      reversed = nextReversed;
       tableEl.empty();
       var list = El('div').addClass('class-breaks-list').appendTo(tableEl);
       classRows = breaks.concat([null]).map(function() {
@@ -213,7 +217,7 @@ export function ClassBreaksDialog(gui, opts) {
       inDisplayOrder(classRows).forEach(function(row) { row.appendTo(list); });
       rules = [];
       var marks = breaks.map(function(b, i) {
-        var pos = opts.reversed ? breaks.length - i : i + 1;
+        var pos = reversed ? breaks.length - i : i + 1;
         return El('div').addClass('class-breaks-mark')
           .css('top', 'calc((var(--class-breaks-row-height) + var(--class-breaks-gap)) * ' + pos + ' - 13px)');
       });
@@ -249,7 +253,7 @@ export function ClassBreaksDialog(gui, opts) {
         swatch.empty().css('background', swatches[j] || 'transparent');
       }
       // the top row says what the numbers are
-      var top = opts.reversed ? j == classRows.length - 1 : j === 0;
+      var top = reversed ? j == classRows.length - 1 : j === 0;
       row.findChild('.class-breaks-count').text(formatSchemeCount(scheme, opts.getLayer(), counts[j], !top) +
         (neutral ? ' (pivot class)' : ''));
     });
@@ -270,11 +274,22 @@ export function ClassBreaksDialog(gui, opts) {
   function renderLanes(swatch, lanes) {
     swatch.empty().css('background', 'none');
     lanes.forEach(function(lane) {
-      var colors = opts.reversed ? lane.colors.slice().reverse() : lane.colors;
+      var colors = reversed ? lane.colors.slice().reverse() : lane.colors;
       El('div').addClass('class-breaks-lane').appendTo(swatch)
         .css('grid-column', 'span ' + Math.max(lane.names.length, 1))
         .css('background', 'linear-gradient(' + colors[0] + ', ' + colors[1] + ')');
     });
+  }
+
+  // A chip's tooltip is fixed (see page.css): centered below the chip, and
+  // inside the window
+  function placeChipTooltip(el) {
+    var rect = el.getBoundingClientRect();
+    var half = (parseFloat(getComputedStyle(el, '::after').width) || 0) / 2;
+    var margin = 4;
+    var x = Math.min(rect.left + rect.width / 2, document.documentElement.clientWidth - margin - half);
+    el.style.setProperty('--tooltip-x', Math.max(x, margin + half) + 'px');
+    el.style.setProperty('--tooltip-y', rect.bottom + 5 + 'px');
   }
 
   function renderChips(box, chips, i) {
@@ -290,6 +305,7 @@ export function ClassBreaksDialog(gui, opts) {
         .css('grid-column', 'span ' + Math.max(chip.names.length, 1))
         .css('background-color', chip.color)
         .appendTo(box)
+        .on('mouseenter', function(e) { placeChipTooltip(e.currentTarget); })
         .on('click', function() { selectChip(i, chip); })
         .on('keydown', function(e) {
           if (e.key == 'Enter' || e.key == ' ') {
@@ -374,7 +390,7 @@ export function ClassBreaksDialog(gui, opts) {
   }
 
   function inDisplayOrder(arr) {
-    return opts.reversed ? arr.slice().reverse() : arr;
+    return reversed ? arr.slice().reverse() : arr;
   }
 
   function getBreakLabel(i) {

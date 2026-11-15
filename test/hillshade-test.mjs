@@ -1149,7 +1149,7 @@ describe('mapshaper-hillshade.mjs', function () {
       var str = internal.formatHillshadeSettings(d);
       assert.equal(d.exaggeration, 1.5); // automatic, from about 111 m pixels
       assert.equal(str, 'azimuth=315 altitude=45 lighting=hard exaggeration=1.5' +
-        ' max-opacity=0.55 highlights=0.6 gamma=0.7 highlight-color=#fff0b4 smoothing=1' +
+        ' max-opacity=0.55 highlights=0.5 gamma=0.7 highlight-color=#fff0b4 smoothing=1' +
         ' fps-levels=1 fps-passes=1 fps-radius=3 fps-threshold=10 fps-min-threshold=1 fps-slope-factor=0.6' +
         ' fps-slope-radius=10 light-adjust=0 ambient=0.5 texture=0 aerial=0');
     })

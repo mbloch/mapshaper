@@ -378,49 +378,83 @@ tested.
    data, land and sea ramps. Begun: "Fixed elevations" is a breaks method on
    the Sequential tab, offered for a band whose values are all between
    -12,000 and 9,000 m. It shows only the Elevation presets
-   (`hypsometric-schemes.mjs`: Arid, Lush, Temperate, Polar), as continuous
-   colors at their stops, and gives `-classify breaks=... outer-breaks=...
-   continuous`. The presets' colors were measured from Patterson's Equal
-   Earth physical map, at stops of 0, 50, 200 and 600 m and every 1000 m
-   above (to 6000 m, or 4000 m for Polar): a least-squares fit over its land
-   pixels, each pixel a blend of the four ramps by a coarse climate grid
-   fitted to the same map, with Lush and Temperate sharing their colors
-   from 1000 m up and all three land ramps from 3000 m up (Arid's highlands
-   are brown below that, as in the Sahara's). The preset it starts with is the one with the most
-   weight at a 9 x 9 grid of points across the raster, in a 2° grid of the
-   four presets' weights (`hypsometric-climate.mjs`, about 11 KB of base64),
-   or Temperate if the points are all at sea or the projection is unknown or
-   can't be inverted. The grid was fitted to the same map: each land pixel
-   below 1000 m as a blend of the four ramps, the weights averaged into
-   cells, cells without such pixels (high plateaus, sea) filled from their
-   neighbors and blurred once, and sea cells more than a cell from land left
-   out. High plateaus therefore take their neighbors' climate, which matters
-   little, since the land presets are much alike from 1000 m up. The
-   grid's weights are also what a blended palette would use. Stops can be recolored, and moved in the class breaks dialog
+   (`hypsometric-schemes.mjs`: Desert, Steppe, Tropical, Temperate, Boreal,
+   Polar, one for each climate zone), as continuous colors at their stops,
+   and gives `-classify breaks=... outer-breaks=... continuous`. The zones
+   are a 1° grid of their weights (`hypsometric-climate.mjs`, about 19 KB
+   of base64) from the Köppen-Geiger classes for 1991-2020 (Beck et al.
+   2023, CC BY 4.0): hot deserts (BWh) are Desert and steppes (BS) Steppe;
+   cold desert (BWk) pixels are part Steppe, by where Blue Marble's summer
+   color of the pixel lies between the Sahara's and steppe's (much of
+   Kazakhstan, the Gobi, the Great Basin and Patagonia is shrub and grass
+   rather than sand; the Taklamakan stays desert); each
+   other class's zone comes from its letters (A Tropical; C Temperate; D
+   Temperate with hot summers, Boreal with cold ones, and half of each with
+   warm ones; E Polar), and savanna and dry-summer classes are part Steppe,
+   by where Blue Marble's summer color of the class lies between steppe and
+   its humid zone (hot Mediterranean 0.75, dry-summer continental 0.4-1,
+   savanna 0.35). (Steppe was first part of Desert, which made grasslands
+   such as Central Asia's look like desert.) A cell's weights are those of its
+   land below 2000 m: Köppen classifies mountains by their own climate
+   (Tibet and the high Andes are tundra), which the presets' elevations
+   already show; below 2000 m, few places outside the polar regions have a
+   cold class. Tundra counts only below 1000 m, since higher tundra is
+   alpine (it gave the Coast Mountains light patches of Polar). Cells
+   without such land, and sea within a cell of land,
+   take their neighbors' weights; other sea is left out. The presets'
+   colors were measured from Patterson's Equal Earth physical map, at stops
+   of 50, 200, 600, 1000, 3000 and 6000 m (at 6000 m, Polar's is white and
+   the others' a very light grayish tan, instead of the fit's bluish gray,
+   which tinted Tibet and the Andes): a
+   least-squares fit over its land pixels, each pixel a blend of the six
+   ramps by the grid, with the three humid zones sharing their colors from
+   1000 m up and the five land zones from 3000 m up. (Boreal mixed from
+   Temperate and Polar fitted the map as well, but Temperate's colors,
+   fitted to the boreal forests too, came out too pale for the eastern
+   US and Europe.) Desert's colors up to
+   1000 m are held at the Sahara's (brown highlands), and the others fitted
+   around them. Ten stops (adding 0, 2000, 4000 and 5000 m) fitted the map
+   no better: the six-stop ramps are within a just-noticeable difference of
+   them except in the coastal strip below 50 m, where the 0 m colors had
+   picked up the sea's color from coastal pixels. (A first version fitted
+   the zones to Patterson's map too, as four presets; his tints follow land
+   cover as he painted it rather than climate, so its zones didn't match
+   real ones: its Temperate was mostly boreal forest, and its Polar took in
+   coasts and islands. See `__hypsometric/README.md`.) The preset it starts
+   with is the one with the most weight at a 9 x 9 grid of points across
+   the raster, or Temperate if the points are all at sea or the projection
+   is unknown or can't be inverted. The grid's weights are also what a
+   blended palette uses. Stops can be recolored, and moved in the class breaks dialog
    (end stops too, and beyond the data), but not added; the dialog's range
    runs from the stop at or below the data's min to the stop at or above its
    max, leaving out the stops beyond those; choosing a preset
    brings back its elevations, and another method keeps the colors as a
-   custom ramp. `-classify hypsometric=arid|lush|temperate|polar` gives a
-   preset's palette from the command line, and `hypsometric=blended`
-   (`mapshaper-raster-hypsometric.mjs`) mixes the four by climate: the
+   custom ramp. `-classify hypsometric=desert|steppe|tropical|temperate|boreal|polar`
+   gives a preset's palette from the command line, and `hypsometric=blended`
+   (`mapshaper-raster-hypsometric.mjs`) mixes the six by climate: the
    palette is the preset with the most weight (by area) across the raster,
-   for anything that draws it unblended, plus `palette.blend` with the four
+   for anything that draws it unblended, plus `palette.blend` with the six
    ramps (in the band's units) and a field of the presets' weights in the
-   raster's coordinates (up to 180 cells a side, sampled from the climate
+   raster's coordinates (up to 360 cells a side, sampled from the climate
    grid; cells at sea are filled in from their neighbors and smoothed, so
-   that `sea=land` fades between coasts). Each pixel mixes the four ramps' colors (in RGB) by the field's
+   that `sea=land` fades between coasts; each cell has a weight for each
+   preset but the last, which has the rest). Each pixel mixes the six ramps' colors (in RGB) by the field's
    weights, bilinear between its cells (`renderBlendedPaletteGridPreview()`).
    `-proj` makes the field again in the new CRS; `-clip` keeps it, since
    its coordinates don't change. The GUI's reprojected preview draws a grid
    in the display CRS, so it passes a field for the view, in that CRS
    (`renderRasterPreview()`'s `blendField`). In the panel, Blended is an
    item in the Elevation palette menu, offered where the raster can be
-   placed on land. The four presets have the same ten elevations (Polar's
-   go on in white to 6000 m), which a blend shares: `breaks=` with
-   `outer-breaks=` move them all, and `arid-colors=` (and `lush-`,
-   `temperate-`, `polar-colors=`) recolor a preset, a color at each
-   elevation (`getBlendRamps()`). In the panel, a blend keeps the colors of
+   placed on land. The six presets have the same six elevations, which a
+   blend shares: `breaks=` (every elevation) moves them all, and named
+   lists in `colors=` (`colors=desert:...,polar:...`) recolor a preset, a
+   color at each elevation (`getBlendRamps()`). `splitRampLists()` splits
+   a list option into its unnamed and named lists, and `splitRampOptions()`
+   checks the names against `hypsometric=`: the climate presets' names only
+   in `colors=` of a blend, `sea:` always, and a single preset's own name
+   as if unnamed. With a single preset, `colors=` and `breaks=` recolor and
+   move it (`customizeRamp()`), and `classed` makes classes from each stop
+   up to the next (`getRampClasses()`). In the panel, a blend keeps the colors of
    its recolored presets in `scheme.blendColors` (see
    `getBlendRampColors()`), and becomes Custom until they are all their
    presets' again; choosing a preset or another method turns it off.
@@ -434,15 +468,16 @@ tested.
    where the raster can be placed on land, otherwise with Temperate. Its rows
    are Land (the presets and Blended) and Sea, each with a palette menu and
    a Customize button. The colors aren't tiles in the panel: Customize opens
-   the class breaks dialog ("Elevations and colors"), which has a color chip
+   the class breaks dialog ("Elevations and colors", listed from the highest
+   elevation down), which has a color chip
    at each stop, on the rule between two classes, whose tiles are gradients
    from one chip's color to the next (`getElevationStopChips()`,
    `getElevationClassLanes()`). A blend has a column of chips and tiles for
    each preset; neighboring presets with the same color share a chip, which
    recolors all of them, or the ones left checked under the table. `-classify sea=`
    leaves out the sea: with `sea=transparent` (the default with
-   `hypsometric=`, and what the panel gives), pixels below 0 that connect,
-   through other pixels below 0, to the grid's edge or to a pixel without a
+   `hypsometric=`, and what the panel gives), pixels at or below 0 that
+   connect, through other such pixels, to the grid's edge or to a pixel without a
    value (nodata, outside the coverage, alpha 0) are not drawn
    (`getRasterSeaMask()`, a flood fill cached by samples and band, made on
    the reprojected grid for the GUI's preview). Enclosed basins below sea
@@ -454,8 +489,9 @@ tested.
    continuously through its own table, `getRasterSeaTable()`), blended or
    not. Pale is fitted to the ocean of Patterson's map by depth
    (`__hypsometric/bathy.mjs`); Blue and Gray have its lightness steps,
-   stronger, with more or less chroma. `sea-breaks=` and `sea-colors=` give
-   a custom sea ramp (`sea: 'custom'`), and `hypsometric=none` leaves the
+   stronger, with more or less chroma. `colors=sea:...` with
+   `breaks=sea:...` give a custom sea ramp (`sea: 'custom'`), and either
+   one recolors or moves a `sea=` preset (also `'custom'`), and `hypsometric=none` leaves the
    land out (`palette.land = 'transparent'`, with the sea's colors as the
    palette's own). In the panel, the sea is a fixed-elevation scheme of its
    own inside the elevation scheme (`scheme.seaScheme`, see

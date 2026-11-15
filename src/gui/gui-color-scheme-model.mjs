@@ -39,7 +39,8 @@ import {
 // A sequential scheme on a raster that could hold elevations can have fixed
 // elevations (method 'elevation'): continuous colors at the elevations of a
 // hypsometric preset (see hypsometric-schemes.mjs), in the band's units,
-// whatever the data's range. Its tiles are the preset's stops, which can be
+// whatever the data's range, or for one preset (not a blend), classes from
+// each stop up to the next (continuous: false). Its tiles are the preset's stops, which can be
 // recolored and moved (in the class breaks dialog), but not added to or taken
 // away. Choosing a preset gives its own colors and elevations. Another method
 // keeps the colors as a custom ramp.
@@ -82,7 +83,7 @@ import {
 //                                             presets that were recolored,
 //                                             see getBlendRampColors())
 //   seaScheme: {elevationPreset, preset,      (fixed elevations: the colors
-//     stopColors, stops, n} or null           of pixels below 0 that are
+//     stopColors, stops, n} or null           of pixels at or below 0 that are
 //                                             open to the sea, at fixed
 //                                             depths, like the land's; null
 //                                             leaves the sea out. See
@@ -345,7 +346,9 @@ var minContinuousStartColors = 5;
 
 export function setSchemeContinuous(scheme, continuous) {
   var next;
-  if (isElevationScheme(scheme)) return scheme;
+  if (isElevationScheme(scheme)) {
+    return canClassifyElevations(scheme) ? Object.assign({}, scheme, {continuous: !!continuous}) : scheme;
+  }
   next = Object.assign({}, !!continuous == !!scheme.continuous ? scheme : resetSchemeBreaks(scheme), {continuous: !!continuous});
   if (continuous && next.type == 'sequential' && next.n < minContinuousStartColors) {
     next.n = minContinuousStartColors;
@@ -511,6 +514,7 @@ export function getDivergingClassRanges(layout) {
 export function getSequentialClassRanges(scheme, lyr) {
   var values = getAscendingValues(lyr, scheme.field);
   if (values.length === 0) return null;
+  if (isElevationScheme(scheme)) return getBreakRanges(getElevationClassBreaks(scheme, lyr));
   try {
     return getBreakRanges(getSequentialSchemeBreaks(scheme, values));
   } catch(e) {
@@ -690,9 +694,9 @@ export function getBreakClassSwatches(scheme) {
   var swatches = [];
   var k, stops;
   if (isElevationScheme(scheme)) {
-    // the end colors go on past the end stops
+    // the end colors go on past the end stops; a class has its low stop's color
     return [colors[0]].concat(colors.slice(1).map(function(color, i) {
-      return gradient(colors[i], color);
+      return isContinuousScheme(scheme) ? gradient(colors[i], color) : colors[i];
     }), [colors[colors.length - 1]]);
   }
   if (scheme.type == 'sequential') {
@@ -1212,6 +1216,18 @@ export function isElevationScheme(scheme) {
   return scheme.method == 'elevation';
 }
 
+// One preset's colors can be classes, with a class from each stop up to the
+// next, and the first class reaching down to the sea (a blend, which only
+// -classify hypsometric= draws, is always continuous)
+export function canClassifyElevations(scheme) {
+  return isElevationScheme(scheme) && !isBlendedScheme(scheme) && !isLandTransparent(scheme);
+}
+
+// The inner breaks of classed elevations: every stop but the first
+function getElevationClassBreaks(scheme, lyr) {
+  return getElevationSchemeStops(scheme, lyr).slice(1);
+}
+
 export function canUseFixedElevations(scheme, lyr) {
   return scheme.type == 'sequential' && isRasterLayer(lyr) && rasterBandCouldBeElevation(lyr, scheme.field);
 }
@@ -1286,8 +1302,14 @@ export function getDefaultElevationPreset(points) {
   return points && internal.getClimatePreset(points) || 'Temperate';
 }
 
+// All the land presets, for the palette menu
 export function getElevationPresetNames() {
   return internal.getHypsometricSchemeNames();
+}
+
+// The presets of a blend, which share their elevations
+export function getClimatePresetNames() {
+  return internal.getClimateSchemeNames();
 }
 
 // Land (hypsometric) and sea (bathymetric) presets of fixed elevations
@@ -1314,7 +1336,8 @@ export function getElevationSchemeStops(scheme, lyr) {
 export function chooseBlendedElevations(scheme, points) {
   return Object.assign(chooseElevationPreset(scheme, getDefaultElevationPreset(points)), {
     preset: blendedPresetName,
-    blended: true
+    blended: true,
+    continuous: true
   });
 }
 
@@ -1332,7 +1355,7 @@ export function getBlendedPresetColors(scheme) {
 
 // The colors of each preset in a blend: [{name, colors}], one at each stop
 export function getBlendRampColors(scheme) {
-  return getElevationPresetNames().map(function(name) {
+  return getClimatePresetNames().map(function(name) {
     return {name: name, colors: getBlendedColors(scheme, name)};
   });
 }
@@ -1379,14 +1402,17 @@ export function getElevationStopChips(scheme, i) {
 // The swatches of a fixed-elevation scheme's classes, from below the first
 // stop to above the last: for each class, lanes [{names, colors: [low, high]}],
 // one for each run of neighboring presets of a blend with the same colors at
-// both ends of the class (or one lane, names: [])
+// both ends of the class (or one lane, names: []). Classed elevations have
+// one color from a stop up to the next.
 export function getElevationClassLanes(scheme) {
   var ramps = isBlendedScheme(scheme) ? getBlendRampColors(scheme) : [{name: null, colors: getSchemeColors(scheme)}];
   var n = ramps[0].colors.length;
+  var continuous = isContinuousScheme(scheme);
   var classes = [];
   for (var j = 0; j <= n; j++) {
     classes.push(groupColorRuns(ramps, function(colors) {
-      return [colors[Math.max(j - 1, 0)], colors[Math.min(j, n - 1)]];
+      var low = colors[Math.max(j - 1, 0)];
+      return [low, continuous ? colors[Math.min(j, n - 1)] : low];
     }));
   }
   return classes;
@@ -1415,6 +1441,108 @@ export function setElevationChipColor(scheme, names, i, color) {
   }, scheme);
 }
 
+// A fixed-elevation scheme with given colors and stops, e.g. an imported
+// palette's. Returns null if they don't have one for each of the presets'
+// stops. Colors and stops that are a preset's give the preset.
+// @base: a fixed-elevation scheme of the layer, for its field and the preset
+//   that a blend uses where it can't blend
+// spec: {
+//   blend: {name: colors} or null   (a blend: the colors of its presets;
+//                                    presets left out keep their own)
+//   colors: [...] or null           (one preset's colors)
+//   preset: name or null            (the preset the colors are edited from)
+//   stops: [...] or null            (in the band's units)
+//   classed: boolean                (classes from each stop up to the next,
+//                                    for one preset's colors)
+//   sea: {preset, colors, stops} or null
+//   landTransparent: boolean
+// }
+export function getElevationSchemeFromSpec(base, spec, lyr) {
+  var names = spec.blend ? getClimatePresetNames() : getElevationPresetNames();
+  var scheme, edited, name, sea, n;
+  if (spec.blend) {
+    n = getFixedPresetStops(names[0]).length;
+    if (spec.stops && spec.stops.length != n) return null;
+    edited = {};
+    names.forEach(function(name) {
+      var colors = spec.blend[name];
+      if (colors && colors.join() != getElevationPresetColors(name).join()) edited[name] = colors;
+    });
+    if (names.some(function(name) { return edited[name] && edited[name].length != n; })) return null;
+    scheme = chooseElevationPreset(base, names.includes(base.elevationPreset) ? base.elevationPreset : names[0]);
+    edited = Object.keys(edited).length > 0 ? edited : null;
+    scheme = Object.assign(scheme, {blended: true, blendColors: edited, preset: edited ? null : blendedPresetName,
+      continuous: true});
+  } else {
+    name = findElevationPreset(names, spec.preset, spec.colors) ||
+      findElevationPresetWithStops([base.elevationPreset].concat(names), spec, lyr) || base.elevationPreset || names[0];
+    scheme = chooseElevationPreset(base, name);
+    n = scheme.n;
+    if (spec.stops && spec.stops.length != n) return null;
+    if (spec.colors && spec.colors.length != n) return null;
+    if (spec.colors && spec.colors.join() != getElevationPresetColors(name).join()) {
+      scheme = Object.assign(scheme, {preset: null, stopColors: spec.colors.concat()});
+    }
+    scheme.continuous = !spec.classed;
+  }
+  if (spec.stops && spec.stops.join() != getElevationSchemeStops(scheme, lyr).join()) {
+    scheme.stops = spec.stops.concat();
+  }
+  sea = spec.sea ? getSeaSchemeFromSpec(spec.sea, lyr) : null;
+  if (spec.sea && !sea) return null;
+  scheme = setSeaScheme(scheme, sea);
+  return spec.landTransparent ? setLandTransparent(scheme, true) : scheme;
+}
+
+// Without a preset, the one of @names that a recolored palette was most
+// likely edited from: of those with as many stops as the spec has colors or
+// stops (presets differ in their number of stops), those with the spec's
+// stops, if any, and of those, the first with the most of the spec's colors
+function findElevationPresetWithStops(names, spec, lyr) {
+  var n = spec.colors ? spec.colors.length : spec.stops ? spec.stops.length : 0;
+  var sized = n > 0 ? names.filter(function(name) {
+    return !!name && getFixedPresetStops(name).length == n;
+  }) : [];
+  var placed = spec.stops ? sized.filter(function(name) {
+    return getElevationSchemeStops({elevationPreset: name}, lyr).join() == spec.stops.join();
+  }) : [];
+  var candidates = placed.length > 0 ? placed : sized;
+  var best = null, bestCount = -1;
+  candidates.forEach(function(name) {
+    var colors = getElevationPresetColors(name);
+    var count = spec.colors ? spec.colors.filter(function(c, i) { return c == colors[i]; }).length : 0;
+    if (count > bestCount) {
+      best = name;
+      bestCount = count;
+    }
+  });
+  return best;
+}
+
+// The preset of @names that is @preset (in any case), or that has @colors
+function findElevationPreset(names, preset, colors) {
+  var key = String(preset || '').toLowerCase();
+  return names.find(function(name) { return name.toLowerCase() == key; }) ||
+    colors && names.find(function(name) { return getElevationPresetColors(name).join() == colors.join(); }) || null;
+}
+
+function getSeaSchemeFromSpec(spec, lyr) {
+  var names = getBathymetricPresetNames();
+  var name = findElevationPreset(names, spec.preset, spec.colors) ||
+    findElevationPresetWithStops(names, spec, lyr) || names[0];
+  var sea = chooseElevationPreset({}, name);
+  var n = sea.n;
+  if (spec.colors && spec.colors.length != n || spec.stops && spec.stops.length != n) return null;
+  if (spec.colors && spec.colors.join() != getElevationPresetColors(name).join()) {
+    sea = Object.assign(sea, {preset: null, stopColors: spec.colors.concat()});
+  }
+  if (spec.stops && spec.stops.join() != getElevationSchemeStops(sea, lyr).join()) {
+    sea = Object.assign(sea, {stops: spec.stops.concat()});
+  }
+  return sea;
+}
+
+// Classed elevations stay classed with another preset
 function chooseElevationPreset(scheme, name) {
   return Object.assign({}, scheme, {
     method: 'elevation',
@@ -1427,7 +1555,7 @@ function chooseElevationPreset(scheme, name) {
     reversed: false,
     pins: null,
     range: null,
-    continuous: true,
+    continuous: !(isElevationScheme(scheme) && scheme.continuous === false),
     landTransparent: false,
     n: getFixedPresetStops(name).length
   });
@@ -1644,26 +1772,11 @@ export function getAppliedColors(scheme, count) {
 export function formatSchemeCommand(scheme, colors, opts) {
   var parts = ['-classify'];
   var custom = scheme.method == 'breaks';
-  var stops;
+  if (isElevationScheme(scheme)) return formatElevationCommand(scheme, opts);
   if (scheme.method != 'non-adjacent') {
     parts.push('field=' + quoteCommandValue(scheme.field));
   }
-  if (isElevationScheme(scheme) && (isBlendedScheme(scheme) || isLandTransparent(scheme))) {
-    parts.push(isLandTransparent(scheme) ? 'hypsometric=none' : 'hypsometric=blended');
-    if (!isLandTransparent(scheme)) parts.push.apply(parts, formatBlendOptions(scheme, opts));
-    // transparent is hypsometric='s default
-    if (scheme.seaScheme) parts.push(formatSeaOptions(scheme, opts));
-    if (getSchemeNullColor(scheme)) parts.push('null-value=' + getSchemeNullColor(scheme));
-    if (opts && opts.target) parts.push('target=' + opts.target);
-    return parts.join(' ');
-  }
-  if (isElevationScheme(scheme)) {
-    stops = getElevationSchemeStops(scheme, opts && opts.layer);
-    parts.push('breaks=' + stops.slice(1, -1).join(','));
-    parts.push('outer-breaks=' + stops[0] + ',' + stops[stops.length - 1]);
-  } else {
-    parts.push('method=' + scheme.method);
-  }
+  parts.push('method=' + scheme.method);
   if (custom) {
     parts.push('breaks=' + scheme.breaks.join(','));
   }
@@ -1674,7 +1787,7 @@ export function formatSchemeCommand(scheme, colors, opts) {
     // continuous output has no pivot class by default, classes have one
     if (!getSchemeNeutral(scheme)) parts.push('no-pivot-class');
     else if (scheme.continuous) parts.push('pivot-class');
-  } else if (isContinuousScheme(scheme) && !custom && !isElevationScheme(scheme)) {
+  } else if (isContinuousScheme(scheme) && !custom) {
     parts.push('classes=' + (scheme.n - 1));
   }
   if (isContinuousScheme(scheme)) {
@@ -1684,10 +1797,6 @@ export function formatSchemeCommand(scheme, colors, opts) {
   parts.push('colors=' + colors.join(','));
   if (getSchemeCategoryNames(scheme) && scheme.method == 'categorical' && opts && opts.layer) {
     parts.push(formatCategoryNamesOption(scheme, opts.layer));
-  }
-  // -classify's sea= default for other breaks is land
-  if (isElevationScheme(scheme)) {
-    parts.push(scheme.seaScheme ? formatSeaOptions(scheme, opts) : 'sea=transparent');
   }
   if (scheme.raster ? !!getSchemeNullColor(scheme) :
       scheme.method != 'non-adjacent' && getSchemeNullColor(scheme) != defaultNullColor) {
@@ -1710,28 +1819,39 @@ function formatCategoryNamesOption(scheme, lyr) {
   return 'category-names=' + quoteCommandValue(names.join(','));
 }
 
-// A blend's moved stops, and the colors of its recolored presets
-function formatBlendOptions(scheme, opts) {
-  var parts = [];
-  var stops;
-  if (scheme.stops) {
-    stops = getElevationSchemeStops(scheme, opts && opts.layer);
-    parts.push('breaks=' + stops.slice(1, -1).join(','), 'outer-breaks=' + stops[0] + ',' + stops[stops.length - 1]);
-  }
-  getBlendRampColors(scheme).forEach(function(ramp) {
-    if (scheme.blendColors && scheme.blendColors[ramp.name]) {
-      parts.push(ramp.name.toLowerCase() + '-colors=' + ramp.colors.join(','));
-    }
-  });
-  return parts;
-}
-
-// sea= for a preset, or its stops and colors once edited
-function formatSeaOptions(scheme, opts) {
+// Fixed elevations: -classify hypsometric= with the preset (or blended, or
+// none for only the sea), and only what was edited: colors= (the land's, or
+// a blend's recolored presets by name) and breaks= (every stop), with the
+// sea's colors and depths as their sea: lists, and classed. Without a sea,
+// hypsometric= leaves it out.
+function formatElevationCommand(scheme, opts) {
+  var parts = ['-classify', 'field=' + quoteCommandValue(scheme.field)];
+  var lyr = opts && opts.layer;
+  var land = !isLandTransparent(scheme);
   var sea = getSeaScheme(scheme);
-  if (sea.preset) return 'sea=' + sea.preset.toLowerCase();
-  return 'sea-breaks=' + getElevationSchemeStops(sea, opts && opts.layer).join(',') +
-    ' sea-colors=' + getSchemeColors(sea).join(',');
+  var colors = [], breaks = [];
+  parts.push('hypsometric=' + (!land ? 'none' : isBlendedScheme(scheme) ? 'blended' : scheme.elevationPreset.toLowerCase()));
+  if (land && isBlendedScheme(scheme)) {
+    getBlendRampColors(scheme).forEach(function(ramp) {
+      if (scheme.blendColors && scheme.blendColors[ramp.name]) {
+        colors.push(ramp.name.toLowerCase() + ':' + ramp.colors.join(','));
+      }
+    });
+  } else if (land && !scheme.preset) {
+    colors.push(getSchemeColors(scheme).join(','));
+  }
+  if (land && scheme.stops) breaks.push(getElevationSchemeStops(scheme, lyr).join(','));
+  if (land && !isContinuousScheme(scheme)) parts.push('classed');
+  if (sea) {
+    parts.push('sea=' + sea.elevationPreset.toLowerCase());
+    if (!sea.preset) colors.push('sea:' + getSchemeColors(sea).join(','));
+    if (sea.stops) breaks.push('sea:' + getElevationSchemeStops(sea, lyr).join(','));
+  }
+  if (colors.length > 0) parts.push('colors=' + colors.join(','));
+  if (breaks.length > 0) parts.push('breaks=' + breaks.join(','));
+  if (getSchemeNullColor(scheme)) parts.push('null-value=' + getSchemeNullColor(scheme));
+  if (opts && opts.target) parts.push('target=' + opts.target);
+  return parts.join(' ');
 }
 
 export function getNumericFields(lyr) {

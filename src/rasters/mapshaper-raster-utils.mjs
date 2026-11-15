@@ -479,7 +479,8 @@ function renderBlendedPaletteGridPreview(grid, palette, field, width, height, so
   // the field's column (and row) at each column (row) of pixels
   var fxs = new Float64Array(width), fys = new Float64Array(height);
   var pixels = new Uint8ClampedArray(width * height * 4);
-  var weights = [0, 0, 0, 0];
+  var zones = tables.length;
+  var weights = new Float64Array(zones);
   var src, val, i, k, dest, r, g, b, a;
   for (var x = 0; x < width; x++) {
     fxs[x] = (bbox[0] + (x + 0.5) / width * (bbox[2] - bbox[0]) - fb[0]) / (fb[2] - fb[0]) * fw - 0.5;
@@ -510,7 +511,7 @@ function renderBlendedPaletteGridPreview(grid, palette, field, width, height, so
       }
       getFieldWeights(fweights, fw, fh, fxs[x], fys[y], weights);
       r = g = b = a = 0;
-      for (k = 0; k < 4; k++) {
+      for (k = 0; k < zones; k++) {
         if (weights[k] === 0) continue;
         i = tables[k].getIndex(val) * 4;
         r += weights[k] * tables[k].rgba[i];
@@ -534,25 +535,27 @@ function renderBlendedPaletteGridPreview(grid, palette, field, width, height, so
   };
 }
 
-// The four weights (0-1) at a position in a weight field, into @out
+// The presets' weights (0-1) at a position in a weight field, into @out
+// @out: a weight for each zone; the field has one fewer for each cell (the
+// last zone's is the rest of 255)
 function getFieldWeights(weights, width, height, fx, fy, out) {
   var c0 = Math.floor(fx), r0 = Math.floor(fy);
   var tx = fx - c0, ty = fy - r0;
   var c1 = Math.min(width - 1, Math.max(0, c0 + 1)), r1 = Math.min(height - 1, Math.max(0, r0 + 1));
-  var a, b, c, d, w0, w1, w2;
+  var k = out.length - 1, rest = 255;
+  var a, b, c, d, w, j;
   c0 = Math.min(width - 1, Math.max(0, c0));
   r0 = Math.min(height - 1, Math.max(0, r0));
-  a = (r0 * width + c0) * 3;
-  b = (r0 * width + c1) * 3;
-  c = (r1 * width + c0) * 3;
-  d = (r1 * width + c1) * 3;
-  w0 = interpolateFieldValue(weights, a, b, c, d, tx, ty);
-  w1 = interpolateFieldValue(weights, a + 1, b + 1, c + 1, d + 1, tx, ty);
-  w2 = interpolateFieldValue(weights, a + 2, b + 2, c + 2, d + 2, tx, ty);
-  out[0] = w0 / 255;
-  out[1] = w1 / 255;
-  out[2] = w2 / 255;
-  out[3] = Math.max(0, 255 - w0 - w1 - w2) / 255;
+  a = (r0 * width + c0) * k;
+  b = (r0 * width + c1) * k;
+  c = (r1 * width + c0) * k;
+  d = (r1 * width + c1) * k;
+  for (j = 0; j < k; j++) {
+    w = interpolateFieldValue(weights, a + j, b + j, c + j, d + j, tx, ty);
+    out[j] = w / 255;
+    rest -= w;
+  }
+  out[k] = Math.max(0, rest) / 255;
 }
 
 function interpolateFieldValue(arr, a, b, c, d, tx, ty) {

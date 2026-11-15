@@ -16,6 +16,10 @@ import api from '../mapshaper.js';
 
 var internal = api.internal;
 
+function hex(rgba, i) {
+  return '#' + [0, 1, 2].map(function(j) { return ('0' + rgba[i * 4 + j].toString(16)).slice(-2); }).join('');
+}
+
 function makeGeoTIFF(values, o) {
   o = o || {};
   var bands = o.bands || 1;
@@ -169,15 +173,15 @@ describe('gui-color-scheme-model.mjs on raster layers', function() {
 });
 
 describe('gui-color-scheme-model.mjs fixed elevations', function() {
-  var arid = internal.getHypsometricStops('Arid').map(function(o) { return o.color; });
-  var stops = internal.getHypsometricStops('Arid').map(function(o) { return o.elevation; });
+  var desert = internal.getHypsometricStops('Desert').map(function(o) { return o.color; });
+  var stops = internal.getHypsometricStops('Desert').map(function(o) { return o.elevation; });
   var n = stops.length;
-  // Lush and Temperate share their colors from 1000 m up, and the land
+  // Tropical and Temperate share their colors from 1000 m up, and the land
   // presets from 3000 m up
   var i1000 = stops.indexOf(1000), i3000 = stops.indexOf(3000);
 
   function formatStops(stops) {
-    return 'breaks=' + stops.slice(1, -1).join(',') + ' outer-breaks=' + stops[0] + ',' + stops[stops.length - 1];
+    return 'breaks=' + stops.join(',');
   }
 
   async function importDEM(values) {
@@ -185,7 +189,7 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     return {catalog: catalog, lyr: catalog.getActiveLayer().layer};
   }
 
-  // in Arizona, where the Arid preset applies
+  // in Arizona, where the Desert preset applies
   function useElevations(lyr) {
     return setSchemeMethod(getDefaultSchemeOfType('sequential', lyr), 'elevation', null, -1, [[-112, 33.5]]);
   }
@@ -196,7 +200,7 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     var scheme = getDefaultSchemeOfType('elevation', dem, [[-112, 33.5]]);
     assert.equal(getSchemeTab(scheme), 'elevation');
     assert(isBlendedScheme(scheme));
-    assert.equal(scheme.elevationPreset, 'Arid');
+    assert.equal(scheme.elevationPreset, 'Desert');
     // without knowing where the raster is
     assert.equal(getDefaultSchemeOfType('elevation', dem, []).preset, 'Temperate');
     assert.equal(getSchemeTab(getDefaultSchemeOfType('sequential', dem)), 'sequential');
@@ -222,14 +226,15 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     var o = await importDEM([-20, -10, 5, 200, -30, 300]);
     var scheme = useElevations(o.lyr);
     var cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
-    assert(/ sea=transparent$/.test(cmd));
+    // transparent is hypsometric='s default
+    assert(!/ sea=/.test(cmd));
     await runCommand(o.catalog, cmd);
     assert.equal(o.lyr.raster.view.recipe.palette.sea, 'transparent');
     assert.equal(getSeaLabel(scheme), 'Transparent');
     scheme = chooseBlendedElevations(chooseSeaPreset(scheme, 'Blue'), [[-112, 33.5]]);
     assert.equal(getSeaLabel(scheme), 'Blue');
     assert(/ hypsometric=blended sea=blue( |$)/.test(formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr})));
-    scheme = choosePreset(scheme, 'Arid');
+    scheme = choosePreset(scheme, 'Desert');
     cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
     assert(/ sea=blue$/.test(cmd));
     await runCommand(o.catalog, cmd);
@@ -243,11 +248,14 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     var gray = internal.getBathymetricStops('Gray');
     var cmd, palette;
     assert.deepEqual(getSchemeColors(sea), gray.map(function(o) { return o.color; }));
+    // moved, but not recolored
+    cmd = formatSchemeCommand(setSeaScheme(scheme, setSchemeBreak(sea, o.lyr, 1, -7000)), getAppliedColors(scheme), {layer: o.lyr});
+    assert(/ sea=gray breaks=sea:-11000,-7000,-6000,[^ ]*,0$/.test(cmd));
     sea = setSchemeBreak(setTileColor(sea, 0, '#000000'), o.lyr, 1, -7000);
     scheme = setSeaScheme(scheme, sea);
     assert.equal(getSeaLabel(scheme), 'Custom');
     cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
-    assert(/ sea-breaks=-11000,-7000,-6000,.*,0 sea-colors=#000000,/.test(cmd));
+    assert(/ sea=gray colors=sea:#000000,[^ ]* breaks=sea:-11000,-7000,-6000,[^ ]*,0$/.test(cmd));
     await runCommand(o.catalog, cmd);
     palette = o.lyr.raster.view.recipe.palette;
     assert.equal(palette.sea, 'custom');
@@ -272,7 +280,7 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     assert.equal(o.lyr.raster.view.recipe.palette.land, 'transparent');
     // no sea either: the land comes back
     assert(!isLandTransparent(chooseSeaPreset(scheme, null)));
-    assert(!isLandTransparent(choosePreset(scheme, 'Lush')));
+    assert(!isLandTransparent(choosePreset(scheme, 'Tropical')));
   });
 
   it('color the stops of a preset, at its elevations, whatever the data range', async function() {
@@ -280,14 +288,18 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     var scheme = useElevations(o.lyr);
     var cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
     var palette;
-    assert.equal(scheme.preset, 'Arid');
-    assert.deepEqual(getSchemeColors(scheme), arid);
+    assert.equal(scheme.preset, 'Desert');
+    assert.deepEqual(getSchemeColors(scheme), desert);
     assert.deepEqual(getContinuousTileStops(scheme, o.lyr).map(function(stop) { return stop.value; }), stops);
-    assert.equal(cmd, "-classify field='band1' " + formatStops(stops) + ' continuous colors=' + arid.join(',') + ' sea=transparent');
+    assert.equal(cmd, "-classify field='band1' hypsometric=desert");
+    // recolored and moved, the preset's colors and stops are given
+    cmd = formatSchemeCommand(setSchemeBreak(setTileColor(scheme, 0, '#ff0000'), o.lyr, 0, 0), [], {layer: o.lyr});
+    assert.equal(cmd, "-classify field='band1' hypsometric=desert colors=#ff0000," + desert.slice(1).join(',') +
+      ' breaks=0,' + stops.slice(1).join(','));
     await runCommand(o.catalog, cmd);
     palette = o.lyr.raster.view.recipe.palette;
-    assert.deepEqual(palette.breaks, stops);
-    assert.deepEqual(palette.colors, arid);
+    assert.deepEqual(palette.breaks, [0].concat(stops.slice(1)));
+    assert.deepEqual(palette.colors, ['#ff0000'].concat(desert.slice(1)));
     assert(palette.continuous);
   });
 
@@ -304,13 +316,37 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     var scheme = useElevations(lyr);
     var edited = setTileColor(scheme, 2, '#ff0000');
     assert.equal(edited.preset, null);
-    assert.deepEqual(getSchemeColors(edited), arid.slice(0, 2).concat(['#ff0000'], arid.slice(3)));
-    assert.deepEqual(getPinnedTiles(edited), arid.map(function(c, i) { return i == 2; }));
-    assert.equal(clearTileColor(edited, 2).preset, 'Arid');
+    assert.deepEqual(getSchemeColors(edited), desert.slice(0, 2).concat(['#ff0000'], desert.slice(3)));
+    assert.deepEqual(getPinnedTiles(edited), desert.map(function(c, i) { return i == 2; }));
+    assert.equal(clearTileColor(edited, 2).preset, 'Desert');
     assert.equal(setTileCount(scheme, 3, -1, lyr), scheme);
     assert.equal(reverseScheme(scheme), scheme);
-    assert.equal(setSchemeContinuous(scheme, false), scheme);
     assert.equal(choosePreset(edited, 'Polar').n, n);
+  });
+
+  it('one preset can be classed, with a class from each stop up to the next', async function() {
+    var o = await importDEM([-20, 100, 300, 700, 1500, 4500]);
+    var atlas = internal.getHypsometricStops('Atlas');
+    var colors = atlas.map(function(stop) { return stop.color; });
+    var scheme = setSchemeContinuous(choosePreset(useElevations(o.lyr), 'Atlas'), false);
+    var cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
+    var palette, preview;
+    assert.equal(scheme.continuous, false);
+    assert.equal(cmd, "-classify field='band1' hypsometric=atlas classed");
+    assert.deepEqual(getSequentialClassRanges(scheme, o.lyr).map(function(r) { return r[0]; }),
+      [-Infinity, 200, 500, 1000, 2000, 4000]);
+    assert.deepEqual(getElevationClassLanes(scheme)[2][0].colors, [colors[1], colors[1]]);
+    assert.equal(getBreakClassSwatches(scheme)[2], colors[1]);
+    // another preset stays classed; a blend is continuous
+    assert.equal(choosePreset(scheme, 'Desert').continuous, false);
+    assert.equal(chooseBlendedElevations(scheme, [[-112, 33.5]]).continuous, true);
+    assert.equal(setSchemeContinuous(chooseBlendedElevations(scheme, [[-112, 33.5]]), false).continuous, true);
+    await runCommand(o.catalog, cmd);
+    palette = o.lyr.raster.view.recipe.palette;
+    assert(!palette.continuous);
+    preview = internal.renderRasterPreview(o.lyr.raster.grid, {palette: palette}, 6, 1);
+    assert.deepEqual([1, 2, 3, 4, 5].map(function(i) { return hex(preview.pixels, i); }),
+      [colors[0], colors[1], colors[2], colors[3], colors[5]]);
   });
 
   it('can be moved, the end stops too, and outside the data', async function() {
@@ -334,9 +370,9 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     expected[n - 1] = 8000;
     assert.equal(moved.method, 'elevation');
     assert.deepEqual(getSchemeBreaks(moved, lyr).breaks, expected);
-    assert(formatSchemeCommand(moved, getAppliedColors(moved), {layer: lyr}).includes(' ' + formatStops(expected) + ' '));
+    assert(formatSchemeCommand(moved, getAppliedColors(moved), {layer: lyr}).endsWith(' ' + formatStops(expected)));
     // a preset brings its own elevations
-    assert.deepEqual(getSchemeBreaks(choosePreset(moved, 'Lush'), lyr).breaks, stops);
+    assert.deepEqual(getSchemeBreaks(choosePreset(moved, 'Tropical'), lyr).breaks, stops);
   });
 
   it('start with the preset for the climate where the layer is, or Temperate', async function() {
@@ -344,11 +380,11 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     var scheme = getDefaultSchemeOfType('sequential', lyr);
     var sahara = [10, 24], amazon = [-60, -5], siberia = [90, 62], greenland = [-40, 72], pacific = [-150, 0];
     assert.equal(setSchemeMethod(scheme, 'elevation', null, -1, []).preset, 'Temperate');
-    assert.equal(setSchemeMethod(scheme, 'elevation', null, -1, [amazon]).preset, 'Lush');
+    assert.equal(setSchemeMethod(scheme, 'elevation', null, -1, [amazon]).preset, 'Tropical');
     assert.deepEqual([[sahara], [amazon], [siberia], [greenland], [pacific], [], null].map(getDefaultElevationPreset),
-      ['Arid', 'Lush', 'Temperate', 'Polar', 'Temperate', 'Temperate', 'Temperate']);
+      ['Desert', 'Tropical', 'Boreal', 'Polar', 'Temperate', 'Temperate', 'Temperate']);
     // the climate with the most weight across the points
-    assert.equal(getDefaultElevationPreset([sahara, sahara, amazon, pacific]), 'Arid');
+    assert.equal(getDefaultElevationPreset([sahara, sahara, amazon, pacific]), 'Desert');
   });
 
   it('show the data and the stops next to it in the class breaks dialog', async function() {
@@ -364,14 +400,14 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     assert(isBlendedScheme(scheme));
     assert.equal(scheme.preset, 'Blended');
     // the tiles and stops are the Amazon's preset
-    assert.equal(scheme.elevationPreset, 'Lush');
+    assert.equal(scheme.elevationPreset, 'Tropical');
     assert.equal(formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: lyr}), "-classify field='band1' hypsometric=blended");
     [setTileColor(scheme, 2, '#ff0000'), setSchemeBreak(scheme, lyr, 3, 700)].forEach(function(next) {
       assert(isBlendedScheme(next));
     });
-    [choosePreset(scheme, 'Arid'), setSchemeMethod(scheme, 'quantile')].forEach(function(next) {
+    [choosePreset(scheme, 'Desert'), setSchemeMethod(scheme, 'quantile')].forEach(function(next) {
       assert(!isBlendedScheme(next));
-      assert(!/hypsometric=/.test(formatSchemeCommand(next, getAppliedColors(next), {layer: lyr})));
+      assert(!/hypsometric=blended/.test(formatSchemeCommand(next, getAppliedColors(next), {layer: lyr})));
     });
   });
 
@@ -379,16 +415,16 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     var lyr = (await importDEM()).lyr;
     var scheme = chooseBlendedElevations(useElevations(lyr), [[-60, -5]]);
     var names = function(chips) { return chips.map(function(chip) { return chip.names.join('+'); }); };
-    assert.deepEqual(names(getElevationStopChips(scheme, 0)), ['Arid', 'Lush', 'Temperate', 'Polar']);
-    assert.deepEqual(names(getElevationStopChips(scheme, i1000)), ['Arid', 'Lush+Temperate', 'Polar']);
-    assert.deepEqual(names(getElevationStopChips(scheme, i3000)), ['Arid+Lush+Temperate', 'Polar']);
+    assert.deepEqual(names(getElevationStopChips(scheme, 0)), ['Desert', 'Steppe', 'Tropical', 'Temperate', 'Boreal', 'Polar']);
+    assert.deepEqual(names(getElevationStopChips(scheme, i1000)), ['Desert', 'Steppe', 'Tropical+Temperate+Boreal', 'Polar']);
+    assert.deepEqual(names(getElevationStopChips(scheme, i3000)), ['Desert+Steppe+Tropical+Temperate+Boreal', 'Polar']);
     // a class's lanes need the same colors at both of its ends: the class
-    // up to 1000 m has four, the one from 1000 m three
+    // up to 1000 m has six, the one from 1000 m four
     var lanes = getElevationClassLanes(scheme);
     assert.equal(lanes.length, n + 1);
-    assert.deepEqual(names(lanes[i1000]), ['Arid', 'Lush', 'Temperate', 'Polar']);
-    assert.deepEqual(names(lanes[i1000 + 1]), ['Arid', 'Lush+Temperate', 'Polar']);
-    assert.deepEqual(names(lanes[n]), ['Arid+Lush+Temperate', 'Polar']);
+    assert.deepEqual(names(lanes[i1000]), ['Desert', 'Steppe', 'Tropical', 'Temperate', 'Boreal', 'Polar']);
+    assert.deepEqual(names(lanes[i1000 + 1]), ['Desert', 'Steppe', 'Tropical+Temperate+Boreal', 'Polar']);
+    assert.deepEqual(names(lanes[n]), ['Desert+Steppe+Tropical+Temperate+Boreal', 'Polar']);
     // a single preset has one chip and one lane
     assert.deepEqual(names(getElevationStopChips(useElevations(lyr), 3)), ['']);
     assert.equal(getElevationClassLanes(useElevations(lyr))[3].length, 1);
@@ -397,41 +433,46 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
   it('a blend\'s presets can be recolored at a stop, together or one at a time', async function() {
     var lyr = (await importDEM()).lyr;
     var scheme = chooseBlendedElevations(useElevations(lyr), [[-60, -5]]);
-    var lush = internal.getHypsometricStops('Lush').map(function(o) { return o.color; });
-    var edited = setElevationChipColor(scheme, ['Lush'], i3000, '#ff0000');
+    var tropical = internal.getHypsometricStops('Tropical').map(function(o) { return o.color; });
+    var edited = setElevationChipColor(scheme, ['Tropical'], i3000, '#ff0000');
     var moved = stops.concat();
     var cmd;
     moved[n - 1] = 7000;
     assert(isBlendedScheme(edited));
     assert.equal(edited.preset, null);
-    // Lush left the shared chip
+    // Tropical left the shared chip
     assert.deepEqual(getElevationStopChips(edited, i3000).map(function(chip) { return chip.names.join('+'); }),
-      ['Arid', 'Lush', 'Temperate', 'Polar']);
+      ['Desert+Steppe', 'Tropical', 'Temperate+Boreal', 'Polar']);
     assert(getElevationStopChips(edited, i3000)[1].edited);
-    edited = setElevationChipColor(setSchemeBreak(edited, lyr, n - 1, 7000), ['Arid', 'Temperate'], 0, '#00ff00');
+    edited = setElevationChipColor(setSchemeBreak(edited, lyr, n - 1, 7000), ['Desert', 'Temperate'], 0, '#00ff00');
     cmd = formatSchemeCommand(edited, getAppliedColors(edited), {layer: lyr});
-    assert(cmd.includes(' hypsometric=blended ' + formatStops(moved) + ' arid-colors=#00ff00,'));
-    assert(cmd.includes(' lush-colors=' + lush.slice(0, i3000).concat(['#ff0000']).join(',')));
-    assert(cmd.includes(' temperate-colors=#00ff00,'));
-    assert(!/polar-colors=/.test(cmd));
-    assert.equal(getBlendRampColors(edited)[1].colors[i3000], '#ff0000');
+    assert(cmd.includes(' hypsometric=blended colors=desert:#00ff00,'));
+    assert(cmd.includes(',tropical:' + tropical.slice(0, i3000).concat(['#ff0000']).join(',')));
+    assert(cmd.includes(',temperate:#00ff00,'));
+    assert(cmd.endsWith(' ' + formatStops(moved)));
+    assert(!/(steppe|boreal|polar):/.test(cmd));
+    assert.equal(getBlendRampColors(edited).find(byName('Tropical')).colors[i3000], '#ff0000');
     // resetting every recolored chip makes it Blended again
-    edited = setElevationChipColor(setElevationChipColor(edited, ['Lush'], i3000, null), ['Arid', 'Temperate'], 0, null);
+    edited = setElevationChipColor(setElevationChipColor(edited, ['Tropical'], i3000, null), ['Desert', 'Temperate'], 0, null);
     assert.equal(edited.preset, 'Blended');
     assert.equal(edited.blendColors, null);
     // and -classify draws what the panel shows
     var o = await importDEM();
-    cmd = formatSchemeCommand(setElevationChipColor(scheme, ['Lush'], i3000, '#ff0000'), [], {layer: o.lyr});
+    cmd = formatSchemeCommand(setElevationChipColor(scheme, ['Tropical'], i3000, '#ff0000'), [], {layer: o.lyr});
     await runCommand(o.catalog, cmd);
-    assert.equal(o.lyr.raster.view.recipe.palette.blend.ramps[1].colors[i3000], '#ff0000');
+    assert.equal(o.lyr.raster.view.recipe.palette.blend.ramps.find(byName('Tropical')).colors[i3000], '#ff0000');
   });
+
+  function byName(name) {
+    return function(ramp) { return ramp.name == name; };
+  }
 
   it('leave their colors as a custom ramp for another method', async function() {
     var lyr = (await importDEM()).lyr;
     var scheme = setSchemeMethod(useElevations(lyr), 'quantile');
     assert.equal(scheme.preset, null);
     assert.equal(scheme.n, n);
-    assert.deepEqual(getSchemeColors(scheme), arid);
+    assert.deepEqual(getSchemeColors(scheme), desert);
     assert(!/breaks=/.test(formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: lyr})));
   });
 });

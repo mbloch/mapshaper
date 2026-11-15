@@ -25,7 +25,8 @@ import {
   getCenterTile, getSchemeNeutral, isContinuousScheme, setSchemeContinuous, getContinuousTileStops,
   getContinuousSegments, getAppliedScheme, setSchemeLayerType, formatSchemeCount, formatNoDataCount,
   hasSchemeRange, getDisplayRange, setSchemeRangeEnd, resetSchemeRange,
-  getRangeStripColors, isElevationScheme, canUseFixedElevations, getElevationPresetNames, getElevationPresetColors,
+  getRangeStripColors, isElevationScheme, canClassifyElevations, canUseFixedElevations, getElevationPresetNames, getClimatePresetNames,
+  getElevationPresetColors,
   chooseBlendedElevations, isBlendedScheme, getBlendedPresetColors,
   getSchemeTab, getElevationFields, layerHasElevations, getBathymetricPresetNames,
   getSeaScheme, setSeaScheme, chooseSeaPreset, getSeaLabel, isLandTransparent, setLandTransparent,
@@ -211,6 +212,7 @@ export function ColorSchemePanel(gui, opts) {
       renderMethodRow();
     }).addClass('color-scheme-customize-btn').attr('title', 'Edit the class breaks');
     breaksDialog = new ClassBreaksDialog(gui, {
+      reversed: isElevationScheme,
       getScheme: function() { return scheme; },
       getLayer: function() { return targetLayer; },
       onChange: changeScheme,
@@ -342,7 +344,7 @@ export function ColorSchemePanel(gui, opts) {
     var seaCell = El('div').addClass('label-split-cell color-scheme-palette-cell').appendTo(seaRow);
     var seaCustomizeCell = El('div').addClass('label-split-cell color-scheme-customize-cell').appendTo(seaRow);
     var seaLabel = El('span').addClass('color-scheme-hint-label').appendTo(seaCell).text('Sea')
-      .attr('data-tooltip', 'Pixels below 0 that reach the edge of the map or a pixel without data;\n' +
+      .attr('data-tooltip', 'Pixels at or below 0 that reach the edge of the map or a pixel without data;\n' +
         'basins enclosed by land take land colors')
       .on('mouseenter', function() { keepTooltipInWindow(seaLabel.node()); });
     seaBtn = El('div').addClass('color-scheme-palette-btn').attr('role', 'button')
@@ -361,7 +363,7 @@ export function ColorSchemePanel(gui, opts) {
     }).addClass('color-scheme-customize-btn').attr('title', 'Edit the depths and colors of the sea');
     seaBreaksDialog = new ClassBreaksDialog(gui, {
       title: 'Sea depths',
-      reversed: true,
+      reversed: function() { return true; },
       getScheme: function() { return scheme && getSeaScheme(scheme); },
       getLayer: function() { return targetLayer; },
       onChange: function(next) { changeScheme(setSeaScheme(scheme, next)); },
@@ -578,7 +580,7 @@ export function ColorSchemePanel(gui, opts) {
   // An imported scheme of another type goes on its own tab, and the tab it
   // came from keeps its scheme
   function importPalette(text) {
-    var result = importColorPalette(text, scheme, targetLayer);
+    var result = importColorPalette(text, scheme, targetLayer, isRaster() ? getLngLatSamples(targetLayer) : null);
     if (getSchemeTab(result.scheme) != getSchemeTab(scheme)) tabSchemes[getSchemeTab(scheme)] = scheme;
     picker.hide();
     selectedTile = -1;
@@ -783,12 +785,13 @@ export function ColorSchemePanel(gui, opts) {
 
   // Presets and categorical schemes have no interpolated tiles for vibrance
   // or the hue path to change; the row keeps only the reverse button for them,
-  // and for sequential and diverging presets, the range.
+  // and for sequential and diverging presets, the range. Fixed elevations
+  // keep only the continuous button, for one preset.
   function renderVibrance() {
     var vibrance = getSchemeVibrance(scheme);
     setSliderValue(vibranceInput, Math.round(vibrance * 1000));
     var elevation = isElevationScheme(scheme);
-    vibranceRow.classed('hidden', elevation);
+    vibranceRow.classed('hidden', elevation && !canClassifyElevations(scheme));
     vibranceRow.classed('preset', !!scheme.preset || scheme.type == 'categorical' || elevation);
     vibranceRow.classed('ranged', hasSchemeRange(scheme));
     renderRange();
@@ -796,10 +799,10 @@ export function ColorSchemePanel(gui, opts) {
     shuffleBtn.classed('hidden', scheme.type != 'categorical');
     // each half of a diverging ramp runs from a low-chroma center, where the
     // hue path makes little difference
-    longHueBtn.classed('hidden', scheme.type == 'diverging')
+    longHueBtn.classed('hidden', scheme.type == 'diverging' || elevation)
       .classed('selected', !!scheme.longHue)
       .attr('aria-pressed', scheme.longHue ? 'true' : 'false');
-    continuousBtn.classed('hidden', scheme.type == 'categorical' || elevation)
+    continuousBtn.classed('hidden', scheme.type == 'categorical' || elevation && !canClassifyElevations(scheme))
       .classed('selected', isContinuousScheme(scheme))
       .attr('aria-pressed', isContinuousScheme(scheme) ? 'true' : 'false');
   }
@@ -1189,18 +1192,21 @@ export function ColorSchemePanel(gui, opts) {
       });
     }
     El('div').addClass('color-scheme-palette-heading').appendTo(paletteMenu).text('Elevation');
-    getElevationPresetNames().forEach(function(name) {
+    var climate = getClimatePresetNames();
+    var addPreset = function(name) {
       addPaletteItem(name, getElevationPresetColors(name), !transparent && scheme.preset == name, function() {
         changeScheme(choosePreset(scheme, name));
       });
-    });
+    };
+    climate.forEach(addPreset);
     // blending needs to know where the raster is
     var points = getLngLatSamples(targetLayer);
     if (internal.getClimatePreset(points)) {
       addPaletteItem('Blended', getBlendedPresetColors(), !transparent && scheme.preset == 'Blended', function() {
         changeScheme(chooseBlendedElevations(scheme, points));
-      }).attr('title', 'The presets, blended by climate across the map');
+      }).attr('title', 'The climate presets, blended by climate across the map');
     }
+    getElevationPresetNames().filter(function(name) { return !climate.includes(name); }).forEach(addPreset);
   }
 
   // colors: null for a checkered strip (transparent)

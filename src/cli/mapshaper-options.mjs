@@ -1128,34 +1128,14 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('hypsometric', {
-      describe: '[raster] elevation colors: arid, lush, temperate, polar, blended (by climate), or none (only the sea)'
+      describe: '[raster] elevation colors: desert, steppe, tropical, temperate, boreal, polar, blended (by climate), atlas, lowland, highland, or none (only the sea). colors= and breaks= (every elevation) change them; name a blend\'s presets, e.g. colors=desert:...,polar:...'
     })
-    .option('arid-colors', {
-      describe: '[raster] with hypsometric=blended: Arid\'s colors, one at each elevation (see breaks=)',
-      type: 'colors'
-    })
-    .option('lush-colors', {
-      describe: '[raster] with hypsometric=blended: Lush\'s colors',
-      type: 'colors'
-    })
-    .option('temperate-colors', {
-      describe: '[raster] with hypsometric=blended: Temperate\'s colors',
-      type: 'colors'
-    })
-    .option('polar-colors', {
-      describe: '[raster] with hypsometric=blended: Polar\'s colors',
-      type: 'colors'
+    .option('classed', {
+      describe: '[raster] with hypsometric=: classes from each elevation up to the next, not continuous colors',
+      type: 'flag'
     })
     .option('sea', {
-      describe: '[raster] below 0 and open to the edge: transparent (default with hypsometric=), land, or pale, blue, gray (bathymetric tints)'
-    })
-    .option('sea-breaks', {
-      describe: '[raster] depths of custom sea colors, deepest first (with sea-colors=)',
-      type: 'numbers'
-    })
-    .option('sea-colors', {
-      describe: '[raster] custom sea colors, one for each of sea-breaks=',
-      type: 'colors'
+      describe: '[raster] at or below 0 and open to the edge: transparent (default with hypsometric=), land, or pale, blue, gray (bathymetric tints; colors=sea:... and breaks=sea:... change them)'
     })
     .option('index-field', {
       describe: 'apply pre-calculated classes (0 ... n-1, -1)'
@@ -2912,7 +2892,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('highlights', {
-      describe: 'opacity of the brightest highlights, relative to max-opacity (default is 0.6)',
+      describe: 'opacity of the brightest highlights, relative to max-opacity (default is 0.5)',
       type: 'number'
     })
     .option('shadow-color', {

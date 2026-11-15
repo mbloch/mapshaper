@@ -41,13 +41,29 @@ describe('-classify hypsometric=', function() {
   it('colors a raster with a preset, at its elevations', async function() {
     var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
     var palette;
-    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=lush');
+    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=tropical');
     palette = getPalette(catalog);
-    assert.equal(palette.hypsometric, 'Lush');
+    assert.equal(palette.hypsometric, 'Tropical');
     assert(palette.continuous);
-    assert.deepEqual(palette.breaks, internal.getHypsometricStops('Lush').map(function(o) { return o.elevation; }));
-    assert.deepEqual(palette.colors, internal.getHypsometricStops('Lush').map(function(o) { return o.color; }));
+    assert.deepEqual(palette.breaks, internal.getHypsometricStops('Tropical').map(function(o) { return o.elevation; }));
+    assert.deepEqual(palette.colors, internal.getHypsometricStops('Tropical').map(function(o) { return o.color; }));
     assert.equal(palette.blend, undefined);
+  });
+
+  it('has presets outside the climate blend, with elevations of their own', async function() {
+    var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
+    var palette;
+    assert(internal.getHypsometricSchemeNames().includes('Atlas'));
+    assert(!internal.getClimateSchemeNames().includes('Atlas'));
+    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=atlas');
+    palette = getPalette(catalog);
+    assert.equal(palette.hypsometric, 'Atlas');
+    assert(palette.continuous);
+    assert.deepEqual(palette.breaks, [0, 200, 500, 1000, 2000, 4000]);
+    await runCommand(catalog, '-classify hypsometric=lowland');
+    assert.deepEqual(getPalette(catalog).breaks, [0, 125, 250, 500, 750, 1000, 2000]);
+    await runCommand(catalog, '-classify hypsometric=highland');
+    assert.deepEqual(getPalette(catalog).breaks, [0, 500, 1000, 1500, 2000, 3000, 4000]);
   });
 
   it('converts the elevations to the band\'s units', async function() {
@@ -57,12 +73,49 @@ describe('-classify hypsometric=', function() {
     assert.equal(getPalette(catalog).breaks[1], +(internal.getHypsometricStops('Polar')[1].elevation / 0.3048).toPrecision(6));
   });
 
-  it('rejects other values, options that give colors or breaks, and vector layers', async function() {
+  it('rejects other values, options that classify another way, and vector layers', async function() {
     var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
     await assert.rejects(runCommand(catalog, '-classify hypsometric=tundra'), /Unknown hypsometric=/);
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=arid colors=red,blue'), /colors=/);
-    await assert.rejects(api.applyCommands('-i in.json -classify hypsometric=arid',
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=desert method=quantile'), /does not work with method=/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=desert outer-breaks=0,10'), /breaks= gives every elevation/);
+    await assert.rejects(runCommand(catalog, '-classify field=band1 colors=red,blue classed'), /classed works with hypsometric=/);
+    await assert.rejects(api.applyCommands('-i in.json -classify hypsometric=desert',
       {'in.json': {type: 'Point', coordinates: [0, 0]}}), /raster layers/);
+    await assert.rejects(api.applyCommands('-i in.json -classify colors=red,sea:blue',
+      {'in.json': {type: 'Point', coordinates: [0, 0]}}), /Named lists .* work with raster layers/);
+  });
+
+  it('colors= and breaks= give a preset other colors and elevations, every one', async function() {
+    var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
+    var palette;
+    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=atlas colors=#111111,#222222,#333333,#444444,#555555,#666666');
+    palette = getPalette(catalog);
+    assert.equal(palette.hypsometric, 'Atlas');
+    assert.deepEqual(palette.colors, ['#111111', '#222222', '#333333', '#444444', '#555555', '#666666']);
+    assert.deepEqual(palette.breaks, [0, 200, 500, 1000, 2000, 4000]);
+    // the preset's name is the same as no name
+    await runCommand(catalog, '-classify hypsometric=atlas breaks=atlas:0,100,200,300,400,500');
+    assert.deepEqual(getPalette(catalog).breaks, [0, 100, 200, 300, 400, 500]);
+    // with both, any number of stops
+    await runCommand(catalog, '-classify hypsometric=atlas colors=#111111,#222222,#333333 breaks=0,10,20');
+    assert.deepEqual(getPalette(catalog).breaks, [0, 10, 20]);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=atlas colors=red,blue'), /needs 6 colors/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=atlas breaks=1,2'), /needs 6 elevations/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=atlas colors=red,blue breaks=1,2,3'), /same number/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=atlas breaks=5,4,3,2,1,0'), /ascending/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=atlas colors=desert:red'), /works with hypsometric=blended/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=atlas colors=foo:red'), /Unknown name in colors=: foo/);
+  });
+
+  it('classed: one preset as classes, from each elevation up to the next', async function() {
+    var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
+    var palette;
+    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=atlas classed');
+    palette = getPalette(catalog);
+    assert.equal(palette.continuous, false);
+    assert.deepEqual(palette.breaks, [200, 500, 1000, 2000, 4000]);
+    assert.equal(palette.colors.length, 6);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended classed'), /one preset/);
   });
 
   it('blended: the presets weighted across the raster, with the main one as its colors', async function() {
@@ -72,43 +125,48 @@ describe('-classify hypsometric=', function() {
     palette = getPalette(catalog);
     field = palette.blend.field;
     assert.equal(palette.hypsometric, 'blended');
-    assert.deepEqual(palette.colors, internal.getHypsometricStops('Arid').map(function(o) { return o.color; }));
-    assert.deepEqual(palette.blend.ramps.map(function(o) { return o.name; }), ['Arid', 'Lush', 'Temperate', 'Polar']);
+    assert.deepEqual(palette.colors, internal.getHypsometricStops('Desert').map(function(o) { return o.color; }));
+    assert.deepEqual(palette.blend.ramps.map(function(o) { return o.name; }), ['Desert', 'Steppe', 'Tropical', 'Temperate', 'Boreal', 'Polar']);
     assert.deepEqual(field.bbox, [5, 22, 7, 24]);
-    assert.equal(field.weights.length, field.width * field.height * 3);
-    assert(field.weights[0] > 200); // mostly Arid
+    assert.equal(field.weights.length, field.width * field.height * 5);
+    assert(field.weights[0] > 200); // mostly Desert
   });
 
-  it('blended: a preset can be recolored, and the elevations of all four moved', async function() {
+  it('blended: a preset can be recolored, and the elevations of all of them moved', async function() {
     var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
     var colorsOf = function(name) { return internal.getHypsometricStops(name).map(function(o) { return o.color; }); };
-    var arid = colorsOf('Arid').map(function(c, i) { return i == 2 ? '#ff0000' : c; });
-    var breaks = internal.getHypsometricStops('Arid').map(function(o, i, arr) {
+    var desert = colorsOf('Desert').map(function(c, i) { return i == 2 ? '#ff0000' : c; });
+    var breaks = internal.getHypsometricStops('Desert').map(function(o, i, arr) {
       return i === 0 ? -10 : i == arr.length - 1 ? 6500 : o.elevation + 5;
     });
     var palette;
-    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=blended arid-colors=' + arid.join(',') +
-      ' breaks=' + breaks.slice(1, -1).join(',') + ' outer-breaks=' + breaks[0] + ',' + breaks[breaks.length - 1]);
+    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=blended colors=desert:' + desert.join(',') +
+      ' breaks=' + breaks.join(','));
     palette = getPalette(catalog);
-    assert.deepEqual(palette.blend.ramps[0].colors, arid);
-    assert.deepEqual(palette.blend.ramps[1].colors, colorsOf('Lush'));
+    assert.deepEqual(palette.blend.ramps[0].colors, desert);
+    assert.deepEqual(palette.blend.ramps.find(function(o) { return o.name == 'Tropical'; }).colors, colorsOf('Tropical'));
     palette.blend.ramps.forEach(function(ramp) { assert.deepEqual(ramp.breaks, breaks); });
-    // Arid has the most weight here, so it is the palette's own ramp
-    assert.deepEqual(palette.colors, arid);
+    // Desert has the most weight here, so it is the palette's own ramp
+    assert.deepEqual(palette.colors, desert);
     assert.deepEqual(palette.breaks, breaks);
   });
 
   it('blended: its colors need one at each elevation, and only a blend takes them', async function() {
     var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
-    var lush = internal.getHypsometricStops('Lush').map(function(o) { return o.color; }).join(',');
-    var n = internal.getHypsometricStops('Lush').length;
+    var tropical = internal.getHypsometricStops('Tropical').map(function(o) { return o.color; }).join(',');
+    var n = internal.getHypsometricStops('Tropical').length;
     await runCommand(catalog, '-proj init=wgs84');
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended lush-colors=red,blue'), new RegExp('needs ' + n + ' colors'));
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=lush lush-colors=' + lush), /works with hypsometric=blended/);
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended breaks=1,2'), /outer-breaks=/);
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended breaks=1,2,3,4,5,6,7,8,9 outer-breaks=0,10'),
-      new RegExp('has ' + n + ' elevations'));
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=arid breaks=1,2'), /does not work with breaks=/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended colors=tropical:red,blue'), new RegExp('needs ' + n + ' colors'));
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended colors=tropical:red,blue,temperate:' + tropical),
+      new RegExp('colors=tropical: needs ' + n + ' colors'));
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=tropical colors=tropical:' + tropical + ',desert:' + tropical),
+      /works with hypsometric=blended/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended colors=' + tropical), /colors for each preset/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended breaks=1,2'), new RegExp('needs ' + n + ' elevations'));
+    // a blend's presets share their elevations, so its breaks have no name
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended breaks=desert:1,2,3,4,5,6'), /share their elevations/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended colors=tropical:' + tropical + ',tropical:' + tropical),
+      /given twice/);
   });
 
   it('blended needs to know where the raster is', async function() {
@@ -132,14 +190,16 @@ describe('-classify hypsometric=', function() {
 
 describe('climate weight fields', function() {
   it('fade across the sea, without steps where the climate grid ends', function() {
-    // the Pacific, west of California: columns 0-39 are open sea
-    var field = internal.getClimateWeightField([-160, 20, -110, 50], internal.parseCrsString('wgs84'), 60);
+    // the Pacific, west of California and north of Hawaii: columns 0-35
+    // (to 128W) are open sea
+    var field = internal.getClimateWeightField([-155, 28, -110, 46], internal.parseCrsString('wgs84'), 60);
+    var zones = field.weights.length / field.width / field.height;
     var step = 0;
     for (var y = 0; y < field.height; y++) {
-      for (var x = 1; x < 40; x++) {
-        for (var k = 0; k < 3; k++) {
-          step = Math.max(step, Math.abs(field.weights[(y * field.width + x) * 3 + k] -
-            field.weights[(y * field.width + x - 1) * 3 + k]));
+      for (var x = 1; x < 36; x++) {
+        for (var k = 0; k < zones; k++) {
+          step = Math.max(step, Math.abs(field.weights[(y * field.width + x) * zones + k] -
+            field.weights[(y * field.width + x - 1) * zones + k]));
         }
       }
     }
@@ -176,42 +236,54 @@ describe('sea=', function() {
     assert.equal(internal.getRasterSeaMask(grid, 0)[13], 1);
   });
 
+  it('a sea of 0, as many DEMs give it, is sea too, and so is a basin at 0 that it reaches', function() {
+    var grid = makeGrid();
+    grid.samples = Float32Array.from(values.map(function(v) { return v == -10 ? 0 : v; }));
+    grid.samples[6] = 0; // next to the sea, so the basin beyond it at -5 opens to the sea
+    var mask = internal.getRasterSeaMask(grid, 0);
+    assert.deepEqual(Array.from(mask), [
+      1, 0, 0, 0, 0,
+      1, 1, 1, 1, 0,
+      1, 1, 0, 0, 0,
+      0, 0, 0, 1, 0]);
+  });
+
   it('hypsometric tints leave out the sea, and keep the basins', async function() {
     var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
     var palette, preview;
-    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=arid');
+    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=desert');
     palette = getPalette(catalog);
     assert.equal(palette.sea, 'transparent');
     preview = internal.renderRasterPreview(catalog.getActiveLayer().layer.raster.grid, {palette: palette}, 5, 4);
     assert.equal(preview.pixels[0 * 4 + 3], 0); // sea
     assert.equal(preview.pixels[7 * 4 + 3], 255); // basin
-    assert.equal(hex(preview.pixels, 7), internal.getHypsometricStops('Arid')[0].color);
+    assert.equal(hex(preview.pixels, 7), internal.getHypsometricStops('Desert')[0].color);
   });
 
   it('sea=land colors everything, and other palettes take sea=transparent', async function() {
     var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
-    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=arid sea=land');
+    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=desert sea=land');
     assert.equal(getPalette(catalog).sea, undefined);
     await runCommand(catalog, '-classify field=band1 colors=greens classes=3 sea=transparent');
     assert.equal(getPalette(catalog).sea, 'transparent');
     await runCommand(catalog, '-classify field=band1 colors=greens classes=3');
     assert.equal(getPalette(catalog).sea, undefined);
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=arid sea=green'), /sea=/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=desert sea=green'), /sea=/);
   });
 
   it('a bathymetric preset colors the sea by depth, and not the basins', async function() {
     var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
     var stops = internal.getBathymetricStops('Blue');
     var palette, preview;
-    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=arid sea=blue');
+    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=desert sea=blue');
     palette = getPalette(catalog);
     assert.equal(palette.sea, 'Blue');
     assert.deepEqual(palette.seaRamp.breaks, stops.map(function(o) { return o.elevation; }));
     preview = internal.renderRasterPreview(catalog.getActiveLayer().layer.raster.grid, {palette: palette}, 5, 4);
     assert.equal(preview.pixels[0 * 4 + 3], 255);
     // -10 m, between the -50 and 0 m stops
-    assert.notEqual(hex(preview.pixels, 0), internal.getHypsometricStops('Arid')[0].color);
-    assert.equal(hex(preview.pixels, 7), internal.getHypsometricStops('Arid')[0].color);
+    assert.notEqual(hex(preview.pixels, 0), internal.getHypsometricStops('Desert')[0].color);
+    assert.equal(hex(preview.pixels, 7), internal.getHypsometricStops('Desert')[0].color);
   });
 
   it('hypsometric=none colors only the sea', async function() {
@@ -228,56 +300,75 @@ describe('sea=', function() {
     await assert.rejects(runCommand(catalog, '-classify hypsometric=none'), /needs colors for the sea/);
   });
 
-  it('sea-breaks= and sea-colors= give custom sea colors', async function() {
+  it('colors=sea: and breaks=sea: give custom sea colors, or change a preset\'s', async function() {
     var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
+    var pale = internal.getBathymetricStops('Pale');
     var palette, preview;
-    await runCommand(catalog, '-classify hypsometric=arid sea-breaks=-20,0 sea-colors=#000000,#0000ff');
+    await runCommand(catalog, '-classify hypsometric=desert sea=pale colors=sea:' + pale.map(function() { return '#000000'; }).join(','));
+    palette = getPalette(catalog);
+    assert.equal(palette.sea, 'custom');
+    assert.deepEqual(palette.seaRamp.breaks, pale.map(function(o) { return o.elevation; }));
+    assert.equal(palette.seaRamp.colors[0], '#000000');
+    await runCommand(catalog, '-classify hypsometric=desert colors=sea:#000000,#0000ff breaks=sea:-20,0');
     palette = getPalette(catalog);
     assert.equal(palette.sea, 'custom');
     assert.deepEqual(palette.seaRamp, {breaks: [-20, 0], colors: ['#000000', '#0000ff']});
     preview = internal.renderRasterPreview(catalog.getActiveLayer().layer.raster.grid, {palette: palette}, 5, 4);
     // -10 m, between the two colors
     assert(preview.pixels[2] > 0 && preview.pixels[2] < 255);
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=arid sea-breaks=0,-20 sea-colors=red,blue'), /ascending/);
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=arid sea-breaks=-20,0 sea-colors=red'), /one for each/);
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=arid sea=pale sea-breaks=-20,0 sea-colors=red,blue'), /sea=/);
+    // with land colors and stops too, the sea's lists come after the land's
+    await runCommand(catalog, '-classify hypsometric=desert colors=#111111,#222222,#333333,#444444,#555555,#666666,sea:#000000,#0000ff' +
+      ' breaks=sea:-20,0');
+    assert.equal(getPalette(catalog).colors[0], '#111111');
+    assert.deepEqual(getPalette(catalog).seaRamp.colors, ['#000000', '#0000ff']);
+    // and they work without hypsometric=
+    await runCommand(catalog, '-classify field=band1 breaks=100,sea:-20,0 colors=red,blue,sea:#000000,#0000ff');
+    assert.deepEqual(getPalette(catalog).breaks, [100]);
+    assert.deepEqual(getPalette(catalog).seaRamp.breaks, [-20, 0]);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=desert colors=sea:red,blue breaks=sea:0,-20'), /ascending/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=desert colors=sea:red breaks=sea:-20,0'), /same number/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=desert colors=sea:red,blue'), /needs colors=sea:... and breaks=sea:/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=desert sea=pale colors=sea:red,blue'), /needs 12 colors/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=desert sea=transparent colors=sea:red,blue breaks=sea:-20,0'),
+      /work with a bathymetric sea=/);
   });
 
   it('a bathymetric preset is converted to the band\'s units', async function() {
     var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
     catalog.getActiveLayer().layer.raster.grid.verticalUnits = 'ft';
-    await runCommand(catalog, '-classify hypsometric=arid sea=Pale');
+    await runCommand(catalog, '-classify hypsometric=desert sea=Pale');
     assert.equal(getPalette(catalog).seaRamp.breaks[0], -36089.2);
   });
 });
 
 describe('blended raster palettes', function() {
-  // two pixels at 0 m, the left one where the field is all Arid, the right
-  // one where it is all Lush
+  // two pixels at 0 m, the left one where the field is all Desert, the right
+  // one where it is all Tropical
   var grid = {width: 2, height: 1, bands: 1, pixelType: 'float32', samples: Float32Array.from([0, 0]),
     nodata: null, bbox: [0, 0, 2, 1], transform: [1, 0, 0, 0, -1, 1]};
-  var arid = internal.getHypsometricStops('Arid');
-  var lush = internal.getHypsometricStops('Lush');
+  var desert = internal.getHypsometricStops('Desert');
+  var tropical = internal.getHypsometricStops('Tropical');
   function ramp(stops, name) {
     return {name: name, breaks: stops.map(function(o) { return o.elevation; }), colors: stops.map(function(o) { return o.color; })};
   }
   var palette = Object.assign({band: 1, type: 'sequential', continuous: true, interpolation: 'oklch',
-    nullColor: null}, ramp(lush), {
+    nullColor: null}, ramp(tropical), {
     blend: {
-      ramps: [ramp(arid, 'Arid'), ramp(lush, 'Lush'), ramp(arid, 'Temperate'), ramp(arid, 'Polar')],
-      field: {bbox: [0, 0, 2, 1], width: 2, height: 2, weights: [255, 0, 0, 0, 255, 0, 255, 0, 0, 0, 255, 0], key: 'test'}
+      ramps: [ramp(desert, 'Desert'), ramp(tropical, 'Tropical'), ramp(desert, 'Temperate'), ramp(desert, 'Polar')],
+      field: {bbox: [0, 0, 2, 1], width: 2, height: 2, key: 'test',
+        weights: [255, 0, 0, 0, 255, 0, 255, 0, 0, 0, 255, 0]}
     }
   });
 
   it('mix the ramps by the weights where each pixel is', function() {
     var preview = internal.renderRasterPreview(grid, {palette: palette}, 2, 1);
-    assert.equal(hex(preview.pixels, 0), arid[0].color);
-    assert.equal(hex(preview.pixels, 1), lush[0].color);
+    assert.equal(hex(preview.pixels, 0), desert[0].color);
+    assert.equal(hex(preview.pixels, 1), tropical[0].color);
   });
 
   it('take the palette\'s own colors without a field', function() {
     var preview = internal.renderRasterPreview(grid, {palette: palette}, 2, 1, null, {blendField: null});
-    assert.equal(hex(preview.pixels, 0), lush[0].color);
-    assert.equal(hex(preview.pixels, 1), lush[0].color);
+    assert.equal(hex(preview.pixels, 0), tropical[0].color);
+    assert.equal(hex(preview.pixels, 1), tropical[0].color);
   });
 });

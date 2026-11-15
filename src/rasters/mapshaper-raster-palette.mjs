@@ -18,7 +18,7 @@ import { stop } from '../utils/mapshaper-logging';
 //   nullColor,      // the color of nodata pixels; null is transparent
 //   interpolation,  // continuous: 'oklch' (default) or 'rgb'
 //   vibrance,       // continuous: 0-1, as -classify vibrance=
-//   sea,            // pixels below 0 that reach the grid's edge or its pixels
+//   sea,            // pixels at or below 0 that reach the grid's edge or its pixels
 //                   // without values (see mapshaper-raster-sea-mask.mjs):
 //                   // 'transparent' leaves them out; the name of a
 //                   // bathymetric preset colors them by seaRamp

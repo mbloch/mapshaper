@@ -495,10 +495,17 @@ same pattern as other mapshaper commands.
 - `max-opacity=` 0-1 opacity of the darkest shadows (default 0.55; shadow
   style only).
 - `highlights=` opacity of the brightest highlights (a slope facing the light),
-  as a ratio of `max-opacity=` (shadow style only; default 0.6). It was
+  as a ratio of `max-opacity=` (shadow style only; default 0.5). It was
   raised from 0.6 to 1 while highlights were scaled to a single light's
   brightest slope, which no slope reaches under the blend of lights (see
-  below), and returned to 0.6 once highlights reached full strength. The highlight
+  below), and returned to 0.6 once highlights reached full strength. It was
+  lowered to 0.5 to suit typical aerial imagery. Over a background of
+  lightness v (0-1), a shadow of opacity a darkens it by a·v and a highlight
+  lightens it by a·(1 - v), so highlights gain on darker backgrounds. Averaging
+  each where it occurs, the two balanced on backgrounds of about 0.42 at 0.6
+  (0.35-0.49 across six DEMs), against imagery medians of 0.22-0.48 (typically
+  0.30-0.40); 0.5 balances at about 0.38. Over light backgrounds highlights
+  have little room to lighten, so the lower value costs little there. The highlight
   range is scaled to this maximum, not clipped; the product is capped at 1.
   The brightest highlight goes to the slope facing the blend of lights
   (`getHillshadeMaxShade()`), which is 1.21 times as bright as flat ground

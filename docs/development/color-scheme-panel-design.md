@@ -559,7 +559,14 @@ apart from the panel, so that a command could use it later.
   `interpolate` for continuous colors (one for each run of stretches that
   meet at the same color, chosen between by `case` where the colors jump),
   `match` for categories, all inside a `case` that gives features without
-  a number the no-data color.
+  a number the no-data color. Arrays of numbers and colors are on one line.
+- Fixed elevations also have `elevations`, for editing the colors by hand:
+  `units` (the band's), `stops` (in those units), the colors at the stops
+  (`colors` for one preset; for a blend, `blend`, with every preset's
+  colors, recolored or not), and `sea` (`palette`, `stops` and `colors`,
+  or null). Transparent land has only `units` and `sea`. A blend's
+  `classes` and `expression` are those of the preset it uses where it can't
+  blend; a web map can't mix the presets by climate.
 - Continuous quantile colors are placed by rank, which stops at values can
   only approach, and the panel interpolates in OKLCH where a web map
   interpolates in RGB, so continuous exports are close to the map rather
@@ -591,6 +598,14 @@ Parsing and conversion are in `gui-color-scheme-import.mjs`.
   baked into the colors: vibrance, the long hue path, part of a preset's
   range. If the layer doesn't have the command's field, the palette is
   imported as one from another program.
+- Fixed elevations come back from their command (`hypsometric=`,
+  `colors=` and `breaks=` with their named lists, `classed`, `sea=`; also
+  the older `breaks=` with `outer-breaks=`), with a JSON file's `elevations` taking precedence,
+  so that colors edited there are the ones imported. Stops in other
+  `units` are converted to the band's. Colors and stops that are a
+  preset's give the preset. They have to be one at each of the presets'
+  stops (and the sea's); a palette with other stops, e.g. from before the
+  presets changed, is imported by its classes, with a note.
 - A GMT table from another program has ranges of values or categories.
   Ranges that cover the data become a sequential scheme: classes as custom
   breaks (leaving out classes the data don't reach), or continuous colors

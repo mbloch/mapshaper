@@ -661,21 +661,23 @@ With OKLCH interpolation, when a color falls outside the sRGB gamut, its hue is 
 
 **Classifying rasters**
 
-On a data raster (such as a DEM or a land cover raster), `-classify` sets a color palette for displaying the raster in the web UI and in SVG and image output. The palette is a display setting: the raster's values are unchanged, and running `-classify` again replaces it. `-clip`, `-proj` and `-blur` keep the palette; `-hillshade` output does not have one. To remove a palette, use `-style clear`. `-classify` does not color RGB images (use `-tone`).
+On a data raster (such as a DEM or a land cover raster), `-classify` sets a color palette for displaying the raster in the web UI and in SVG and image output. To remove a palette, use `-style clear`.
 
 A raster with one band is classified without naming a band. Otherwise name the band, e.g. `-classify band2` or `-classify band=2`.
 
-`colors=` is required, unless `hypsometric=` gives the colors. These options are not available for rasters: `save-as=`, `values=`, `index-field=`, `non-adjacent`, `method=indexed`, `method=blacki` and the key options.
+Some options are not available for rasters: `save-as=`, `values=`, `index-field=`, `non-adjacent`, `method=indexed`, `method=blacki` and the key options.
 
-Breaks are calculated from a sample of up to one million pixels. Percentages in `breaks=` are of the range of the data, ignoring the lowest and highest 0.1% of values (so a few outliers don't stretch the range). Categorical classification requires an integer band; by default the categories are all the band's values. `null-value=` sets the color of nodata pixels, which are transparent by default. `other=` colors values that are not listed in `categories=`. With `continuous quantile`, the gradient is calculated from up to 32 quantiles (or from every value, if the band has few of them).
+Breaks are calculated from a sample of up to one million pixels. Categorical classification requires an integer band; by default the categories are all the band's values. `null-value=` sets the color of nodata pixels, which are transparent by default. `other=` colors values that are not listed in `categories=`. With `continuous quantile`, the gradient is calculated from up to 32 quantiles (or from every value, if the band has few of them).
 
-`hypsometric=`  [raster] Color an elevation raster with hypsometric tints, at fixed elevations, so that an elevation has the same color in every map: `arid`, `lush` (warm and humid), `temperate` (cold and humid) or `polar` (ice and snow). The colors follow Tom Patterson's cross-blended hypsometric tints, as in his Equal Earth physical map. `none` colors only the sea (see `sea=`, which then needs bathymetric colors). `blended` mixes the four by climate across the map, as his map does: deserts, forests and ice caps each get their own lowland colors, blending into one another between climate regions. It is meant for maps of the world and of large regions, and needs a raster whose projection is known. The elevations are converted to the band's vertical units (meters if unknown). The sea is left out (see `sea=`); other low values take the color of the lowest elevation. Not used with `colors=` or a classification method. With `blended`, `breaks=` and `outer-breaks=` move the elevations of all four presets, in the band's units: `outer-breaks=` gives the lowest and highest, and `breaks=` those between them.
+`hypsometric=`  [raster] Color an elevation raster with hypsometric tints, at fixed elevations. There are six climate zone presets (`desert`, `steppe`, `tropical`, `temperate`, `boreal` and `polar`) and three miscellaneous presets (`atlas`, `lowland` and `highland`). `none` colors only the sea (see `sea=`, which then needs bathymetric colors). `blended` mixes the six climate presets by climate zone/ The zones are derived from the Köppen-Geiger classification for 1991-2020 (Beck et al. 2023, Scientific Data 10, 724, CC BY 4.0). It is meant for maps of the world and of large regions.
 
-`arid-colors=` `lush-colors=` `temperate-colors=` `polar-colors=`  [raster] With `hypsometric=blended`, recolor a preset in the blend, with a color for each of its elevations. Presets that aren't given keep their own colors.
+With `hypsometric=`, `colors=` recolors the preset, with a color for each of its elevations, and `breaks=` moves its elevations, in the band's units, giving every one of them, lowest first. With `blended`, `breaks=` moves the elevations of all six presets, which they share, and a preset is recolored by giving its name before its colors, e.g. `colors=desert:#c9b98a,...,polar:#f4efe6,...`; presets that aren't named keep their own colors.
 
-`sea-breaks=` `sea-colors=`  [raster] Custom sea colors: a list of depths, deepest first, in the band's units, and a color for each, colored continuously, in place of a `sea=` preset.
+Several lists can be given in one `colors=` or `breaks=` option: a name and a colon start a named list, which runs to the next name, e.g. `colors=#b2c9ba,...,sea:#003366,...`. The sea's list is named `sea:` (see `sea=`). Named lists work only with rasters.
 
-`sea=`  [raster] What to do with the sea of an elevation raster: pixels below 0 that are connected, through other pixels below 0, to the edge of the raster or to pixels without data. `transparent` leaves them out (the default with `hypsometric=`); `land` colors them like other values (the default otherwise); `pale`, `blue` or `gray` colors them by depth, with bathymetric tints at fixed depths (`pale` follows the ocean of Tom Patterson's Equal Earth physical map), converted to the band's vertical units. Basins below sea level that land encloses, such as the Dead Sea, are not sea.
+`classed`  [raster] With `hypsometric=` and a single preset, color in classes rather than continuously: each class runs from one elevation up to the next, and the first one also takes everything below its elevation.
+
+`sea=`  [raster] What to do with the sea area of an elevation raster. `transparent` leaves sea areas uncolored (the default with `hypsometric=`); `land` colors them like other values; `pale`, `blue` or `gray` colors them by depth, with bathymetric tints at fixed depths. Basins below sea level enclosed by land, such as the Dead Sea, are not treated as sea. `colors=sea:...` and `breaks=sea:...` recolor a bathymetric preset and move its depths (deepest first, in the band's units).
 
 **Options for generating SVG keys**
 
@@ -2183,7 +2185,7 @@ Convert an elevation raster to shaded relief. By default, the shading is transpa
 
 `aerial=`  Aerial perspective: reduce contrast at low elevations, 0-1 (default is 0).
 
-`max-opacity=` `highlights=`  For transparent shading, opacity of the darkest shadows (default is 0.55), and of the brightest highlights relative to it (default is 0.6).
+`max-opacity=` `highlights=`  For transparent shading, opacity of the darkest shadows (default is 0.55), and of the brightest highlights relative to it (default is 0.5).
 
 `shadow-color=` `highlight-color=` `base-color=`  Colors of shadows, highlights and (with `opaque`) flat ground; `base-color=` implies `opaque`.
 

@@ -6,7 +6,7 @@ import { numbersAreAscending } from '../classification/mapshaper-sequential-clas
 import { getRasterDisplayBands, rasterGridDisplaysColor } from './mapshaper-raster-display-bands';
 import { createRasterPreview, getRasterGrid } from './mapshaper-raster-utils';
 import { runningInBrowser } from '../mapshaper-env';
-import { getHypsometricPalette, getBlendColorOptionKeys } from './mapshaper-raster-hypsometric';
+import { getHypsometricPalette } from './mapshaper-raster-hypsometric';
 
 // Helpers for -classify on raster layers (see
 // docs/development/raster-palette-design.md)
@@ -33,6 +33,7 @@ var VECTOR_ONLY_OPTIONS = ['save_as', 'values', 'index_field', 'key', 'key_style
   'key_width', 'key_font_size', 'key_tile_height', 'key_tic_length', 'key_label_suffix',
   'key_last_suffix'];
 
+// @opts: options from splitRampOptions()
 export function validateRasterClassifyOptions(raster, grid, opts) {
   var name = VECTOR_ONLY_OPTIONS.find(function(key) { return key in opts; });
   if (!grid || !grid.samples) {
@@ -44,9 +45,8 @@ export function validateRasterClassifyOptions(raster, grid, opts) {
   if (opts.method == 'non-adjacent' || opts.method == 'blacki' || opts.method == 'indexed') {
     stop('The', opts.method, 'method does not work with raster layers');
   }
-  name = getBlendColorOptionKeys().find(function(key) { return key in opts; });
-  if (name && String(opts.hypsometric).toLowerCase() != 'blended') {
-    stop(name.replace(/_/g, '-') + '= works with hypsometric=blended');
+  if (opts.classed && !opts.hypsometric) {
+    stop('classed works with hypsometric=; other colors are classes unless they are continuous');
   }
   if (opts.hypsometric) {
     validateHypsometricOptions(opts);
@@ -58,16 +58,16 @@ export function validateRasterClassifyOptions(raster, grid, opts) {
   }
 }
 
-// hypsometric= gives the colors and their elevations, though a blend's
-// elevations can be moved
+// hypsometric= gives the colors and their elevations, which only colors=,
+// breaks= (every elevation) and classed change
 function validateHypsometricOptions(opts) {
-  var blended = String(opts.hypsometric).toLowerCase() == 'blended';
-  var name = ['colors', 'breaks', 'outer_breaks', 'method', 'classes', 'pivot', 'continuous',
+  var name = ['outer_breaks', 'method', 'classes', 'pivot', 'continuous',
     'stops', 'invert', 'categories'].find(function(key) {
-    return key in opts && !(blended && (key == 'breaks' || key == 'outer_breaks'));
+    return key in opts;
   });
   if (name) {
-    stop('hypsometric= sets the colors and breaks; it does not work with ' + name.replace(/_/g, '-') + '=');
+    stop('hypsometric= sets the colors and breaks; it does not work with ' + name.replace(/_/g, '-') + '=' +
+      (name == 'outer_breaks' ? ' (breaks= gives every elevation)' : ''));
   }
 }
 

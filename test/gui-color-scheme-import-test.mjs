@@ -3,7 +3,8 @@ import {
   getDefaultScheme, getDefaultSchemeOfType, getDefaultCategoricalScheme, setTileCount, setSchemeContinuous,
   setSchemeSplit, updateDivergingLayout, choosePreset, formatSchemeCommand, getAppliedColors,
   getCategories, getSchemeColors, reverseScheme, setSchemeBreak, setSchemeNullColor, setTileColor,
-  getContinuousTileStops
+  getContinuousTileStops, chooseBlendedElevations, chooseSeaPreset, getSeaScheme, setSeaScheme,
+  setLandTransparent, setElevationChipColor, getBlendRampColors, getSchemeTab, isBlendedScheme
 } from '../src/gui/gui-color-scheme-model';
 import { formatSchemeJSON, formatSchemeCPT } from '../src/gui/gui-color-scheme-export';
 import { importColorPalette, parsePalette, parseCPT } from '../src/gui/gui-color-scheme-import';
@@ -78,6 +79,108 @@ describe('gui-color-scheme-import.mjs', function () {
       assert(/field this layer doesn't have/.test(result.note));
       assert.equal(result.scheme.field, 'pop');
       assert.deepEqual(getSchemeColors(result.scheme), getSchemeColors(setTileCount(choosePreset(seq, 'Blues'), 4)));
+    });
+  });
+
+  describe('fixed elevations', function() {
+    // in Arizona, where Desert is the preset
+    var points = [[-112, 33.5]];
+    var lyr, presetNames, n;
+
+    before(async function() {
+      var values = [-20, -10, 5, 200, -30, 300];
+      var grid = {
+        width: 6, height: 1, bands: 1, pixelType: 'float32', samples: Float32Array.from(values), nodata: null,
+        bbox: [0, 0, 6, 1], transform: [1, 0, 0, 0, -1, 1]
+      };
+      var content = Buffer.from(internal.encodeGeoTIFF(grid, {geoKeys: {GTModelTypeGeoKey: 2, GeographicTypeGeoKey: 4326}}));
+      var dataset = await internal.importFileAsync('dem.tif', {input: {'dem.tif': content}});
+      lyr = dataset.layers[0];
+      presetNames = internal.getClimateSchemeNames();
+      n = internal.getHypsometricStops(presetNames[0]).length;
+    });
+
+    function command(scheme) {
+      return formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: lyr});
+    }
+
+    function elevationSchemes() {
+      var desert = getDefaultSchemeOfType('elevation', lyr, []);
+      var blend = chooseBlendedElevations(desert, points);
+      var gray = chooseSeaPreset(blend, 'Gray');
+      return {
+        'a preset': choosePreset(desert, 'Desert'),
+        'a recolored preset': setTileColor(choosePreset(desert, 'Polar'), 1, '#ff0000'),
+        'moved stops': setSchemeBreak(choosePreset(desert, 'Tropical'), lyr, n - 1, 7000),
+        'a blend': blend,
+        'a recolored blend with moved stops': setSchemeBreak(setElevationChipColor(blend, ['Boreal'], 2, '#00ff00'), lyr, 0, 20),
+        'a bathymetric sea': gray,
+        'a custom sea': setSeaScheme(gray, setTileColor(getSeaScheme(gray), 0, '#000000')),
+        'a moved sea stop': setSeaScheme(gray, setSchemeBreak(getSeaScheme(gray), lyr, 1, -7000)),
+        'only the sea': setLandTransparent(gray, true),
+        'a preset outside the blend': choosePreset(desert, 'Atlas'),
+        'classed elevations': setSchemeContinuous(choosePreset(desert, 'Atlas'), false),
+        'a preset with more stops': setTileColor(choosePreset(desert, 'Lowland'), 6, '#eeeeee'),
+        'classed elevations with more stops': setSchemeContinuous(choosePreset(desert, 'Lowland'), false),
+        'a recolored preset with as many stops as another': setTileColor(choosePreset(desert, 'Highland'), 0, '#eeeeee'),
+        'classed elevations with moved stops and a sea':
+          setSchemeBreak(setSchemeContinuous(choosePreset(gray, 'Temperate'), false), lyr, 2, 400)
+      };
+    }
+
+    it('round trips (cpt and json)', function() {
+      var schemes = elevationSchemes();
+      Object.keys(schemes).forEach(function(name) {
+        ['cpt', 'json'].forEach(function(ext) {
+          var scheme = schemes[name];
+          var text = ext == 'cpt' ? formatSchemeCPT(scheme, lyr) : formatSchemeJSON(scheme, lyr);
+          var result = importColorPalette(text, getDefaultScheme('band1'), lyr, points);
+          assert.equal(result.note, null, name + ' ' + ext);
+          assert.equal(getSchemeTab(result.scheme), 'elevation', name + ' ' + ext);
+          assert.equal(command(result.scheme), command(scheme), name + ' ' + ext);
+          assert.equal(result.scheme.preset || null, scheme.preset || null, name + ' ' + ext);
+          assert.equal(result.scheme.elevationPreset || null, scheme.elevationPreset || null, name + ' ' + ext);
+        });
+      });
+    });
+
+    it('a blend\'s JSON has every preset\'s colors, on a line each, which an import takes over the command\'s', function() {
+      var blend = chooseBlendedElevations(getDefaultSchemeOfType('elevation', lyr, []), points);
+      var text = formatSchemeJSON(blend, lyr);
+      var data = JSON.parse(text);
+      var result;
+      assert.deepEqual(Object.keys(data.elevations.blend), presetNames);
+      assert.deepEqual(data.elevations.blend.Tropical, internal.getHypsometricStops('Tropical').map(function(o) { return o.color; }));
+      assert.equal(data.elevations.stops.length, n);
+      assert.equal(data.elevations.units, 'm');
+      assert(text.includes('"Tropical": ["#'));
+      data.elevations.blend.Tropical[0] = '#ff0000';
+      data.elevations.blend.Polar = data.elevations.blend.Polar.map(function() { return 'white'; });
+      result = importColorPalette(JSON.stringify(data), getDefaultScheme('band1'), lyr, points);
+      assert(isBlendedScheme(result.scheme));
+      assert.equal(result.scheme.preset, null);
+      assert.deepEqual(Object.keys(result.scheme.blendColors), ['Tropical', 'Polar']);
+      assert.equal(getBlendRampColors(result.scheme).find(function(o) { return o.name == 'Tropical'; }).colors[0], '#ff0000');
+      assert(/ colors=tropical:#ff0000,.*,polar:#ffffff(,#ffffff)+( |$)/.test(command(result.scheme)));
+    });
+
+    it('stops in other units are converted to the band\'s', function() {
+      var scheme = choosePreset(getDefaultSchemeOfType('elevation', lyr, []), 'Desert');
+      var data = JSON.parse(formatSchemeJSON(scheme, lyr));
+      data.elevations.units = 'ft';
+      data.elevations.stops = data.elevations.stops.map(function(val) { return val * 2; });
+      var result = importColorPalette(JSON.stringify(data), scheme, lyr, points);
+      assert.deepEqual(result.scheme.stops, data.elevations.stops.map(function(val) { return +(val * 0.3048).toPrecision(6); }));
+    });
+
+    it('a palette with other stops than the presets\' gives its colors', function() {
+      var scheme = choosePreset(getDefaultSchemeOfType('elevation', lyr, []), 'Desert');
+      var data = JSON.parse(formatSchemeJSON(scheme, lyr));
+      data.elevations.stops.push(9000, 9500);
+      data.elevations.colors.push('#ffffff', '#ffffff');
+      var result = importColorPalette(JSON.stringify(data), scheme, lyr, points);
+      assert(/presets have \d+( or \d+)* stops/.test(result.note), result.note);
+      assert.notEqual(getSchemeTab(result.scheme), 'elevation');
     });
   });
 

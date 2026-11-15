@@ -12,7 +12,7 @@ export var DEFAULT_AZIMUTH = 315;
 export var DEFAULT_ALTITUDE = 45;
 export var DEFAULT_MAX_OPACITY = 0.55;
 export var DEFAULT_GAMMA = 0.7;
-export var DEFAULT_HIGHLIGHT_RATIO = 0.6;
+export var DEFAULT_HIGHLIGHT_RATIO = 0.5;
 
 export var DEFAULT_LIGHTING = 'balanced';
 

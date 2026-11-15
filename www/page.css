@@ -6055,6 +6055,17 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	pointer-events: none;
 	z-index: 1;
 }
+
+/* The chips are in the class breaks table's scrolling box, which would clip
+   their tooltips and scroll to show them, so theirs are fixed, below the chip
+   (the script sets --tooltip-x and --tooltip-y on hover) */
+.class-breaks-chip[data-tooltip]:hover::after {
+	position: fixed;
+	top: var(--tooltip-y, 0);
+	left: var(--tooltip-x, 0);
+	z-index: 10;
+}
+
 /* The Breaks row: the method's menu in the left column, the button that opens
    the class breaks dialog in the right */
 .color-scheme-customize-cell > .label-panel-action-btn {
