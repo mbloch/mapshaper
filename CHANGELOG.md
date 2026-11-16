@@ -1,3 +1,7 @@
+v0.8.2
+* Fixed artifacts when projecting some world rasters to interrupted projections.
+* Fixed hypsometric tinting of inland seas and depressions.
+
 v0.8.1
 * Change the tone curve of `-tone lightness=` to preserve contrast.
 
