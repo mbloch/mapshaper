@@ -3762,11 +3762,11 @@ Difficulty: easy
 
 ![Step 3](/docs/images/canyon2.jpg)
 
-4. Remove shadows from the aerial image (`-deshadow 3dep-1m`).
+4. Remove shadows from the aerial image (requires a DEM) (`-deshadow dem=3dep-1m`).
 
 ![Step 4](/docs/images/canyon3.jpg)
 
-5. Adjust the color of the imagery (`-tone lightness=1.49 saturation=1.18 contrast=1.23 hue-shift=0.25`)
+5. Adjust the color of the imagery (the sliders in the web UI make this easy) (`-tone lightness=1.49 saturation=1.18 contrast=1.23 hue-shift=0.25`)
 
 ![Step 5](/docs/images/canyon4.jpg)
 
