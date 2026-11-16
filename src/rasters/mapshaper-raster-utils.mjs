@@ -203,8 +203,13 @@ export function getRasterViewRecipe(grid, recipeArg, opts) {
 //   the raster's (e.g. reprojected for display): a field from
 //   getClimateWeightField() in the grid's coordinates, or null to draw the
 //   palette without blending
+// opts.seaSeeds  likewise, for a palette with a sea: points in the inland seas
+//   in the grid's coordinates (see getInlandSeaSeeds())
 export function renderRasterPreview(grid, recipe, width, height, statsArg, opts) {
   recipe = getRasterViewRecipe(grid, recipe);
+  if (recipe.palette && recipe.palette.sea && opts && 'seaSeeds' in opts) {
+    recipe.palette = Object.assign({}, recipe.palette, {seaSeeds: opts.seaSeeds});
+  }
   if (useFastRawEightBitRendering(grid, recipe)) {
     return renderRawEightBitPreview(grid, width, height, null);
   }
@@ -404,7 +409,7 @@ function renderPaletteGridPreview(grid, palette, width, height, sourceBbox, resa
   var alpha = getRasterDisplayBands(grid).alpha;
   var coverage = grid.coverage || null;
   var method = rasterPaletteIsCategorical(palette) ? null : resamplingMethod;
-  var sea = palette.sea ? getRasterSeaMask(grid, band) : null;
+  var sea = palette.sea ? getRasterSeaMask(grid, band, palette.seaSeeds) : null;
   var seaTable = getRasterSeaTable(palette);
   var landless = palette.land == 'transparent';
   var pixels = new Uint8ClampedArray(width * height * 4);
@@ -473,7 +478,7 @@ function renderBlendedPaletteGridPreview(grid, palette, field, width, height, so
   var alpha = getRasterDisplayBands(grid).alpha;
   var coverage = grid.coverage || null;
   var bbox = sourceBbox || grid.bbox;
-  var sea = palette.sea ? getRasterSeaMask(grid, band) : null;
+  var sea = palette.sea ? getRasterSeaMask(grid, band, palette.seaSeeds) : null;
   var seaTable = getRasterSeaTable(palette);
   var fb = field.bbox, fw = field.width, fh = field.height, fweights = field.weights;
   // the field's column (and row) at each column (row) of pixels

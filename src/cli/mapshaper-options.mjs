@@ -1135,7 +1135,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('sea', {
-      describe: '[raster] at or below 0 and open to the edge: transparent (default with hypsometric=), land, or pale, blue, gray (bathymetric tints; colors=sea:... and breaks=sea:... change them)'
+      describe: '[raster] at or below 0 and open to the edge, or a known inland sea: transparent (default with hypsometric=), land, or pale, blue, gray (bathymetric tints; colors=sea:... and breaks=sea:... change them)'
     })
     .option('index-field', {
       describe: 'apply pre-calculated classes (0 ... n-1, -1)'

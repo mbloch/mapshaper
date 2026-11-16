@@ -481,9 +481,24 @@ tested.
    value (nodata, outside the coverage, alpha 0) are not drawn
    (`getRasterSeaMask()`, a flood fill cached by samples and band, made on
    the reprojected grid for the GUI's preview). Enclosed basins below sea
-   level (the Dead Sea, Death Valley, the Caspian, whose DEM surface is
-   about -28 m) stay land and take the 0 m color; one that the grid's edge
-   cuts through looks like sea. `sea=land` colors them all. `sea=pale|blue|gray`
+   level (the Dead Sea, Death Valley, the Qattara Depression) stay land and
+   take the 0 m color; one that the grid's edge cuts through looks like sea.
+   At world-map resolutions, straits narrower than a pixel enclose seas like
+   the Mediterranean, the Black Sea and the Baltic, so a table of inland seas
+   (`mapshaper-inland-seas.mjs`: a name, a surface level, and points in open
+   water, in lon/lat) adds them back: the pixels at or below a sea's level
+   that connect to one of its points. Neither elevation nor spill height
+   tells these seas from dry depressions (Qattara spills over a lower rim
+   than the Black Sea), and many DEMs have no depths at all. The Caspian's
+   level is -25 m, which leaves out the dry lowland around it (its DEM
+   surface is about -28 m). `-classify` stores the points in the raster's
+   CRS as `palette.seaSeeds` (`[[x, y, level], ...]`, null without a CRS);
+   `-proj` reprojects them (`updateRasterPaletteGeography()`, with
+   `blend.field`), and the GUI's reprojected preview makes them in the
+   display CRS. Without seeds (`seaSeeds` null or missing, as in older
+   palettes), an enclosed basin deeper than 500 m is sea instead (no dry
+   land is that low), which finds only seas that the DEM gives depths.
+   `sea=land` colors them all. `sea=pale|blue|gray`
    colors the sea by depth (`bathymetric-schemes.mjs`; the palette gets
    `sea: 'Pale'` and `seaRamp: {breaks, colors}` in the band's units, drawn
    continuously through its own table, `getRasterSeaTable()`), blended or

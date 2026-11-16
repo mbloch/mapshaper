@@ -677,7 +677,7 @@ Several lists can be given in one `colors=` or `breaks=` option: a name and a co
 
 `classed`  [raster] With `hypsometric=` and a single preset, color in classes rather than continuously: each class runs from one elevation up to the next, and the first one also takes everything below its elevation.
 
-`sea=`  [raster] What to do with the sea area of an elevation raster. `transparent` leaves sea areas uncolored (the default with `hypsometric=`); `land` colors them like other values; `pale`, `blue` or `gray` colors them by depth, with bathymetric tints at fixed depths. Basins below sea level enclosed by land, such as the Dead Sea, are not treated as sea. `colors=sea:...` and `breaks=sea:...` recolor a bathymetric preset and move its depths (deepest first, in the band's units).
+`sea=`  [raster] What to do with the sea area of an elevation raster. `transparent` leaves sea areas uncolored (the default with `hypsometric=`); `land` colors them like other values; `pale`, `blue` or `gray` colors them by depth, with bathymetric tints at fixed depths. The sea is the area at or below 0 that connects to the edge of the raster or to pixels without a value. Basins below sea level enclosed by land, such as the Dead Sea, are not treated as sea. Inland seas that a world map's coarse pixels can enclose (the Mediterranean, Black, Caspian, Baltic and Red Seas, the Persian Gulf, Hudson Bay and a few others) come from a built-in list, even in a DEM without their depths; this needs the raster's coordinate system. Without one, an enclosed basin more than 500 m deep is treated as sea. `colors=sea:...` and `breaks=sea:...` recolor a bathymetric preset and move its depths (deepest first, in the band's units).
 
 **Options for generating SVG keys**
 

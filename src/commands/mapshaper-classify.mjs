@@ -300,12 +300,13 @@ function classifyRasterLayer(lyr, dataset, optsArg) {
   var raster = lyr.raster;
   var grid = getRasterGrid(raster);
   var opts = splitRampOptions(optsArg);
+  var crs = dataset ? getDatasetCRS(dataset) : null;
   var band, bandIndex, categorical, sample, o, palette;
   validateRasterClassifyOptions(raster, grid, opts);
   band = getRasterClassifyBand(grid, opts);
   bandIndex = getRasterGridBandIndex(grid, band);
   if (opts.hypsometric) {
-    palette = setRasterPaletteSea(getRasterHypsometricPalette(raster, band, opts, dataset ? getDatasetCRS(dataset) : null), raster, opts);
+    palette = setRasterPaletteSea(getRasterHypsometricPalette(raster, band, opts, crs), raster, opts, crs);
     noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
     setRasterPalette(raster, palette);
     markLayerChanged(lyr, {operation: 'classify', unit: 'raster'});
@@ -329,7 +330,7 @@ function classifyRasterLayer(lyr, dataset, optsArg) {
       return opts.outer_breaks || getTrimmedRange(sample.values);
     }
   }, Object.assign({}, opts, {count_label: sample.sampled ? 'sampled pixel counts' : 'pixel counts'}));
-  palette = setRasterPaletteSea(getRasterPaletteFromClassification(o, band, opts, sample.values), raster, opts);
+  palette = setRasterPaletteSea(getRasterPaletteFromClassification(o, band, opts, sample.values), raster, opts, crs);
   noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
   if (opts.category_names) {
     setRasterCategoryNames(grid, band, getCategoryNamesOption(opts.category_names, palette));

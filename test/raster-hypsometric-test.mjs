@@ -229,6 +229,72 @@ describe('sea=', function() {
       0, 0, 0, 1, 0]);
   });
 
+  // the basin's pixels (7 and 8) are centered at [2.5, 2.5] and [3.5, 2.5]
+  it('an inland sea is the basin around one of its seeds', function() {
+    var mask = internal.getRasterSeaMask(makeGrid(), 0, [[3.5, 2.5, 0]]);
+    assert.deepEqual(Array.from(mask), [
+      1, 0, 0, 0, 0,
+      1, 0, 1, 1, 0,
+      1, 1, 0, 0, 0,
+      0, 0, 0, 1, 0]);
+  });
+
+  it('an inland sea is the part of a basin at or below its level', function() {
+    var grid = makeGrid();
+    grid.samples[7] = -20;
+    var mask = internal.getRasterSeaMask(grid, 0, [[2.5, 2.5, -10]]);
+    assert.equal(mask[7], 1);
+    assert.equal(mask[8], 0); // -5 is above the level
+    grid = makeGrid();
+    grid.samples[7] = -20;
+    grid.verticalUnits = 'ft'; // -20 ft is above -10 m
+    assert.equal(internal.getRasterSeaMask(grid, 0, [[2.5, 2.5, -10]])[7], 0);
+  });
+
+  it('a seed on a pixel above sea level starts from a neighbor', function() {
+    var mask = internal.getRasterSeaMask(makeGrid(), 0, [[1.5, 2.5, 0]]);
+    assert.equal(mask[6], 0); // the seed's pixel, at 10
+    assert.equal(mask[7], 1);
+    assert.equal(mask[8], 1);
+  });
+
+  it('seeds outside the grid are ignored', function() {
+    var mask = internal.getRasterSeaMask(makeGrid(), 0, [[50, 50, 0], [-3, 2.5, 0]]);
+    assert.equal(mask[7], 0);
+  });
+
+  it('without seeds (an unknown CRS), an enclosed basin deeper than 500 m is sea', function() {
+    var grid = makeGrid();
+    grid.samples[8] = -600; // the basin at -5 deepens to -600
+    assert.deepEqual(Array.from(internal.getRasterSeaMask(grid, 0)), [
+      1, 0, 0, 0, 0,
+      1, 0, 1, 1, 0,
+      1, 1, 0, 0, 0,
+      0, 0, 0, 1, 0]);
+    grid = makeGrid();
+    grid.samples[8] = -600;
+    grid.verticalUnits = 'ft'; // -600 ft is about -183 m
+    assert.equal(internal.getRasterSeaMask(grid, 0)[8], 0);
+    // with seeds (a known CRS), only the inland seas are
+    grid = makeGrid();
+    grid.samples[8] = -600;
+    assert.equal(internal.getRasterSeaMask(grid, 0, [])[8], 0);
+  });
+
+  it('-classify gives the palette the inland seas\' seeds in the raster\'s CRS, and -proj updates them', async function() {
+    var count = internal.getInlandSeas().reduce(function(memo, sea) { return memo + sea.points.length; }, 0);
+    var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
+    var seeds;
+    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=desert');
+    seeds = getPalette(catalog).seaSeeds;
+    assert.equal(seeds.length, count);
+    assert(Math.abs(seeds[0][0] - -3) < 1e-9 && Math.abs(seeds[0][1] - 36) < 1e-9, String(seeds[0]));
+    await runCommand(catalog, '-proj merc');
+    seeds = getPalette(catalog).seaSeeds;
+    assert.equal(seeds.length, count);
+    assert(Math.abs(seeds[0][0] - -333958) < 1, String(seeds[0][0])); // 3 degrees W
+  });
+
   it('the sea is open to pixels without a value', function() {
     var grid = makeGrid();
     grid.samples[14] = -9999;

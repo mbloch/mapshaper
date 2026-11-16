@@ -5,6 +5,7 @@ import { getClimateWeights } from '../color/hypsometric-climate';
 import { getBathymetricSchemeNames, getBathymetricStops } from '../color/bathymetric-schemes';
 import { getProjTransform2, parseCrsString, crsToProj4 } from '../crs/mapshaper-projections';
 import { getVerticalUnitMeters } from './mapshaper-vertical-units';
+import { getInlandSeaSeeds } from './mapshaper-inland-seas';
 import { getRasterGrid } from './mapshaper-raster-utils';
 import { splitRampLists } from '../cli/mapshaper-option-parsing-utils';
 
@@ -187,8 +188,11 @@ export function getSeaOptionNames() {
 // colors and depths, or without a preset, give them all; either way,
 // palette.sea is 'custom'. A palette of only the sea (hypsometric=none) takes
 // the sea's colors as its own, for anything that draws it without a sea.
+// palette.seaSeeds are points in the inland seas, in the raster's
+// coordinates (see getInlandSeaSeeds()), or null if its CRS is unknown.
 // @opts: options from splitRampOptions()
-export function setRasterPaletteSea(palette, raster, opts) {
+// @crs: the raster's CRS, or null
+export function setRasterPaletteSea(palette, raster, opts, crs) {
   var colors = opts.ramps && opts.ramps.colors.sea;
   var breaks = opts.ramps && opts.ramps.breaks.sea;
   var custom = !!(colors || breaks);
@@ -220,6 +224,9 @@ export function setRasterPaletteSea(palette, raster, opts) {
       {name: name ? 'sea=' + sea : 'the sea', colors: 'colors=sea:', breaks: 'breaks=sea:', stop: 'depth'}) : ramp;
     if (custom) palette.sea = 'custom';
     palette.seaRamp = {breaks: ramp.breaks, colors: ramp.colors};
+  }
+  if (palette.sea) {
+    palette.seaSeeds = getInlandSeaSeeds(crs || null);
   }
   if (palette.land == 'transparent') {
     if (!palette.seaRamp) stop('hypsometric=none needs colors for the sea: a bathymetric sea= or colors=sea:...');
@@ -380,20 +387,25 @@ function getFieldKey(bbox, width, height, weights, crs) {
   return [bbox.join(','), width, height, hash, crsToProj4(crs)].join('|');
 }
 
-// A blended palette's field is in the raster's coordinates, so it is made
-// again when the raster is reprojected
-export function updateHypsometricBlend(raster, crs) {
+// A blended palette's field and the sea's seeds are in the raster's
+// coordinates, so they are made again when the raster is reprojected
+export function updateRasterPaletteGeography(raster, crs) {
   var recipe = raster.view && raster.view.recipe;
   var palette = recipe && recipe.palette;
   var grid = getRasterGrid(raster);
   var field;
-  if (!palette || !palette.blend || !grid) return;
-  field = crs ? getClimateWeightField(grid.bbox, crs) : null;
+  if (!palette || !grid || !palette.blend && !palette.sea) return;
   palette = Object.assign({}, palette);
-  if (field) {
-    palette.blend = Object.assign({}, palette.blend, {field: field});
-  } else {
-    delete palette.blend;
+  if (palette.blend) {
+    field = crs ? getClimateWeightField(grid.bbox, crs) : null;
+    if (field) {
+      palette.blend = Object.assign({}, palette.blend, {field: field});
+    } else {
+      delete palette.blend;
+    }
+  }
+  if (palette.sea) {
+    palette.seaSeeds = getInlandSeaSeeds(crs || null);
   }
   raster.view.recipe = Object.assign({}, recipe, {palette: palette});
 }

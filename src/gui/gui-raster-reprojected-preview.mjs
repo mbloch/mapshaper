@@ -49,7 +49,7 @@ export function scheduleRasterReprojectedPreview(layer, ext, onReady) {
     }
     timing.renderStart = getTimer();
     preview = internal.renderRasterPreview(grid, params.recipe, grid.width, grid.height, params.stats,
-      getBlendOptions(params, grid));
+      getRenderOptions(params, grid));
     preview.sourcePixels = params.sourcePixels;
     applyCoverageMask(preview, grid.coverage);
     timing.renderMs = getTimer() - timing.renderStart;
@@ -62,13 +62,20 @@ export function scheduleRasterReprojectedPreview(layer, ext, onReady) {
   }, 0);
 }
 
-// A blended palette's weights are in the raster's coordinates; the
-// reprojected grid needs them in the display's (or none, to draw the palette
-// unblended)
-function getBlendOptions(params, grid) {
+// A blended palette's weights and the sea's seeds are in the raster's
+// coordinates; the reprojected grid needs them in the display's (or none, to
+// draw the palette unblended)
+function getRenderOptions(params, grid) {
   var palette = params.recipe.palette;
-  if (!palette || !palette.blend) return null;
-  return {blendField: internal.getClimateWeightField(grid.bbox, params.displayCRS, BLEND_FIELD_CELLS)};
+  var opts = {};
+  if (!palette) return null;
+  if (palette.blend) {
+    opts.blendField = internal.getClimateWeightField(grid.bbox, params.displayCRS, BLEND_FIELD_CELLS);
+  }
+  if (palette.sea && palette.seaSeeds) {
+    opts.seaSeeds = internal.getInlandSeaSeeds(params.displayCRS);
+  }
+  return opts;
 }
 
 function getRasterReprojectedPreviewParams(layer, ext) {

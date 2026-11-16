@@ -24,6 +24,9 @@ import { stop } from '../utils/mapshaper-logging';
 //                   // bathymetric preset colors them by seaRamp
 //   seaRamp,        // {breaks, colors}: continuous colors at depths, in the
 //                   // band's units (see setRasterPaletteSea())
+//   seaSeeds,       // [[x, y, level], ...]: points in the inland seas, in the
+//                   // raster's coordinates, or null if its CRS is unknown
+//                   // (see mapshaper-inland-seas.mjs)
 //   land,           // 'transparent': only the sea is drawn (hypsometric=none)
 //   hypsometric,    // the preset of -classify hypsometric=, or 'blended'
 //   blend           // hypsometric=blended: the presets' ramps and weights
@@ -47,7 +50,7 @@ export function getRasterPaletteKey(palette) {
     palette.otherColor || null,
     palette.interpolation || null, palette.vibrance === undefined ? null : palette.vibrance,
     palette.blend ? [palette.blend.ramps, palette.blend.field && palette.blend.field.key] : null,
-    palette.sea || null, palette.seaRamp || null, palette.land || null]);
+    palette.sea || null, palette.seaRamp || null, palette.land || null, palette.seaSeeds || null]);
 }
 
 export function rasterPaletteIsCategorical(palette) {

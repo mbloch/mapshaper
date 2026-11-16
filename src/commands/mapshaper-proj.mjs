@@ -62,7 +62,7 @@ import { getFrameCrsInfo } from '../furniture/mapshaper-frame-members';
 import { isFrameComponentLayer } from '../furniture/mapshaper-frame-utils';
 import { getLayerTargetId } from '../dataset/mapshaper-target-utils';
 import { formatOptionValue } from '../cli/mapshaper-option-parsing-utils';
-import { updateHypsometricBlend } from '../rasters/mapshaper-raster-hypsometric';
+import { updateRasterPaletteGeography } from '../rasters/mapshaper-raster-hypsometric';
 
 // Run -proj over all the targets of a single command.
 // The destination CRS is resolved once for each group of targets that has to
@@ -641,7 +641,7 @@ function projectRasterLayer(lyr, src, dest, opts) {
   var raster = lyr.raster;
   raster.grid = projectRasterGridForward(raster, src, dest, opts || {});
   updateRasterViewForGrid(raster);
-  updateHypsometricBlend(raster, dest);
+  updateRasterPaletteGeography(raster, dest);
   raster.view = raster.view || {};
   delete raster.view.scalingStats;
   if (runningInBrowser()) {
