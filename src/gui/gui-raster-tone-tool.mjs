@@ -21,7 +21,7 @@ export function RasterToneTool(gui) {
   var controls = {}; // slider name -> {input, readout}
   var settings = getDefaultToneSettings();
   var targetLayer = null;
-  var pivots; // the image's lightness pivots, once contrast or gamma needs them
+  var pivots; // the image's lightness pivots, once lightness, contrast or gamma needs them
   var applyBtn, titleEl;
   var pendingFrame = null;
   var pendingExact = false;
@@ -205,7 +205,7 @@ export function RasterToneTool(gui) {
   // Computed from the whole raster, as -tone does, rather than from the
   // preview, so that the preview matches what Apply makes
   function getPivots() {
-    if (settings.contrast == 1 && settings.gamma == 1) return null;
+    if (settings.contrast == 1 && settings.gamma == 1 && settings.lightness == 1) return null;
     if (pivots === undefined) {
       pivots = internal.getTonePivots(internal.getRasterGrid(targetLayer.raster));
     }

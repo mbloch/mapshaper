@@ -2947,7 +2947,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('lightness', {
-      describe: '0-2: below 1 darkens toward black, above 1 lightens toward white (default is 1)',
+      describe: '0-2: below 1 darkens, above 1 lightens, keeping the image\'s contrast (default is 1)',
       type: 'number'
     })
     .option('contrast', {

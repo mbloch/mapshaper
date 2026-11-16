@@ -63,10 +63,15 @@ All of `-tone`'s adjustments work in OKLCH: lightness (L), chroma (C) and hue
 
 - `saturation=` scales chroma, keeping lightness and hue. `saturation=0` gives
   a gray of the same perceived lightness as the original color.
-- `lightness=` moves lightness toward black or white, keeping chroma and
-  hue. Below 1, L′ = L × k, a blend with black by 1 − k. Above 1,
-  L′ = L + (k − 1)(1 − L), a blend with white by k − 1. So 0.5 is halfway to
-  black, 1.5 halfway to white, and 2 is white. `contrast=`, `gamma=` and `colors=` also work on
+- `lightness=` darkens or lightens the image, keeping its contrast, chroma
+  and hue. It moves the image's median lightness m toward white by k − 1 of
+  the way (above 1) or toward black by 1 − k (below 1), so 1.5 takes the
+  median halfway to white, and 2 takes it to white. Lightening, everything
+  up to the median moves up by the same amount, so differences between
+  darks and midtones are kept; above the median the curve starts at a slope
+  of 1 and bends to end at white, so the lights are compressed rather than
+  clipped. Darkening is the mirror image. See
+  [lightness=](#lightness). `contrast=`, `gamma=` and `colors=` also work on
   lightness only, so they don't shift hues or saturation.
 
 Why not HSL: HSL's lightness and saturation are not perceptual. Pure yellow
@@ -120,7 +125,7 @@ stack; Cancel, the ×, or leaving the mode drops the preview.
 | Option | Phase | Description |
 | --- | --- | --- |
 | `saturation=` | 1 | Chroma multiplier: 0 is gray, 1 is unchanged, above 1 more vivid. |
-| `lightness=` | 1 | 0-2. Below 1 blends lightness toward black, above 1 toward white; 1 is unchanged. |
+| `lightness=` | 1 | 0-2. Darkens (below 1) or lightens (above 1) the image's median lightness toward black or white, keeping the image's contrast; 1 is unchanged. See [lightness=](#lightness). |
 | `opacity=` | 1 | 0-1. Without `background=`, multiplies each pixel's alpha. |
 | `background=` | 1 | Composites the result over this color, making it opaque. |
 | `+`, `name=`, `target=` | 1 | As for other commands. |
@@ -139,10 +144,10 @@ stack; Cancel, the ×, or leaving the mode drops the preview.
 1. Convert each pixel to OKLCH.
 2. Lightness: `gamma=`, then `contrast=`, then `lightness=`.
    `gamma=` shapes the midtones, `contrast=` spreads them, and `lightness=`
-   then fades the result evenly toward black or white. Applied after a lift,
-   the curve would act on an already compressed band, and its effect would
-   depend on `lightness=`. All three are combined into one lookup table over
-   lightness.
+   then moves the result toward black or white. Applied after a lift, the
+   curves would act on lights that the lift had compressed, and their
+   effect would depend on `lightness=`. All three are combined into one
+   lookup table over lightness.
 3. `saturation=` (chroma), or `colors=` (lightness to ramp color), then
    `hue-shift=` (hue).
 4. Convert back to sRGB.
@@ -213,6 +218,37 @@ Like `range=auto`, they
 depend on the frame, so adjacent map sheets can get slightly different
 curves. If that matters, `range=lo,hi` (later) could also pin the pivots,
 and `verbose` print the pivots found.
+
+### lightness=
+
+`lightness=` (k, 0-2) works around the median lightness m, the same
+clamped median `contrast=` centers on, taken through the `gamma=` curve
+(`contrast=` leaves it where it is). The median moves to
+
+m′ = m + (k − 1)(1 − m) above 1, or m′ = m × k below 1
+
+which is where the earlier blend with white or black put it, so the slider
+lightens or darkens an image about as much as before. Lightening:
+
+- At or below m, L′ = L + (m′ − m): the darks and midtones move up together,
+  and their contrast is unchanged.
+- Above m, with u = (L − m) / (1 − m) and r = (1 − m) / (1 − m′), the
+  distance above m′ is (1 − m) u / (1 + (r − 1) u). That has a slope of 1
+  at m′ and reaches white at u = 1: the lights are compressed into the room
+  that is left, never clipped.
+
+Darkening is the mirror image: above m, lightness moves down by m − m′, and
+below m it bends to end at black. At 2 and 0, the median reaches white or
+black, and only the darks (or lights) keep any tone.
+
+On EOX-like imagery (1st, 50th and 99th percentiles 0.25, 0.39 and 0.61),
+`lightness=1.62` gives 0.63, 0.77 and 0.91: 77% of the range between the
+percentiles is kept, against 38% for the earlier blend with white
+(0.72-0.85), with the median in the same place. Most of what is lost is in
+the lights, which are sparse in imagery.
+
+For a faded, low-contrast base layer, `contrast=` below 1 or
+`opacity=` with `background=white` give what the blend used to.
 
 ### hue-shift= and hue-pivot=
 
@@ -435,13 +471,14 @@ new commands have no compatibility to keep. The cost is that the same
   `opacity=0.4 background=white`) and also cover real transparency.
 - **lightness=, not brightness=.** Named after the OKLCH dimension it
   changes, alongside `saturation=`.
-- **lightness= blends toward white rather than multiplying above 1.**
-  Multiplying (like CSS `brightness()`) clips the lights before the darks
-  come up much: EOX imagery, with lightness 0.26-0.61, goes to 0.42-0.98 at
-  1.6. A blend with white lifts the darks most and never clips (0.63-0.81 at
-  1.5), which suits a light base layer. In both directions `lightness=`
-  compresses the lightness range and never adds contrast; stretching is left
-  to `contrast=`. A two-value output range
+- **lightness= shifts the image and bends the far end, rather than
+  multiplying or blending.** Multiplying (like CSS `brightness()`) clips
+  the lights before the darks come up much: EOX imagery, with lightness
+  0.26-0.61, goes to 0.42-0.98 at 1.6. An earlier version blended with
+  white (or black), which never clips but multiplies every lightness
+  difference by 2 − k (or k): at 1.62, imagery kept 38% of its contrast and
+  looked washed out, and only `contrast=3` made up for it. See
+  [lightness=](#lightness). A two-value output range
   (`lightness=0.5,0.92`) was considered and dropped: `lightness=1.5` is the
   0.5-1 case, and `gamma=` can shape the lift.
 - **contrast= is a line below 1 and a soft S-curve above 1, around the

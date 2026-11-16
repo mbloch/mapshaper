@@ -41,7 +41,7 @@ cmd.tone = function(lyr, opts) {
   huePivot = getHuePivot(opts.hue_pivot);
   opacity = getRasterOpacity(opts);
   background = getRasterBackground(opts);
-  pivots = gamma == 1 && contrast == 1 ? null : getTonePivots(grid);
+  pivots = gamma == 1 && contrast == 1 && lightness == 1 ? null : getTonePivots(grid);
   samples = saturation == 1 && lightness == 1 && !pivots && hueShift === 0 ? grid.samples :
     toneRgbPixels(grid.samples, grid.bands, {saturation: saturation, lightness: lightness,
       gamma: gamma, contrast: contrast, pivots: pivots, hueShift: hueShift, huePivot: huePivot});

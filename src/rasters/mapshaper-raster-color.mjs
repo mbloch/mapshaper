@@ -47,9 +47,8 @@ function encodeChannel(c) {
 // image's [lo, hi, median] lightness: between lo and hi, lightness follows a
 // gamma curve (opts.gamma above 1 lightens midtones); then opts.contrast
 // spreads or flattens lightness around the median (see applyContrast()),
-// without clipping. Lightness then moves toward black by
-// 1 - opts.lightness (below 1) or toward white by opts.lightness - 1 (above 1,
-// up to 2), so light colors never clip. Colors that end up outside the sRGB
+// and opts.lightness (0-2) darkens or lightens it, keeping its contrast
+// (see applyLightness()), all without clipping. Colors that end up outside the sRGB
 // gamut lose chroma until they fit, at the same lightness and hue. Hues move
 // toward opts.huePivot (degrees) by opts.hueShift (see getHueShiftRotation()).
 // @samples interleaved uint8 samples with @bands (3 or 4) per pixel; alpha
@@ -248,21 +247,51 @@ export function getOklchHue(r, g, b) {
 
 // Gamma, then contrast, then lightness= (see toneRgbPixels())
 function getLightnessCurve(lightness, gamma, contrast, pivots) {
-  var lighten = Math.max(0, lightness - 1);
-  var scale = Math.min(1, lightness);
   var lo = pivots[0], hi = pivots[1], span = hi - lo;
   var center = getContrastCenter(pivots);
   var curve = new Float64Array(LIGHTNESS_STEPS + 1);
   var i, L;
+  function applyGamma(L) {
+    return gamma != 1 && span > 0 && L > lo && L < hi ?
+      lo + span * Math.pow((L - lo) / span, 1 / gamma) : L;
+  }
+  // contrast= leaves the center where it is
+  var knee = applyGamma(center);
   for (i = 0; i <= LIGHTNESS_STEPS; i++) {
-    L = i / LIGHTNESS_STEPS;
-    if (gamma != 1 && span > 0 && L > lo && L < hi) {
-      L = lo + span * Math.pow((L - lo) / span, 1 / gamma);
-    }
+    L = applyGamma(i / LIGHTNESS_STEPS);
     if (contrast != 1) L = applyContrast(L, contrast, center);
-    curve[i] = L * scale + (1 - L) * lighten;
+    if (lightness != 1) L = applyLightness(L, lightness, knee);
+    curve[i] = L;
   }
   return curve;
+}
+
+// Lightness @L after lightness= @k, which moves the median @m toward white by
+// k - 1 of the way (above 1) or toward black by 1 - k (below 1), keeping the
+// image's contrast. Lightening, everything at or below @m moves up by the
+// same amount, and above @m the curve leaves @m at a slope of 1 and bends to
+// end at white (k u / (1 + (k - 1) u), as in applyContrast()), so the lights
+// are compressed rather than clipped. Darkening is the mirror image. At 2 and
+// 0, the median reaches white or black.
+export function applyLightness(L, k, m) {
+  var m2, room, room2, u;
+  if (k > 1) {
+    m2 = m + (k - 1) * (1 - m);
+    if (L <= m) return L + m2 - m;
+    room = 1 - m;
+    room2 = 1 - m2;
+  } else {
+    m2 = m * k;
+    if (L >= m) return L - (m - m2);
+    room = m;
+    room2 = m2;
+  }
+  if (room2 <= 0) return k > 1 ? 1 : 0;
+  u = k > 1 ? (L - m) / room : (m - L) / room;
+  // distance from m2 is room u / (1 + (r - 1) u), r = room / room2, which
+  // has slope 1 at m2 and covers room2 at u = 1
+  u = room * u / (1 + (room / room2 - 1) * u);
+  return k > 1 ? m2 + u : m2 - u;
 }
 
 // The lightness contrast= centers on: the image's median lightness, kept

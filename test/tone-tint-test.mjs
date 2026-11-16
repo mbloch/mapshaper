@@ -103,24 +103,59 @@ describe('mapshaper-raster-color.mjs', function () {
       assert(Math.abs(lab2.b / lab1.b - 0.5) < 0.05);
     })
 
-    it('lightness= below 1 moves lightness toward black', function () {
-      var out = internal.toneRgbPixels(colorSamples([[200, 180, 120], [255, 255, 255]]), 3,
-        {saturation: 1, lightness: 0.5});
-      assert(Math.abs(oklabL(out[0], out[1], out[2]) - oklabL(200, 180, 120) * 0.5) < 0.005);
-      assert(Math.abs(oklabL(out[3], out[4], out[5]) - 0.5) < 0.005);
+    it('applyLightness() moves the median, with slope 1 there, and stays in 0-1', function () {
+      [0.3, 0.5, 0.7].forEach(function(m) {
+        [0, 0.4, 0.8, 1.3, 1.62, 1.95, 2].forEach(function(k) {
+          var d = 1e-6, prev = -1;
+          var m2 = k > 1 ? m + (k - 1) * (1 - m) : m * k;
+          assert(Math.abs(internal.applyLightness(m, k, m) - m2) < 1e-12);
+          if (k > 0 && k < 2) {
+            assert(Math.abs((internal.applyLightness(m + d, k, m) - internal.applyLightness(m - d, k, m)) / (2 * d) - 1) < 1e-4);
+          }
+          for (var L = 0; L <= 1; L += 0.01) {
+            var L2 = internal.applyLightness(L, k, m);
+            assert(L2 >= 0 && L2 <= 1 + 1e-12 && L2 >= prev - 1e-12);
+            prev = L2;
+          }
+          if (k > 1) assert(Math.abs(internal.applyLightness(1, k, m) - 1) < 1e-12);
+          if (k < 1) assert(Math.abs(internal.applyLightness(0, k, m)) < 1e-12);
+        });
+      });
     })
 
-    it('lightness= above 1 moves lightness toward white, without clipping', function () {
-      var src = [[0, 0, 0], [200, 180, 120], [230, 230, 230], [255, 255, 255]];
-      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1.5});
-      var white = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 2});
-      src.forEach(function (c, i) {
-        var L = oklabL(c[0], c[1], c[2]);
-        var L2 = oklabL(out[i * 3], out[i * 3 + 1], out[i * 3 + 2]);
-        assert(Math.abs(L2 - (L + (1 - L) * 0.5)) < 0.005);
+    it('lightness= above 1 shifts the darks up and bends the lights to white, keeping contrast', function () {
+      var src = [[0, 0, 0], [60, 60, 60], [100, 100, 100], [230, 230, 230], [255, 255, 255]];
+      var m = 0.55; // above the 100 gray (L 0.50)
+      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1.6, pivots: [0.1, 0.9, m]});
+      var shift = 0.6 * (1 - m);
+      [0, 1, 2].forEach(function(i) { // at or below the median
+        var c = src[i];
+        assert(Math.abs(oklabL(out[i * 3], out[i * 3 + 1], out[i * 3 + 2]) - (oklabL(c[0], c[1], c[2]) + shift)) < 0.005);
       });
-      assert(oklabL(out[6], out[7], out[8]) < 0.99);
-      assert.deepEqual(Array.from(white), new Array(12).fill(255));
+      assert(oklabL(out[9], out[10], out[11]) < 0.995); // light gray is not clipped
+      assert.deepEqual(Array.from(out.subarray(12, 15)), [255, 255, 255]);
+    })
+
+    it('lightness= below 1 shifts the lights down and bends the darks to black', function () {
+      var src = [[0, 0, 0], [40, 40, 40], [150, 150, 150], [255, 255, 255]];
+      var m = 0.45;
+      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 0.5, pivots: [0.1, 0.9, m]});
+      [2, 3].forEach(function(i) { // above the median
+        var c = src[i];
+        assert(Math.abs(oklabL(out[i * 3], out[i * 3 + 1], out[i * 3 + 2]) - (oklabL(c[0], c[1], c[2]) - m * 0.5)) < 0.005);
+      });
+      assert.deepEqual(Array.from(out.subarray(0, 3)), [0, 0, 0]);
+      assert(oklabL(out[3], out[4], out[5]) > 0.01); // dark gray is not crushed to black
+    })
+
+    it('lightness= without pivots centers on 0.5; 2 and 0 take the median to white and black', function () {
+      var src = colorSamples([[0, 0, 0], [119, 119, 119], [255, 255, 255]]); // L of 119 is about 0.56
+      var white = internal.toneRgbPixels(src, 3, {saturation: 1, lightness: 2});
+      var black = internal.toneRgbPixels(src, 3, {saturation: 1, lightness: 0});
+      assert.deepEqual(Array.from(white.subarray(3)), [255, 255, 255, 255, 255, 255]);
+      assert(oklabL(white[0], white[1], white[2]) > 0.49);
+      assert.deepEqual(Array.from(black.subarray(0, 3)), [0, 0, 0]);
+      assert(oklabL(black[6], black[7], black[8]) > 0.49);
     })
 
     it('gamma= bends lightness, keeping black and white', function () {
@@ -170,7 +205,8 @@ describe('mapshaper-raster-color.mjs', function () {
     it('gamma= is applied before lightness=', function () {
       var out = internal.toneRgbPixels(colorSamples([[90, 110, 70]]), 3, {saturation: 1, lightness: 1.5, gamma: 2});
       var L = Math.sqrt(oklabL(90, 110, 70));
-      assert(Math.abs(oklabL(out[0], out[1], out[2]) - (L + (1 - L) * 0.5)) < 0.005);
+      var knee = Math.sqrt(0.5); // the default center, through the same gamma curve
+      assert(Math.abs(oklabL(out[0], out[1], out[2]) - internal.applyLightness(L, 1.5, knee)) < 0.005);
     })
 
     it('colors outside the gamut lose chroma, keeping lightness', function () {
