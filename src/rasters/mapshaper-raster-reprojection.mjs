@@ -110,12 +110,14 @@ function buildRasterProjectionMesh(grid, srcCRS, destCRS, transform, interval, o
   if (topology && (topology.findTransitionRegion || topology.findRegion)) {
     return buildTopologyAwareProjectedRasterMesh(grid, srcCRS, destCRS, interval, opts);
   }
-  return buildProjectedRasterMesh(grid, transform, interval);
+  return buildProjectedRasterMesh(grid, transform, interval,
+    getGeographicMeshBreaks(grid, srcCRS));
 }
 
-export function buildProjectedRasterMesh(grid, transform, interval) {
-  var xs = getMeshStops(grid.width, interval);
-  var ys = getMeshStops(grid.height, interval);
+// @breaks (optional): {xs, ys} pixel positions that cells must not straddle
+export function buildProjectedRasterMesh(grid, transform, interval, breaks) {
+  var xs = getMeshStops(grid.width, interval, breaks && breaks.xs);
+  var ys = getMeshStops(grid.height, interval, breaks && breaks.ys);
   var vertices = [];
   for (var y = 0; y < ys.length; y++) {
     for (var x = 0; x < xs.length; x++) {
@@ -131,12 +133,13 @@ export function buildProjectedRasterMesh(grid, transform, interval) {
 
 function buildPiecewiseProjectedRasterMesh(grid, srcCRS, destCRS, interval, topology) {
   var wgs84 = parseCrsString('wgs84');
-  var toGeographic = getProjTransform2(srcCRS, wgs84);
+  var toGeographic = getRasterGeographicTransform(srcCRS);
   var fromGeographic = getProjTransform2(wgs84, srcCRS);
   var toDestination = getProjTransform2(wgs84, destCRS);
   interval = Math.min(interval, topology.raster_mesh_interval || interval);
-  var xs = getMeshStops(grid.width, interval);
-  var ys = getMeshStops(grid.height, interval);
+  var breaks = getGeographicMeshBreaks(grid, srcCRS);
+  var xs = getMeshStops(grid.width, interval, breaks && breaks.xs);
+  var ys = getMeshStops(grid.height, interval, breaks && breaks.ys);
   var regions = topology.raster_regions || topology.regions;
   var mesh = {
     xs: xs,
@@ -184,8 +187,7 @@ function buildExpandedFacetRasterMesh(grid, srcCRS, destCRS, interval, topology)
     fillOutputCoverage: topology.fill_raster_coverage,
     projectedRegions: getProjectedRasterRegions(
       topology, regions, destCRS, getProjTransform2(wgs84, destCRS)),
-    sourceWrapX: isLatLngCRS(srcCRS) &&
-      Math.abs(grid.bbox[2] - grid.bbox[0] - 360) < 1e-3
+    sourceWrap: getSourceWrapWindow(grid, srcCRS)
   };
   var sourceRegions = topology.raster_source_regions ||
     topology.raster_spherical_regions;
@@ -262,8 +264,7 @@ function subdivideSphericalRasterTriangle(context, triangle, region, pieces, dep
   var rawVertices = triangle.map(function(lonlat) {
     return projectSphericalRawVertex(context, lonlat, region);
   });
-  normalizeWrappedTrianglePixels(
-    rawVertices, context.grid.width, context.mesh.sourceWrapX);
+  normalizeWrappedTrianglePixels(rawVertices, context.mesh.sourceWrap);
   pieces.forEach(function(piece) {
     var polygon = context.topology.clipRasterRegionPolygon(
       rawVertices, piece.id);
@@ -319,13 +320,14 @@ function rasterPiecePolygonIsAccurate(topology, polygon, regionId) {
   });
 }
 
-function normalizeWrappedTrianglePixels(vertices, width, wrap) {
+function normalizeWrappedTrianglePixels(vertices, wrap) {
   if (!wrap) return;
   var xmin = Math.min(vertices[0].sx, vertices[1].sx, vertices[2].sx);
   var xmax = Math.max(vertices[0].sx, vertices[1].sx, vertices[2].sx);
-  if (xmax - xmin <= width / 2) return;
+  var mid = wrap.x0 + wrap.period / 2;
+  if (xmax - xmin <= wrap.period / 2) return;
   vertices.forEach(function(vertex) {
-    if (vertex.sx < width / 2) vertex.sx += width;
+    if (vertex.sx < mid) vertex.sx += wrap.period;
   });
 }
 
@@ -481,10 +483,11 @@ export function buildTopologyAwareProjectedRasterMesh(grid, srcCRS, destCRS, int
   var topology = getProjectionTopology(destCRS);
   var findRegion = topology && (topology.findTransitionRegion || topology.findRegion);
   var wgs84 = parseCrsString('wgs84');
-  var toGeographic = getProjTransform2(srcCRS, wgs84);
+  var toGeographic = getRasterGeographicTransform(srcCRS);
   var toDestination = getProjTransform2(wgs84, destCRS);
-  var xs = getMeshStops(grid.width, interval);
-  var ys = getMeshStops(grid.height, interval);
+  var breaks = getGeographicMeshBreaks(grid, srcCRS);
+  var xs = getMeshStops(grid.width, interval, breaks && breaks.xs);
+  var ys = getMeshStops(grid.height, interval, breaks && breaks.ys);
   var minCellSize = opts.raster_topology_min_cell_size ||
     opts.rasterTopologyMinCellSize ||
     DEFAULT_TOPOLOGY_MIN_CELL_SIZE;
@@ -505,7 +508,7 @@ export function buildTopologyAwareProjectedRasterMesh(grid, srcCRS, destCRS, int
     maxDepth: MAX_TOPOLOGY_SUBDIVISION_DEPTH,
     mesh: mesh
   };
-  if (!findRegion) return buildProjectedRasterMesh(grid, getProjTransform2(srcCRS, destCRS), interval);
+  if (!findRegion) return buildProjectedRasterMesh(grid, getProjTransform2(srcCRS, destCRS), interval, breaks);
   for (var y = 0; y < ys.length - 1; y++) {
     for (var x = 0; x < xs.length - 1; x++) {
       addTopologyMeshCell(context, xs[x], ys[y], xs[x + 1], ys[y + 1], 0);
@@ -771,7 +774,7 @@ function validateRasterGridForProjection(grid) {
   }
 }
 
-function getMeshStops(size, interval) {
+function getMeshStops(size, interval, breaks) {
   var stops = [];
   var i;
   interval = Math.max(1, interval | 0);
@@ -779,7 +782,65 @@ function getMeshStops(size, interval) {
     stops.push(i);
   }
   if (stops[stops.length - 1] != size) stops.push(size);
+  if (breaks && breaks.length > 0) {
+    breaks.forEach(function(b) {
+      var rounded = Math.round(b);
+      if (Math.abs(b - rounded) < 1e-6) b = rounded;
+      if (b > 0 && b < size) stops.push(b);
+    });
+    stops.sort(function(a, b) { return a - b; });
+    stops = stops.filter(function(stop, i) {
+      return i === 0 || stop - stops[i - 1] > 1e-6;
+    });
+  }
   return stops;
+}
+
+// Pixel positions where a lat-long grid crosses the antimeridian or a pole
+// (e.g. a grid with a bleed margin). Mesh cells must not straddle these:
+// getProjTransform2() clamps longitudes to [-180, 180], so a straddling cell
+// would be squashed against the antimeridian while still sampling the source
+// across its full width, leaving seams and gaps along the antimeridian.
+// Cells beyond the antimeridian collapse to zero area and draw nothing.
+function getGeographicMeshBreaks(grid, srcCRS) {
+  if (!isLatLngCRS(srcCRS)) return null;
+  var a = rasterPixelToMapXY(grid, 0, 0);
+  var b = rasterPixelToMapXY(grid, grid.width, grid.height);
+  var xmin = Math.min(a[0], b[0]);
+  var xmax = Math.max(a[0], b[0]);
+  var xs = [];
+  for (var k = Math.ceil((xmin + 180) / 360); k <= Math.floor((xmax + 180) / 360); k++) {
+    xs.push(rasterMapXYToPixel(grid, k * 360 - 180, 0)[0]);
+  }
+  return {
+    xs: xs,
+    ys: [rasterMapXYToPixel(grid, 0, 90)[1], rasterMapXYToPixel(grid, 0, -90)[1]]
+  };
+}
+
+// Unlike longitudes, latitudes beyond the poles pass through the lat-long
+// transform, and spherical projection code would treat them as points on the
+// far side of the pole.
+function getRasterGeographicTransform(srcCRS) {
+  var transform = getProjTransform2(srcCRS, parseCrsString('wgs84'));
+  if (!isLatLngCRS(srcCRS)) return transform;
+  return function(x, y) {
+    return y > 90 + 1e-9 || y < -90 - 1e-9 ? null : transform(x, y);
+  };
+}
+
+// Pixel window that holds one copy of the globe in a lat-long grid spanning at
+// least 360 degrees, for sampling across the antimeridian. Returns null unless
+// the window is aligned with whole pixels.
+function getSourceWrapWindow(grid, srcCRS) {
+  if (!isLatLngCRS(srcCRS)) return null;
+  var x0 = rasterMapXYToPixel(grid, -180, 0)[0];
+  var x1 = rasterMapXYToPixel(grid, 180, 0)[0];
+  var r0 = Math.round(x0);
+  var r1 = Math.round(x1);
+  if (Math.abs(x0 - r0) > 0.01 || Math.abs(x1 - r1) > 0.01) return null;
+  if (r0 < 0 || r1 > grid.width || r1 - r0 < 2) return null;
+  return {x0: r0, period: r1 - r0};
 }
 
 function projectRasterMeshVertex(grid, px, py, transform) {
@@ -900,7 +961,7 @@ function rasterizeProjectedMesh(srcGrid, destGrid, mesh, sampleMethodArg) {
     rasterizeProjectedTriangle(
       srcGrid, destGrid, triangle.a, triangle.b, triangle.c,
       sampleMethod, regionData && regionData.mask, regionValue,
-      mesh.sourceWrapX
+      mesh.sourceWrap
     );
   });
   mesh.cells.forEach(function(cell) {
@@ -1034,7 +1095,8 @@ function rasterizeRegionMask(grid, mask, boundary, value) {
   }
 }
 
-function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod, regionMask, regionValue, sourceWrapX) {
+// @sourceWrap: optional window from getSourceWrapWindow()
+function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod, regionMask, regionValue, sourceWrap) {
   var bbox, x0, x1, y0, y1, det, w1, w2, w3, sx, sy, ap, bp, cp;
   if (!vertexIsValid(a) || !vertexIsValid(b) || !vertexIsValid(c)) return;
   ap = vertexToDestPixel(destGrid, a);
@@ -1055,7 +1117,7 @@ function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod, re
       sx = w1 * a.sx + w2 * b.sx + w3 * c.sx;
       sy = w1 * a.sy + w2 * b.sy + w3 * c.sy;
       copyRasterSample(
-        srcGrid, destGrid, sx, sy, x, y, sampleMethod, sourceWrapX);
+        srcGrid, destGrid, sx, sy, x, y, sampleMethod, sourceWrap);
     }
   }
 }
@@ -1107,14 +1169,19 @@ function getRasterSamplerContext(srcGrid, destGrid, method) {
   };
 }
 
-function copyRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX) {
+// @wrap: optional window from getSourceWrapWindow()
+function copyRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrap) {
   if (sampler.average && sampler.footprint.valid) {
-    copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX);
+    copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrap);
   } else if (sampler.bilinear || sampler.average) {
-    copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX);
+    copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrap);
   } else {
-    copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX);
+    copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrap);
   }
+}
+
+function wrapSourceX(x, wrap) {
+  return wrap.x0 + modulo(x - wrap.x0, wrap.period);
 }
 
 // Area averaging: an output pixel is the average of the source pixels under
@@ -1171,7 +1238,7 @@ function getFootprintScale(len) {
 
 // Source pixels outside the grid, or invalid, are skipped and the remaining
 // weights renormalized, so nodata is never blended into a real value.
-function copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX) {
+function copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrap) {
   var fp = sampler.footprint;
   var width = srcGrid.width;
   var bands = srcGrid.bands;
@@ -1185,7 +1252,7 @@ function copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wra
   var y1 = Math.min(srcGrid.height - 1, Math.floor(sy + fp.ry - 0.5));
   var total = 0;
   var x, y, ox, oy, u, v, wu, wv, w, k, i, band, dest, val;
-  if (!wrapX) {
+  if (!wrap) {
     x0 = Math.max(0, x0);
     x1 = Math.min(width - 1, x1);
   }
@@ -1200,7 +1267,7 @@ function copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wra
       v = i10 * ox + i11 * oy;
       wv = Math.min(0.5, v + hv) - Math.max(-0.5, v - hv);
       if (wv <= 0) continue;
-      k = y * width + (wrapX ? modulo(x, width) : x);
+      k = y * width + (wrap ? wrapSourceX(x, wrap) : x);
       if (validity && !validity[k]) continue;
       w = wu * wv;
       i = k * bands;
@@ -1217,9 +1284,9 @@ function copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wra
   if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
 }
 
-function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX) {
-  var srcX = wrapX ?
-    modulo(Math.floor(sx), srcGrid.width) :
+function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrap) {
+  var srcX = wrap ?
+    wrapSourceX(Math.floor(sx), wrap) :
     clamp(Math.floor(sx), 0, srcGrid.width - 1);
   var srcY = clamp(Math.floor(sy), 0, srcGrid.height - 1);
   var src = (srcY * srcGrid.width + srcX) * srcGrid.bands;
@@ -1233,16 +1300,14 @@ function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX) {
   if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
 }
 
-function copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX) {
-  if (wrapX) sx = modulo(sx, srcGrid.width);
-  var srcX = wrapX ?
-    modulo(Math.floor(sx - 0.5), srcGrid.width) :
-    clamp(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
+function copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrap) {
+  var fx = Math.floor(sx - 0.5);
+  var srcX = wrap ? wrapSourceX(fx, wrap) : clamp(fx, 0, srcGrid.width - 1);
   var srcY = clamp(Math.floor(sy - 0.5), 0, srcGrid.height - 1);
-  var srcX2 = wrapX ? (srcX + 1) % srcGrid.width :
+  var srcX2 = wrap ? wrapSourceX(fx + 1, wrap) :
     clamp(srcX + 1, 0, srcGrid.width - 1);
   var srcY2 = clamp(srcY + 1, 0, srcGrid.height - 1);
-  var tx = clamp(sx - 0.5 - srcX, 0, 1);
+  var tx = wrap ? sx - 0.5 - fx : clamp(sx - 0.5 - srcX, 0, 1);
   var ty = clamp(sy - 0.5 - srcY, 0, 1);
   var src00 = (srcY * srcGrid.width + srcX) * srcGrid.bands;
   var src10 = (srcY * srcGrid.width + srcX2) * srcGrid.bands;

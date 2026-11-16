@@ -283,7 +283,67 @@ describe('interrupted projections', function() {
     });
   });
 
+  // Fetched rasters have a nodata margin beyond the antimeridian and poles
+  it('ignores a nodata margin beyond the antimeridian and poles', function() {
+    var src = api.internal.parseCrsString('wgs84');
+    ['markley', 'dymaxion', 'robin'].forEach(function(id) {
+      var dest = api.internal.parseCrsString('+proj=' + id + ' +R=6371000');
+      var expected = api.internal.projectRasterGridForward(
+        getSmoothWorldRaster(0.5, 0), src, dest, {fill_uncovered: false});
+      var grid = api.internal.projectRasterGridForward(
+        getSmoothWorldRaster(0.5, 5), src, dest, {
+          fill_uncovered: false,
+          output_bbox: expected.bbox,
+          output_width: expected.width,
+          output_height: expected.height
+        });
+      var missing = 0;
+      var maxDiff = 0;
+      for (var i = 0; i < grid.coverage.length; i++) {
+        if (!expected.coverage[i]) continue;
+        if (!grid.coverage[i]) {
+          missing++;
+        } else {
+          maxDiff = Math.max(maxDiff, Math.abs(grid.samples[i] - expected.samples[i]));
+        }
+      }
+      assert(missing < expected.width, id + ' missing: ' + missing);
+      assert(maxDiff < 100, id + ' max difference: ' + maxDiff);
+    });
+  });
+
 });
+
+// @margin: degrees of nodata beyond the edges of the globe
+function getSmoothWorldRaster(res, margin) {
+  var width = Math.round((360 + 2 * margin) / res);
+  var height = Math.round((180 + 2 * margin) / res);
+  var samples = new Float32Array(width * height);
+  var nodata = -32768;
+  for (var y = 0; y < height; y++) {
+    for (var x = 0; x < width; x++) {
+      var lon = -180 - margin + (x + 0.5) * res;
+      var lat = 90 + margin - (y + 0.5) * res;
+      samples[y * width + x] = Math.abs(lon) > 180 || Math.abs(lat) > 90 ?
+        nodata :
+        1000 * Math.sin(3 * lon * Math.PI / 180) * Math.cos(lat * Math.PI / 180) +
+          1000 * Math.sin(2 * lat * Math.PI / 180);
+    }
+  }
+  return {
+    interpretation: 'continuous',
+    grid: {
+      width: width,
+      height: height,
+      bands: 1,
+      pixelType: 'float32',
+      samples: samples,
+      nodata: nodata,
+      bbox: [-180 - margin, -90 - margin, 180 + margin, 90 + margin],
+      transform: [res, 0, -180 - margin, 0, -res, 90 + margin]
+    }
+  };
+}
 
 function countIsolatedCoverageHoles(grid) {
   var count = 0;
