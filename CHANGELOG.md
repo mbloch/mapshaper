@@ -1,3 +1,6 @@
+v0.8.1
+* Change the tone curve of `-tone lightness=` to preserve contrast.
+
 v0.8.0
 * Added `-fetch` command, with presets for importing DEMs and imagery from public sources. Running `-fetch sources` lists the presets. Tile URL sources are also supported.
 * Added `-hillshade` command, with options for controlling level of smoothing and various effects, including ambient light from the sky, texture shading and smoothness. Hillshades can use translucent black/white for shadows/highlights or an opaque grayscale with settable base-color. Support for user-defined shadow and highlight colors.
