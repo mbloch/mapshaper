@@ -7007,6 +7007,9 @@
   //                   // bathymetric preset colors them by seaRamp
   //   seaRamp,        // {breaks, colors}: continuous colors at depths, in the
   //                   // band's units (see setRasterPaletteSea())
+  //   seaSeeds,       // [[x, y, level], ...]: points in the inland seas, in the
+  //                   // raster's coordinates, or null if its CRS is unknown
+  //                   // (see mapshaper-inland-seas.mjs)
   //   land,           // 'transparent': only the sea is drawn (hypsometric=none)
   //   hypsometric,    // the preset of -classify hypsometric=, or 'blended'
   //   blend           // hypsometric=blended: the presets' ramps and weights
@@ -7030,7 +7033,7 @@
       palette.otherColor || null,
       palette.interpolation || null, palette.vibrance === undefined ? null : palette.vibrance,
       palette.blend ? [palette.blend.ramps, palette.blend.field && palette.blend.field.key] : null,
-      palette.sea || null, palette.seaRamp || null, palette.land || null]);
+      palette.sea || null, palette.seaRamp || null, palette.land || null, palette.seaSeeds || null]);
   }
 
   function rasterPaletteIsCategorical(palette) {
@@ -7191,51 +7194,52 @@
   // ground (the Dead Sea, Death Valley) are land. A basin that the grid's edge
   // cuts through looks like sea.
   //
+  // At the resolution of a world map, straits like Gibraltar and the Bosporus
+  // are narrower than a pixel, which leaves seas like the Mediterranean and the
+  // Black Sea enclosed. @seeds, points in these seas (see
+  // mapshaper-inland-seas.mjs), add them back: the pixels at or below a sea's
+  // level that connect to one of its points. Without @seeds (a grid without a
+  // known CRS), enclosed basins deeper than DEEP_BASIN_METERS are sea instead,
+  // which only finds seas in DEMs with their depths.
+  //
+  // @seeds: [[x, y, level], ...] in the grid's coordinates, level in meters, or
+  //   null
   // Returns a Uint8Array with 1 for each sea pixel, cached by the grid's
   // samples and the band.
   var masks = new WeakMap();
 
-  function getRasterSeaMask(grid, band) {
+  function getRasterSeaMask(grid, band, seeds) {
     var bands = masks.get(grid.samples);
+    var seedKey = seeds ? JSON.stringify(seeds) : null;
+    var entry;
     if (!bands) {
       bands = {};
       masks.set(grid.samples, bands);
     }
+    entry = bands[band];
     // a grid's coverage can be replaced without its samples (see -clip)
-    if (!bands[band] || bands[band].coverage != grid.coverage) {
-      bands[band] = {coverage: grid.coverage, mask: buildSeaMask(grid, band)};
+    if (!entry || entry.coverage != grid.coverage || entry.units != grid.verticalUnits ||
+        entry.seeds != seedKey) {
+      entry = bands[band] = {coverage: grid.coverage, units: grid.verticalUnits, seeds: seedKey,
+        mask: buildSeaMask(grid, band, seeds || null)};
     }
-    return bands[band].mask;
+    return entry.mask;
   }
 
-  function buildSeaMask(grid, band) {
+  function buildSeaMask(grid, band, seeds) {
     var w = grid.width, h = grid.height, n = w * h;
     var samples = grid.samples, bands = grid.bands, nodata = grid.nodata;
     var coverage = grid.coverage || null;
     var alpha = getRasterDisplayBands(grid).alpha;
-    // 1: sea; 2: without a value, which the sea spreads from
+    var meters = getVerticalUnitMeters(grid.verticalUnits) || 1;
+    // the sea's surface, in the band's units: 0, or an inland sea's level
+    var level = 0;
+    // 1: sea; 2: without a value, which the sea spreads from; 3: an enclosed
+    // basin that is land
     var mask = new Uint8Array(n);
     var queue = new Int32Array(n);
     var tail = 0, head = 0;
     var i, x, y;
-
-    function isEmpty(i) {
-      var val;
-      if (coverage && !coverage[i] || alpha > -1 && samples[i * bands + alpha] === 0) return true;
-      val = samples[i * bands + band];
-      return !isFinite(val) || nodata !== null && nodata !== undefined && val == nodata;
-    }
-
-    function isAtOrBelowSeaLevel(i) {
-      return samples[i * bands + band] <= 0;
-    }
-
-    function visit(i) {
-      if (mask[i] === 0 && isAtOrBelowSeaLevel(i)) {
-        mask[i] = 1;
-        queue[tail++] = i;
-      }
-    }
 
     for (i = 0; i < n; i++) {
       if (isEmpty(i)) {
@@ -7251,18 +7255,98 @@
       if (mask[y * w] === 0) visit(y * w);
       if (mask[y * w + w - 1] === 0) visit(y * w + w - 1);
     }
-    while (head < tail) {
-      i = queue[head++];
-      x = i % w;
-      if (x > 0) visit(i - 1);
-      if (x < w - 1) visit(i + 1);
-      if (i >= w) visit(i - w);
-      if (i < n - w) visit(i + w);
+    spread();
+    if (seeds) {
+      seeds.forEach(addInlandSea);
+    } else {
+      for (i = 0; i < n; i++) {
+        if (mask[i] === 0 && isAtOrBelowSeaLevel(i)) {
+          addEnclosedBasin(i);
+        }
+      }
     }
     for (i = 0; i < n; i++) {
-      if (mask[i] == 2) mask[i] = 0;
+      if (mask[i] > 1) mask[i] = 0;
     }
     return mask;
+
+    function isEmpty(i) {
+      var val;
+      if (coverage && !coverage[i] || alpha > -1 && samples[i * bands + alpha] === 0) return true;
+      val = samples[i * bands + band];
+      return !isFinite(val) || nodata !== null && nodata !== undefined && val == nodata;
+    }
+
+    function isAtOrBelowSeaLevel(i) {
+      return samples[i * bands + band] <= level;
+    }
+
+    function visit(i) {
+      if (mask[i] === 0 && isAtOrBelowSeaLevel(i)) {
+        mask[i] = 1;
+        queue[tail++] = i;
+      }
+    }
+
+    function spread() {
+      var j, col;
+      while (head < tail) {
+        j = queue[head++];
+        col = j % w;
+        if (col > 0) visit(j - 1);
+        if (col < w - 1) visit(j + 1);
+        if (j >= w) visit(j - w);
+        if (j < n - w) visit(j + w);
+      }
+    }
+
+    // Floods the sea containing @seed, from its pixel or, if that one is
+    // above the sea's level (a coastal pixel of a coarse grid), a neighbor
+    function addInlandSea(seed) {
+      var p = mapXYToPixel(grid, seed[0], seed[1]);
+      var px = Math.floor(p[0]), py = Math.floor(p[1]);
+      var dx, dy, cx, cy;
+      level = seed[2] / meters;
+      head = tail = 0;
+      for (dy = 0; dy <= 2 && tail === 0; dy++) {
+        for (dx = 0; dx <= 2 && tail === 0; dx++) {
+          // the seed's pixel first, then its neighbors
+          cx = px + (dx == 2 ? -1 : dx);
+          cy = py + (dy == 2 ? -1 : dy);
+          if (cx >= 0 && cy >= 0 && cx < w && cy < h) visit(cy * w + cx);
+        }
+      }
+      spread();
+      level = 0;
+    }
+
+    // Marks the basin containing pixel @start as sea or land
+    function addEnclosedBasin(start) {
+      var deepLevel = -500 / meters;
+      var min = Infinity;
+      var val, j;
+      head = tail = 0;
+      visit(start);
+      spread();
+      for (j = 0; j < tail; j++) {
+        val = samples[queue[j] * bands + band];
+        if (val < min) min = val;
+      }
+      if (min > deepLevel) {
+        for (j = 0; j < tail; j++) mask[queue[j]] = 3;
+      }
+    }
+  }
+
+  function mapXYToPixel(grid, x, y) {
+    var t = grid.transform;
+    if (t) {
+      return [(x - t[2]) / t[0], (y - t[5]) / t[4]];
+    }
+    return [
+      (x - grid.bbox[0]) / (grid.bbox[2] - grid.bbox[0]) * grid.width,
+      (grid.bbox[3] - y) / (grid.bbox[3] - grid.bbox[1]) * grid.height
+    ];
   }
 
   var RasterSeaMask = /*#__PURE__*/Object.freeze({
@@ -7454,8 +7538,13 @@
   //   the raster's (e.g. reprojected for display): a field from
   //   getClimateWeightField() in the grid's coordinates, or null to draw the
   //   palette without blending
+  // opts.seaSeeds  likewise, for a palette with a sea: points in the inland seas
+  //   in the grid's coordinates (see getInlandSeaSeeds())
   function renderRasterPreview(grid, recipe, width, height, statsArg, opts) {
     recipe = getRasterViewRecipe(grid, recipe);
+    if (recipe.palette && recipe.palette.sea && opts && 'seaSeeds' in opts) {
+      recipe.palette = Object.assign({}, recipe.palette, {seaSeeds: opts.seaSeeds});
+    }
     if (useFastRawEightBitRendering(grid, recipe)) {
       return renderRawEightBitPreview(grid, width, height, null);
     }
@@ -7655,7 +7744,7 @@
     var alpha = getRasterDisplayBands(grid).alpha;
     var coverage = grid.coverage || null;
     var method = rasterPaletteIsCategorical(palette) ? null : resamplingMethod;
-    var sea = palette.sea ? getRasterSeaMask(grid, band) : null;
+    var sea = palette.sea ? getRasterSeaMask(grid, band, palette.seaSeeds) : null;
     var seaTable = getRasterSeaTable(palette);
     var landless = palette.land == 'transparent';
     var pixels = new Uint8ClampedArray(width * height * 4);
@@ -7724,7 +7813,7 @@
     var alpha = getRasterDisplayBands(grid).alpha;
     var coverage = grid.coverage || null;
     var bbox = sourceBbox || grid.bbox;
-    var sea = palette.sea ? getRasterSeaMask(grid, band) : null;
+    var sea = palette.sea ? getRasterSeaMask(grid, band, palette.seaSeeds) : null;
     var seaTable = getRasterSeaTable(palette);
     var fb = field.bbox, fw = field.width, fh = field.height, fweights = field.weights;
     // the field's column (and row) at each column (row) of pixels
@@ -54790,7 +54879,7 @@ ${css.join('\n')}
         type: 'flag'
       })
       .option('sea', {
-        describe: '[raster] at or below 0 and open to the edge: transparent (default with hypsometric=), land, or pale, blue, gray (bathymetric tints; colors=sea:... and breaks=sea:... change them)'
+        describe: '[raster] at or below 0 and open to the edge, or a known inland sea: transparent (default with hypsometric=), land, or pale, blue, gray (bathymetric tints; colors=sea:... and breaks=sea:... change them)'
       })
       .option('index-field', {
         describe: 'apply pre-calculated classes (0 ... n-1, -1)'
@@ -62606,6 +62695,64 @@ ${css.join('\n')}
     getBathymetricStops: getBathymetricStops
   });
 
+  // Seas that a DEM's sea mask (see mapshaper-raster-sea-mask.mjs) can't reach
+  // from the open ocean at the resolution of a world or continental map, where
+  // straits like Gibraltar, the Bosporus and the Danish straits are narrower
+  // than a pixel. At higher resolutions the straits connect them.
+  //
+  // level: the surface, in meters. The sea is the pixels at or below it that
+  //   connect to one of the points, so it works whether a DEM gives the sea's
+  //   depths or only its surface. The Caspian's surface has been between about
+  //   -26 and -29 m; a level of -25 m leaves out the dry lowland around it,
+  //   which is below sea level too.
+  // points: [lon, lat] in open water, away from coasts and islands; a sea has
+  //   several in case one of them lands on land or nodata, and one in each part
+  //   that a coarse grid might separate from the rest
+  var INLAND_SEAS = [
+    {name: 'Mediterranean Sea', level: 0, points: [
+      [-3, 36], [5, 38.5], [8, 43], [12.5, 39.5], [15, 43], [13, 44.8],
+      [18.5, 36], [19, 32.5], [25, 39], [24.5, 35.8], [30, 33.5]]},
+    {name: 'Sea of Marmara', level: 0, points: [[28.2, 40.75]]},
+    {name: 'Black Sea', level: 0, points: [[31, 43], [34.5, 43.5], [38.5, 42.5], [31.5, 45]]},
+    {name: 'Sea of Azov', level: 0, points: [[36.8, 46.2]]},
+    {name: 'Caspian Sea', level: -25, points: [[50.5, 42.5], [51, 39], [50, 45.3]]},
+    {name: 'Baltic Sea', level: 0, points: [
+      [19, 56], [20, 58.5], [20.5, 62], [23, 64.8], [25.5, 59.8], [23.5, 57.7], [11.5, 57]]},
+    {name: 'Red Sea', level: 0, points: [[38, 20], [36, 24.5], [41, 16], [34.5, 27]]},
+    {name: 'Persian Gulf', level: 0, points: [[51.5, 27], [53.5, 25.5], [50, 28]]},
+    {name: 'White Sea', level: 0, points: [[37.5, 65.3]]},
+    {name: 'Seto Inland Sea', level: 0, points: [[133.3, 34.2], [132.2, 33.75]]},
+    {name: 'Hudson Bay', level: 0, points: [[-85, 60], [-80.5, 53], [-78, 66.5]]}
+  ];
+
+  function getInlandSeas() {
+    return INLAND_SEAS;
+  }
+
+  // The inland seas' points in the coordinates of @crs, as [x, y, level], or
+  // null if @crs is missing. Points that @crs can't project are left out.
+  function getInlandSeaSeeds(crs) {
+    var proj, seeds;
+    if (!crs) return null;
+    proj = getProjTransform2(parseCrsString$1('wgs84'), crs);
+    seeds = [];
+    INLAND_SEAS.forEach(function(sea) {
+      sea.points.forEach(function(p) {
+        var xy = proj(p[0], p[1]);
+        if (xy && isFinite(xy[0]) && isFinite(xy[1])) {
+          seeds.push([xy[0], xy[1], sea.level]);
+        }
+      });
+    });
+    return seeds;
+  }
+
+  var InlandSeas = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getInlandSeaSeeds: getInlandSeaSeeds,
+    getInlandSeas: getInlandSeas
+  });
+
   // -classify hypsometric=: the hypsometric presets as raster palettes, at their
   // elevations (see hypsometric-schemes.mjs), and a blend of the climate
   // presets that varies across the map by climate (see hypsometric-climate.mjs).
@@ -62785,8 +62932,11 @@ ${css.join('\n')}
   // colors and depths, or without a preset, give them all; either way,
   // palette.sea is 'custom'. A palette of only the sea (hypsometric=none) takes
   // the sea's colors as its own, for anything that draws it without a sea.
+  // palette.seaSeeds are points in the inland seas, in the raster's
+  // coordinates (see getInlandSeaSeeds()), or null if its CRS is unknown.
   // @opts: options from splitRampOptions()
-  function setRasterPaletteSea(palette, raster, opts) {
+  // @crs: the raster's CRS, or null
+  function setRasterPaletteSea(palette, raster, opts, crs) {
     var colors = opts.ramps && opts.ramps.colors.sea;
     var breaks = opts.ramps && opts.ramps.breaks.sea;
     var custom = !!(colors || breaks);
@@ -62818,6 +62968,9 @@ ${css.join('\n')}
         {name: name ? 'sea=' + sea : 'the sea', colors: 'colors=sea:', breaks: 'breaks=sea:', stop: 'depth'}) : ramp;
       if (custom) palette.sea = 'custom';
       palette.seaRamp = {breaks: ramp.breaks, colors: ramp.colors};
+    }
+    if (palette.sea) {
+      palette.seaSeeds = getInlandSeaSeeds(crs || null);
     }
     if (palette.land == 'transparent') {
       if (!palette.seaRamp) stop$1('hypsometric=none needs colors for the sea: a bathymetric sea= or colors=sea:...');
@@ -62978,20 +63131,25 @@ ${css.join('\n')}
     return [bbox.join(','), width, height, hash, crsToProj4(crs)].join('|');
   }
 
-  // A blended palette's field is in the raster's coordinates, so it is made
-  // again when the raster is reprojected
-  function updateHypsometricBlend(raster, crs) {
+  // A blended palette's field and the sea's seeds are in the raster's
+  // coordinates, so they are made again when the raster is reprojected
+  function updateRasterPaletteGeography(raster, crs) {
     var recipe = raster.view && raster.view.recipe;
     var palette = recipe && recipe.palette;
     var grid = getRasterGrid(raster);
     var field;
-    if (!palette || !palette.blend || !grid) return;
-    field = crs ? getClimateWeightField(grid.bbox, crs) : null;
+    if (!palette || !grid || !palette.blend && !palette.sea) return;
     palette = Object.assign({}, palette);
-    if (field) {
-      palette.blend = Object.assign({}, palette.blend, {field: field});
-    } else {
-      delete palette.blend;
+    if (palette.blend) {
+      field = crs ? getClimateWeightField(grid.bbox, crs) : null;
+      if (field) {
+        palette.blend = Object.assign({}, palette.blend, {field: field});
+      } else {
+        delete palette.blend;
+      }
+    }
+    if (palette.sea) {
+      palette.seaSeeds = getInlandSeaSeeds(crs || null);
     }
     raster.view.recipe = Object.assign({}, recipe, {palette: palette});
   }
@@ -63004,7 +63162,7 @@ ${css.join('\n')}
     getSeaOptionNames: getSeaOptionNames,
     setRasterPaletteSea: setRasterPaletteSea,
     splitRampOptions: splitRampOptions,
-    updateHypsometricBlend: updateHypsometricBlend
+    updateRasterPaletteGeography: updateRasterPaletteGeography
   });
 
   // Helpers for -classify on raster layers (see
@@ -84931,12 +85089,14 @@ ${css.join('\n')}
     if (topology && (topology.findTransitionRegion || topology.findRegion)) {
       return buildTopologyAwareProjectedRasterMesh(grid, srcCRS, destCRS, interval, opts);
     }
-    return buildProjectedRasterMesh(grid, transform, interval);
+    return buildProjectedRasterMesh(grid, transform, interval,
+      getGeographicMeshBreaks(grid, srcCRS));
   }
 
-  function buildProjectedRasterMesh(grid, transform, interval) {
-    var xs = getMeshStops(grid.width, interval);
-    var ys = getMeshStops(grid.height, interval);
+  // @breaks (optional): {xs, ys} pixel positions that cells must not straddle
+  function buildProjectedRasterMesh(grid, transform, interval, breaks) {
+    var xs = getMeshStops(grid.width, interval, breaks && breaks.xs);
+    var ys = getMeshStops(grid.height, interval, breaks && breaks.ys);
     var vertices = [];
     for (var y = 0; y < ys.length; y++) {
       for (var x = 0; x < xs.length; x++) {
@@ -84952,12 +85112,13 @@ ${css.join('\n')}
 
   function buildPiecewiseProjectedRasterMesh(grid, srcCRS, destCRS, interval, topology) {
     var wgs84 = parseCrsString$1('wgs84');
-    var toGeographic = getProjTransform2(srcCRS, wgs84);
+    var toGeographic = getRasterGeographicTransform(srcCRS);
     var fromGeographic = getProjTransform2(wgs84, srcCRS);
     var toDestination = getProjTransform2(wgs84, destCRS);
     interval = Math.min(interval, topology.raster_mesh_interval || interval);
-    var xs = getMeshStops(grid.width, interval);
-    var ys = getMeshStops(grid.height, interval);
+    var breaks = getGeographicMeshBreaks(grid, srcCRS);
+    var xs = getMeshStops(grid.width, interval, breaks && breaks.xs);
+    var ys = getMeshStops(grid.height, interval, breaks && breaks.ys);
     var regions = topology.raster_regions || topology.regions;
     var mesh = {
       xs: xs,
@@ -85005,8 +85166,7 @@ ${css.join('\n')}
       fillOutputCoverage: topology.fill_raster_coverage,
       projectedRegions: getProjectedRasterRegions(
         topology, regions, destCRS, getProjTransform2(wgs84, destCRS)),
-      sourceWrapX: isLatLngCRS(srcCRS) &&
-        Math.abs(grid.bbox[2] - grid.bbox[0] - 360) < 1e-3
+      sourceWrap: getSourceWrapWindow(grid, srcCRS)
     };
     var sourceRegions = topology.raster_source_regions ||
       topology.raster_spherical_regions;
@@ -85083,8 +85243,7 @@ ${css.join('\n')}
     var rawVertices = triangle.map(function(lonlat) {
       return projectSphericalRawVertex(context, lonlat, region);
     });
-    normalizeWrappedTrianglePixels(
-      rawVertices, context.grid.width, context.mesh.sourceWrapX);
+    normalizeWrappedTrianglePixels(rawVertices, context.mesh.sourceWrap);
     pieces.forEach(function(piece) {
       var polygon = context.topology.clipRasterRegionPolygon(
         rawVertices, piece.id);
@@ -85140,13 +85299,14 @@ ${css.join('\n')}
     });
   }
 
-  function normalizeWrappedTrianglePixels(vertices, width, wrap) {
+  function normalizeWrappedTrianglePixels(vertices, wrap) {
     if (!wrap) return;
     var xmin = Math.min(vertices[0].sx, vertices[1].sx, vertices[2].sx);
     var xmax = Math.max(vertices[0].sx, vertices[1].sx, vertices[2].sx);
-    if (xmax - xmin <= width / 2) return;
+    var mid = wrap.x0 + wrap.period / 2;
+    if (xmax - xmin <= wrap.period / 2) return;
     vertices.forEach(function(vertex) {
-      if (vertex.sx < width / 2) vertex.sx += width;
+      if (vertex.sx < mid) vertex.sx += wrap.period;
     });
   }
 
@@ -85302,10 +85462,11 @@ ${css.join('\n')}
     var topology = getProjectionTopology(destCRS);
     var findRegion = topology && (topology.findTransitionRegion || topology.findRegion);
     var wgs84 = parseCrsString$1('wgs84');
-    var toGeographic = getProjTransform2(srcCRS, wgs84);
+    var toGeographic = getRasterGeographicTransform(srcCRS);
     var toDestination = getProjTransform2(wgs84, destCRS);
-    var xs = getMeshStops(grid.width, interval);
-    var ys = getMeshStops(grid.height, interval);
+    var breaks = getGeographicMeshBreaks(grid, srcCRS);
+    var xs = getMeshStops(grid.width, interval, breaks && breaks.xs);
+    var ys = getMeshStops(grid.height, interval, breaks && breaks.ys);
     var minCellSize = opts.raster_topology_min_cell_size ||
       opts.rasterTopologyMinCellSize ||
       DEFAULT_TOPOLOGY_MIN_CELL_SIZE;
@@ -85326,7 +85487,7 @@ ${css.join('\n')}
       maxDepth: MAX_TOPOLOGY_SUBDIVISION_DEPTH,
       mesh: mesh
     };
-    if (!findRegion) return buildProjectedRasterMesh(grid, getProjTransform2(srcCRS, destCRS), interval);
+    if (!findRegion) return buildProjectedRasterMesh(grid, getProjTransform2(srcCRS, destCRS), interval, breaks);
     for (var y = 0; y < ys.length - 1; y++) {
       for (var x = 0; x < xs.length - 1; x++) {
         addTopologyMeshCell(context, xs[x], ys[y], xs[x + 1], ys[y + 1], 0);
@@ -85592,7 +85753,7 @@ ${css.join('\n')}
     }
   }
 
-  function getMeshStops(size, interval) {
+  function getMeshStops(size, interval, breaks) {
     var stops = [];
     var i;
     interval = Math.max(1, interval | 0);
@@ -85600,7 +85761,65 @@ ${css.join('\n')}
       stops.push(i);
     }
     if (stops[stops.length - 1] != size) stops.push(size);
+    if (breaks && breaks.length > 0) {
+      breaks.forEach(function(b) {
+        var rounded = Math.round(b);
+        if (Math.abs(b - rounded) < 1e-6) b = rounded;
+        if (b > 0 && b < size) stops.push(b);
+      });
+      stops.sort(function(a, b) { return a - b; });
+      stops = stops.filter(function(stop, i) {
+        return i === 0 || stop - stops[i - 1] > 1e-6;
+      });
+    }
     return stops;
+  }
+
+  // Pixel positions where a lat-long grid crosses the antimeridian or a pole
+  // (e.g. a grid with a bleed margin). Mesh cells must not straddle these:
+  // getProjTransform2() clamps longitudes to [-180, 180], so a straddling cell
+  // would be squashed against the antimeridian while still sampling the source
+  // across its full width, leaving seams and gaps along the antimeridian.
+  // Cells beyond the antimeridian collapse to zero area and draw nothing.
+  function getGeographicMeshBreaks(grid, srcCRS) {
+    if (!isLatLngCRS(srcCRS)) return null;
+    var a = rasterPixelToMapXY(grid, 0, 0);
+    var b = rasterPixelToMapXY(grid, grid.width, grid.height);
+    var xmin = Math.min(a[0], b[0]);
+    var xmax = Math.max(a[0], b[0]);
+    var xs = [];
+    for (var k = Math.ceil((xmin + 180) / 360); k <= Math.floor((xmax + 180) / 360); k++) {
+      xs.push(rasterMapXYToPixel(grid, k * 360 - 180, 0)[0]);
+    }
+    return {
+      xs: xs,
+      ys: [rasterMapXYToPixel(grid, 0, 90)[1], rasterMapXYToPixel(grid, 0, -90)[1]]
+    };
+  }
+
+  // Unlike longitudes, latitudes beyond the poles pass through the lat-long
+  // transform, and spherical projection code would treat them as points on the
+  // far side of the pole.
+  function getRasterGeographicTransform(srcCRS) {
+    var transform = getProjTransform2(srcCRS, parseCrsString$1('wgs84'));
+    if (!isLatLngCRS(srcCRS)) return transform;
+    return function(x, y) {
+      return y > 90 + 1e-9 || y < -90 - 1e-9 ? null : transform(x, y);
+    };
+  }
+
+  // Pixel window that holds one copy of the globe in a lat-long grid spanning at
+  // least 360 degrees, for sampling across the antimeridian. Returns null unless
+  // the window is aligned with whole pixels.
+  function getSourceWrapWindow(grid, srcCRS) {
+    if (!isLatLngCRS(srcCRS)) return null;
+    var x0 = rasterMapXYToPixel(grid, -180, 0)[0];
+    var x1 = rasterMapXYToPixel(grid, 180, 0)[0];
+    var r0 = Math.round(x0);
+    var r1 = Math.round(x1);
+    if (Math.abs(x0 - r0) > 0.01 || Math.abs(x1 - r1) > 0.01) return null;
+    if (r0 < 0 || r1 > grid.width || r1 - r0 < 2) return null;
+    return {x0: r0, period: r1 - r0};
   }
 
   function projectRasterMeshVertex(grid, px, py, transform) {
@@ -85721,7 +85940,7 @@ ${css.join('\n')}
       rasterizeProjectedTriangle(
         srcGrid, destGrid, triangle.a, triangle.b, triangle.c,
         sampleMethod, regionData && regionData.mask, regionValue,
-        mesh.sourceWrapX
+        mesh.sourceWrap
       );
     });
     mesh.cells.forEach(function(cell) {
@@ -85855,7 +86074,8 @@ ${css.join('\n')}
     }
   }
 
-  function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod, regionMask, regionValue, sourceWrapX) {
+  // @sourceWrap: optional window from getSourceWrapWindow()
+  function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod, regionMask, regionValue, sourceWrap) {
     var bbox, x0, x1, y0, y1, det, w1, w2, w3, sx, sy, ap, bp, cp;
     if (!vertexIsValid(a) || !vertexIsValid(b) || !vertexIsValid(c)) return;
     ap = vertexToDestPixel(destGrid, a);
@@ -85876,7 +86096,7 @@ ${css.join('\n')}
         sx = w1 * a.sx + w2 * b.sx + w3 * c.sx;
         sy = w1 * a.sy + w2 * b.sy + w3 * c.sy;
         copyRasterSample(
-          srcGrid, destGrid, sx, sy, x, y, sampleMethod, sourceWrapX);
+          srcGrid, destGrid, sx, sy, x, y, sampleMethod, sourceWrap);
       }
     }
   }
@@ -85928,14 +86148,19 @@ ${css.join('\n')}
     };
   }
 
-  function copyRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX) {
+  // @wrap: optional window from getSourceWrapWindow()
+  function copyRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrap) {
     if (sampler.average && sampler.footprint.valid) {
-      copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX);
+      copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrap);
     } else if (sampler.bilinear || sampler.average) {
-      copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX);
+      copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrap);
     } else {
-      copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX);
+      copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrap);
     }
+  }
+
+  function wrapSourceX(x, wrap) {
+    return wrap.x0 + modulo(x - wrap.x0, wrap.period);
   }
 
   // Area averaging: an output pixel is the average of the source pixels under
@@ -85992,7 +86217,7 @@ ${css.join('\n')}
 
   // Source pixels outside the grid, or invalid, are skipped and the remaining
   // weights renormalized, so nodata is never blended into a real value.
-  function copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX) {
+  function copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrap) {
     var fp = sampler.footprint;
     var width = srcGrid.width;
     var bands = srcGrid.bands;
@@ -86006,7 +86231,7 @@ ${css.join('\n')}
     var y1 = Math.min(srcGrid.height - 1, Math.floor(sy + fp.ry - 0.5));
     var total = 0;
     var x, y, ox, oy, u, v, wu, wv, w, k, i, band, dest, val;
-    if (!wrapX) {
+    if (!wrap) {
       x0 = Math.max(0, x0);
       x1 = Math.min(width - 1, x1);
     }
@@ -86021,7 +86246,7 @@ ${css.join('\n')}
         v = i10 * ox + i11 * oy;
         wv = Math.min(0.5, v + hv) - Math.max(-0.5, v - hv);
         if (wv <= 0) continue;
-        k = y * width + (wrapX ? modulo(x, width) : x);
+        k = y * width + (wrap ? wrapSourceX(x, wrap) : x);
         if (validity && !validity[k]) continue;
         w = wu * wv;
         i = k * bands;
@@ -86038,9 +86263,9 @@ ${css.join('\n')}
     if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
   }
 
-  function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX) {
-    var srcX = wrapX ?
-      modulo(Math.floor(sx), srcGrid.width) :
+  function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrap) {
+    var srcX = wrap ?
+      wrapSourceX(Math.floor(sx), wrap) :
       clamp$1(Math.floor(sx), 0, srcGrid.width - 1);
     var srcY = clamp$1(Math.floor(sy), 0, srcGrid.height - 1);
     var src = (srcY * srcGrid.width + srcX) * srcGrid.bands;
@@ -86054,16 +86279,14 @@ ${css.join('\n')}
     if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
   }
 
-  function copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX) {
-    if (wrapX) sx = modulo(sx, srcGrid.width);
-    var srcX = wrapX ?
-      modulo(Math.floor(sx - 0.5), srcGrid.width) :
-      clamp$1(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
+  function copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrap) {
+    var fx = Math.floor(sx - 0.5);
+    var srcX = wrap ? wrapSourceX(fx, wrap) : clamp$1(fx, 0, srcGrid.width - 1);
     var srcY = clamp$1(Math.floor(sy - 0.5), 0, srcGrid.height - 1);
-    var srcX2 = wrapX ? (srcX + 1) % srcGrid.width :
+    var srcX2 = wrap ? wrapSourceX(fx + 1, wrap) :
       clamp$1(srcX + 1, 0, srcGrid.width - 1);
     var srcY2 = clamp$1(srcY + 1, 0, srcGrid.height - 1);
-    var tx = clamp$1(sx - 0.5 - srcX, 0, 1);
+    var tx = wrap ? sx - 0.5 - fx : clamp$1(sx - 0.5 - srcX, 0, 1);
     var ty = clamp$1(sy - 0.5 - srcY, 0, 1);
     var src00 = (srcY * srcGrid.width + srcX) * srcGrid.bands;
     var src10 = (srcY * srcGrid.width + srcX2) * srcGrid.bands;
@@ -86904,7 +87127,7 @@ ${css.join('\n')}
     var raster = lyr.raster;
     raster.grid = projectRasterGridForward(raster, src, dest, opts || {});
     updateRasterViewForGrid(raster);
-    updateHypsometricBlend(raster, dest);
+    updateRasterPaletteGeography(raster, dest);
     raster.view = raster.view || {};
     delete raster.view.scalingStats;
     if (runningInBrowser()) {
@@ -88966,12 +89189,13 @@ ${css.join('\n')}
     var raster = lyr.raster;
     var grid = getRasterGrid(raster);
     var opts = splitRampOptions(optsArg);
+    var crs = dataset ? getDatasetCRS(dataset) : null;
     var band, bandIndex, categorical, sample, o, palette;
     validateRasterClassifyOptions(raster, grid, opts);
     band = getRasterClassifyBand(grid, opts);
     bandIndex = getRasterGridBandIndex(grid, band);
     if (opts.hypsometric) {
-      palette = setRasterPaletteSea(getRasterHypsometricPalette(raster, band, opts, dataset ? getDatasetCRS(dataset) : null), raster, opts);
+      palette = setRasterPaletteSea(getRasterHypsometricPalette(raster, band, opts, crs), raster, opts, crs);
       noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
       setRasterPalette(raster, palette);
       markLayerChanged(lyr, {operation: 'classify', unit: 'raster'});
@@ -88995,7 +89219,7 @@ ${css.join('\n')}
         return opts.outer_breaks || getTrimmedRange(sample.values);
       }
     }, Object.assign({}, opts, {count_label: sample.sampled ? 'sampled pixel counts' : 'pixel counts'}));
-    palette = setRasterPaletteSea(getRasterPaletteFromClassification(o, band, opts, sample.values), raster, opts);
+    palette = setRasterPaletteSea(getRasterPaletteFromClassification(o, band, opts, sample.values), raster, opts, crs);
     noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
     if (opts.category_names) {
       setRasterCategoryNames(grid, band, getCategoryNamesOption(opts.category_names, palette));
@@ -112981,7 +113205,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.8.1";
+  var version = "0.8.2";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -115533,6 +115757,7 @@ ${css.join('\n')}
     RasterPalette,
     RasterHypsometric,
     RasterSeaMask,
+    InlandSeas,
     RasterClassify,
     RasterCategories,
     VerticalUnits,
