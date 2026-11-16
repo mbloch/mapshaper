@@ -8,6 +8,15 @@ description: Example maps made with Mapshaper, with full source data and reprodu
 A collection of example maps made with Mapshaper. Each tile links to its own page with the recipe, the source data, and a link to open the finished map in the [web app](/).
 
 <div class="gallery-grid">
+  <a class="gallery-tile" href="/docs/examples/canyon.html">
+    <div class="gallery-tile-image">
+      <img src="/docs/examples/data/canyon6.jpg" alt="Canyon relief">
+    </div>
+    <div class="gallery-tile-caption">
+      <div class="gallery-tile-title">Canyon relief</div>
+      <div class="gallery-tile-desc">Shaded relief example</div>
+    </div>
+  </a>
   <a class="gallery-tile" href="/docs/examples/globe.html">
     <div class="gallery-tile-image">
       <img src="/docs/examples/data/globe.svg" alt="Globe locator map">

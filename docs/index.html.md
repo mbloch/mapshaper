@@ -37,20 +37,20 @@ description: Documentation for mapshaper, the command-line tool and web app for 
 ## Featured examples
 
 <div class="featured-maps">
+  <a class="gallery-tile" href="/docs/examples/canyon.html">
+    <div class="gallery-tile-image">
+      <img src="/docs/examples/data/canyon6.jpg" alt="Canyon relief">
+    </div>
+    <div class="gallery-tile-caption">
+      <div class="gallery-tile-title">Canyon relief</div>
+    </div>
+  </a>
   <a class="gallery-tile" href="/docs/examples/globe.html">
     <div class="gallery-tile-image">
       <img src="/docs/examples/data/globe.svg" alt="Globe locator map">
     </div>
     <div class="gallery-tile-caption">
       <div class="gallery-tile-title">Globe locator map</div>
-    </div>
-  </a>
-  <a class="gallery-tile" href="/docs/examples/us-states.html">
-    <div class="gallery-tile-image">
-      <img src="/docs/examples/data/us-states.svg" alt="U.S. state map">
-    </div>
-    <div class="gallery-tile-caption">
-      <div class="gallery-tile-title">U.S. state map</div>
     </div>
   </a>
 </div>
