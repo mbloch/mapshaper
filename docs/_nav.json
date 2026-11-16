@@ -19,6 +19,7 @@
       "path": "examples",
       "pages": [
         { "label": "Basics", "file": "basics.md" },
+        { "label": "Canyon relief", "file": "canyon.md" },
         { "label": "Globe locator map", "file": "globe.md" },
         { "label": "U.S. state map", "file": "us-states.md"},
         { "label": "New York map", "file": "ny-state.md"}
