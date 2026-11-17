@@ -613,10 +613,81 @@ describe('mapshaper-buffer.js', function () {
       var unpatch = totalArea(getOutputGeometries(await api.applyCommands(
         '-i ' + file + ' -buffer 50km no-gap-patch -o buffer.json')));
       var rel = Math.abs(unpatch - raw) / raw;
-      assert(rel > 5e-5 && rel < 3e-4,
+      assert(rel > 2e-5 && rel < 3e-4,
         'expected a small fold-back notch, got ' + rel.toExponential(2));
     });
   })
+
+  // Coverage regressions: probe points just inside the true buffer edge (98.5% of
+  // the radius, outside the 1% tolerance plus the 0.5% join sagitta) must be
+  // covered.
+  describe('buffer reaches the buffer distance', function () {
+    var R = 6378137, D2R = Math.PI / 180;
+    function geodesicDest(p, bearing, dist) {
+      var lat1 = p[1] * D2R, lng1 = p[0] * D2R, t = bearing * D2R, dl = dist / R;
+      var lat2 = Math.asin(Math.sin(lat1) * Math.cos(dl) + Math.cos(lat1) * Math.sin(dl) * Math.cos(t));
+      var lng2 = lng1 + Math.atan2(Math.sin(t) * Math.sin(dl) * Math.cos(lat1),
+        Math.cos(dl) - Math.sin(lat1) * Math.sin(lat2));
+      return [lng2 / D2R, lat2 / D2R];
+    }
+    function probesAround(verts, dist, step) {
+      var pts = [];
+      verts.forEach(function(v) {
+        for (var b = 0; b < 360; b += step) pts.push(geodesicDest(v, b, dist * 0.985));
+      });
+      return pts;
+    }
+    async function countUncovered(input, bufferCmd, probes) {
+      var out = await api.applyCommands('-i input.json ' + bufferCmd + ' -o buffer.json',
+        {'input.json': input});
+      var left = await api.applyCommands('-i probes.json -erase buffer.json -o left.json',
+        {'probes.json': {type: 'MultiPoint', coordinates: probes}, 'buffer.json': out['buffer.json']});
+      var geom = getOutputGeometries(left, 'left.json')[0];
+      return !geom ? 0 : geom.type == 'Point' ? 1 : geom.coordinates.length;
+    }
+
+    // Douglas-Peucker lowers the threshold of a closed ring's farthest vertex so
+    // small islands collapse; the pinned end vertices then kept the collapsed ring
+    // as a sliver at its start vertex, short of the island's far side by ~2%.
+    it('pre-simplification keeps the extent of a small island', async function () {
+      var input = JSON.parse(fs.readFileSync('test/data/features/buffer/alaska_small_island.json', 'utf8'));
+      var probes = probesAround(input.geometry.coordinates[0], 300000, 5);
+      assert.equal(await countUncovered(input, '-buffer 300km', probes), 0);
+    });
+
+    // The two-sided outline of a ring too small to hold a hole sent its inner
+    // offset across the island to run just inside the far side's outer offset,
+    // leaving a sliver hole ~5% of the radius inside the buffer edge.
+    it('a small closed line ring has no sliver holes', async function () {
+      var input = JSON.parse(fs.readFileSync('test/data/features/buffer/greenland_small_island_line.json', 'utf8'));
+      var out = await api.applyCommands('-i input.json -buffer 300km -o buffer.json',
+        {'input.json': input});
+      var geom = getOutputGeometries(out)[0];
+      assert.equal(geom.type, 'Polygon');
+      assert.equal(geom.coordinates.length, 1);
+      var probes = probesAround(input.geometry.coordinates, 300000, 5);
+      assert.equal(await countUncovered(input, '-buffer 300km', probes), 0);
+    });
+
+    // The round join used to start at its first arc vertex, so the chord from the
+    // incoming offset edge cut the corner by up to ~2% of the radius.
+    it('round joins do not cut convex corners (planar)', async function () {
+      var input = {type: 'Polygon', coordinates: [[[0, 0], [0, 100000], [100000, 100000], [100000, 0], [0, 0]]]};
+      var probes = [[-9900, 0], [0, -9900], [-9900, 100000], [0, 109900],
+        [100000, 109900], [109900, 100000], [109900, 0], [100000, -9900]];
+      assert.equal(await countUncovered(input, '-buffer 10000', probes), 0);
+    });
+
+    // Geodesic offset edges in Mercator are rotated relative to their source
+    // segments, so extending them along the source bearings misplaced the elbow.
+    it('geodesic elbow joins at high latitude', async function () {
+      var v = [-26, 70];
+      var input = {type: 'LineString', coordinates: [
+        geodesicDest(v, 225, 150000), v, geodesicDest(v, 55, 150000)]};
+      var probes = probesAround([v], 300000, 1);
+      assert.equal(await countUncovered(input, '-buffer 300km tolerance=0', probes), 0);
+    });
+  });
 
   // Geodesic fold-back artifacts (notches and positive sliver parts) are handled
   // by default gap-patch at construction time; the outline artifact-hole filter

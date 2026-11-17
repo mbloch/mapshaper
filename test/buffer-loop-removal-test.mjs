@@ -268,6 +268,8 @@ describe('mapshaper-buffer-loop-removal.js', function () {
     var refFile =
       'test/data/features/buffer/greenland_merc_line_error_correct_buffer.fgb';
 
+    // The reference predates the round-join fix that stopped joins cutting
+    // convex corners, which grew this buffer by ~0.05%; the lobe loss was ~1.7%.
     it('30km dissolved buffer matches reference area', async function () {
       var out = await api.applyCommands(
         '-i ' + file + ' -buffer 30000 -o format=geojson out.json');
@@ -276,8 +278,20 @@ describe('mapshaper-buffer-loop-removal.js', function () {
       var area = polygonArea(JSON.parse(String(out['out.json'])));
       var refArea = polygonArea(JSON.parse(String(refOut['ref.json'])));
       var drift = Math.abs(area - refArea) / refArea;
-      assert.ok(drift < 1e-9,
+      assert.ok(drift < 1e-3,
         'buffer area should match reference (drift ' + drift + ')');
+    });
+
+    it('loop removal does not change the 30km buffer area', async function () {
+      var out = await api.applyCommands(
+        '-i ' + file + ' -buffer 30000 -o format=geojson out.json');
+      var rawOut = await api.applyCommands(
+        '-i ' + file + ' -buffer 30000 no-loop-removal -o format=geojson raw.json');
+      var area = polygonArea(JSON.parse(String(out['out.json'])));
+      var rawArea = polygonArea(JSON.parse(String(rawOut['raw.json'])));
+      var drift = Math.abs(area - rawArea) / rawArea;
+      assert.ok(drift < 1e-9,
+        'loop removal should preserve area (drift ' + drift + ')');
     });
   });
 

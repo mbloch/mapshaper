@@ -173,6 +173,15 @@ export function getPolylineBufferMaker(dataset, opts) {
     if (simplifyIntervalFn) {
       verts = presimplifyPathVerts(verts, simplifyIntervalFn(dist), dist);
     }
+    // A closed two-sided line ring too narrow to enclose a hole has the same
+    // buffer as its filled interior, so grow it outward like a polygon ring.
+    // Its inner offset would cross the whole ring and run just inside the far
+    // side's outer offset, where the opposite windings leave sliver holes.
+    if (!oneSidedBuffer && !opts.band_method && !pathIsOpen(verts) &&
+        verts.length > 3 && !ringCanEncloseHole(pathSideVerts, dist)) {
+      if (ringSignedArea(verts) > 0) verts = verts.slice().reverse();
+      return buildCleanOutlineRings(startRingAtEdgeMidpoint(verts), dist);
+    }
     // Closed two-sided line rings: open with a sub-tolerance gap at the first
     // vertex so the open-path outline builder applies (round caps close the
     // seam). Gap size is in the same coordinate units as verts.
@@ -329,11 +338,20 @@ export function getPolylineBufferMaker(dataset, opts) {
   // recorded fan-apart bend vertex. A single segment has no bend (so its buffer
   // is the exact, gap-free stadium); the two patches' caps at the shared vertex
   // cover the sliver wedge the pinched bridge failed to fill.
+  // Adjacent bends share a segment, which gets one patch (keyed by its first
+  // vertex index).
   function addFanApartGapPatches(out, sideVerts, bends, dist, parentCCW) {
+    var patched = {};
     for (var b = 0; b < bends.length; b++) {
       var k = bends[b];
-      if (k - 1 >= 0) pushPatch(out, [sideVerts[k - 1], sideVerts[k]], dist, parentCCW);
-      if (k + 1 < sideVerts.length) pushPatch(out, [sideVerts[k], sideVerts[k + 1]], dist, parentCCW);
+      if (k - 1 >= 0 && !patched[k - 1]) {
+        patched[k - 1] = true;
+        pushPatch(out, [sideVerts[k - 1], sideVerts[k]], dist, parentCCW);
+      }
+      if (k + 1 < sideVerts.length && !patched[k]) {
+        patched[k] = true;
+        pushPatch(out, [sideVerts[k], sideVerts[k + 1]], dist, parentCCW);
+      }
     }
   }
 
@@ -426,9 +444,12 @@ export function getPolylineBufferMaker(dataset, opts) {
         builder.addBufferVertex([x1, y1], segId);
         builder.addBufferVertex(p1, segId);
       } else if (joinAngle > roundJoinSegAngle * 1.5) {
-        // Large convex bend: arc vertices on the offset circle replace the
-        // previous segment end (p2Prev) and current segment start (p1).
+        // Large convex bend: the previous segment end (p2Prev) starts the arc,
+        // and the last arc vertex replaces the current segment start (p1).
+        // Omitting p2Prev would let the chord from the incoming edge to the
+        // first arc vertex cut the corner by up to ~2% of dist.
         joinPoints = makeInscribedRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
+        builder.addBufferVertex(p2Prev, segId);
         builder.addBufferVertices(joinPoints, segId);
         p1 = joinPoints.pop(); // track outgoing segment start (already added)
       } else if (joinAngle > -1e-10 && joinAngle < 1e-10) {
@@ -891,6 +912,27 @@ export function getPolylineBufferMaker(dataset, opts) {
     return verts[0][0] !== verts[n-1][0] || verts[0][1] !== verts[n-1][1];
   }
 
+  // False if a closed ring's bounding box is too narrow to hold a disk of
+  // radius dist, so no point inside the ring can lie farther than dist from it.
+  // In Mercator a geodesic disk of radius dist spans at least 2 * dist times
+  // the smallest scale factor of the ring's latitude band, in both x and y.
+  function ringCanEncloseHole(verts, dist) {
+    var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+    for (var i = 0; i < verts.length; i++) {
+      var p = verts[i];
+      if (p[0] < xmin) xmin = p[0];
+      if (p[0] > xmax) xmax = p[0];
+      if (p[1] < ymin) ymin = p[1];
+      if (p[1] > ymax) ymax = p[1];
+    }
+    var minSpan = 2 * dist;
+    if (useMercator) {
+      var minAbsY = ymin < 0 && ymax > 0 ? 0 : Math.min(Math.abs(ymin), Math.abs(ymax));
+      minSpan *= Math.cosh(minAbsY / R); // Mercator scale factor at that latitude
+    }
+    return xmax - xmin >= minSpan && ymax - ymin >= minSpan;
+  }
+
   // Open a closed ring at its first vertex: nudge the corner into two points
   // straddling it along the incoming and outgoing edges (sub-tolerance gap).
   function openClosedRingWithMicroGap(verts) {
@@ -1040,6 +1082,7 @@ export function getPolylineBufferMaker(dataset, opts) {
         joinAngle = getJoinAngle(bearingPrev, bearing);
         if (joinAngle > roundJoinSegAngle * 1.5) {
           joinPoints = makeInscribedRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
+          add(p2Prev, segId);
           for (i = 0; i < joinPoints.length; i++) add(joinPoints[i], segId);
           p1 = joinPoints[joinPoints.length - 1];
         } else if (joinAngle > -1e-10 && joinAngle < 1e-10) {
@@ -1189,6 +1232,15 @@ export function getPolylineBufferMaker(dataset, opts) {
       yy[i] = verts[i][1];
     }
     DouglasPeucker.calcArcData(kk, xx, yy);
+    var closed = verts[0][0] === verts[n-1][0] && verts[0][1] === verts[n-1][1];
+    if (closed) {
+      // calcArcData lowers the threshold of a ring's farthest vertex from the
+      // start to that of its highest child, so small islands collapse when
+      // simplifying for display. Here the pinned end vertices below would keep
+      // the collapsed ring as a sliver at the start vertex (defeating the
+      // fallback), so restore the true distance: the island keeps its extent.
+      restoreRingApexThreshold(kk, xx, yy);
+    }
     // Retain the second vertex from each end, so the bearings of the end
     // segments are preserved exactly: cap geometry at path endpoints
     // (flat caps especially) depends on them.
@@ -1197,8 +1249,23 @@ export function getPolylineBufferMaker(dataset, opts) {
     for (i = 0; i < n; i++) {
       if (kk[i] >= interval) verts2.push(verts[i]);
     }
-    var closed = verts[0][0] === verts[n-1][0] && verts[0][1] === verts[n-1][1];
     return verts2.length >= (closed ? 4 : 2) ? verts2 : verts;
+  }
+
+  // Same vertex choice as calcArcData's first split of a closed ring (whose
+  // chord degenerates to the start point).
+  function restoreRingApexThreshold(kk, xx, yy) {
+    var n = kk.length, maxDistSq = 0, maxIdx = 0, dx, dy, distSq;
+    for (var i = 1; i < n - 1; i++) {
+      dx = xx[i] - xx[0];
+      dy = yy[i] - yy[0];
+      distSq = dx * dx + dy * dy;
+      if (distSq >= maxDistSq) {
+        maxDistSq = distSq;
+        maxIdx = i;
+      }
+    }
+    if (maxIdx > 0) kk[maxIdx] = Math.max(kk[maxIdx], Math.sqrt(maxDistSq));
   }
 
   // Traverse a path with the (possibly projecting) path iterator,
@@ -1234,35 +1301,40 @@ export function getPolylineBufferMaker(dataset, opts) {
   }
 
   // Round join: an equal-angle-step polygonal approximation of the arc between
-  // the incoming and outgoing offset edges, replacing the incoming edge's end
-  // (p2Prev) and the outgoing edge's start (p1).
+  // the incoming and outgoing offset edges. Returns the vertices after the
+  // incoming edge's end (p2Prev), which the caller emits first; the last vertex
+  // replaces the outgoing edge's start (p1). Both p2Prev and the last vertex
+  // lie on the offset circle, so the straight edges attach at the true distance:
+  // moving either radially outward would carry the attached edge outward too, and
+  // since it also seeds the elbow joins of the segments that follow, the bias
+  // would propagate into a collar of offset-vs-source overshoot along the whole
+  // outline -- which the fill-gaps mask cannot tell from a real gap fill (its
+  // coast test tolerance is itself calibrated to the join sagitta).
   //
   // Inscribed (default): vertices at the true offset distance, stepping from the
   // incoming perpendicular round to the outgoing one. Because its chords cut the
   // corner, the join lies INSIDE the true circular offset, falling short of it by
   // up to one sagitta (~0.5% of dist at the default 8 segments/quadrant).
   //
-  // Circumscribed (circumscribe_joins): the same vertices, moved out to
-  // circumscribedJoinDist so the chords span the offset circle instead of cutting
-  // inside it. The LAST vertex stays at the true distance because the outgoing
-  // straight edge attaches there: moving it radially outward would carry that edge
-  // outward too, and since it also seeds the elbow joins of the segments that
-  // follow, the bias propagates into a collar of offset-vs-source overshoot along
-  // the whole outline -- which the fill-gaps mask cannot tell from a real gap fill
-  // (its coast test tolerance is itself calibrated to the join sagitta). Leaving
-  // that one vertex on the circle costs some accuracy: the final chord still dips
-  // inside by about half a sagitta, so a gap tip whose closure happens to fall on
-  // that chord is still short by ~0.25% of dist. Raise quad-segs to shrink it.
+  // Circumscribed (circumscribe_joins): vertices at the half-step angles, moved
+  // out to circumscribedJoinDist, so that every edge from p2Prev to the last
+  // vertex is tangent to the offset circle and the join never dips inside it.
+  // This costs one more vertex than the inscribed join.
   function makeInscribedRoundJoin(cx, cy, startBearing, arcAngle, dist) {
     var pointCount = Math.max(1, Math.round(arcAngle / roundJoinSegAngle));
     var stepAngle = arcAngle / pointCount;
     var points = [];
-    var i;
-    var outerDist = circumscribeJoins ?
-      circumscribedJoinDist(dist, stepAngle) : dist;
+    var i, outerDist;
+    if (circumscribeJoins) {
+      outerDist = circumscribedJoinDist(dist, stepAngle);
+      for (i = 0; i < pointCount; i++) {
+        points.push(getOffsetPoint(cx, cy, startBearing + stepAngle * (i + 0.5), outerDist));
+      }
+      points.push(getOffsetPoint(cx, cy, startBearing + arcAngle, dist));
+      return points;
+    }
     for (i = 1; i <= pointCount; i++) {
-      points.push(getOffsetPoint(cx, cy, startBearing + stepAngle * i,
-        i == pointCount ? dist : outerDist));
+      points.push(getOffsetPoint(cx, cy, startBearing + stepAngle * i, dist));
     }
     return points;
   }
@@ -1293,9 +1365,15 @@ export function getPolylineBufferMaker(dataset, opts) {
     return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
   }
 
+  // Extends the offset edges a->b and c->d along their own directions. Geodesic
+  // offset edges in Mercator are rotated relative to their source segments
+  // (increasingly so at high latitudes), so extending along the source bearings
+  // (the fallback for zero-length edges) can place the elbow far from both tips.
   function elbowJoin(a, b, c, d, bearing1, bearing2, cx, cy, dist) {
     var k = 2 ** 13;
     var len = getJoinExtensionDistance(cx, cy, b, c, dist) * k;
+    if (a[0] != b[0] || a[1] != b[1]) bearing1 = bearingDegrees2D(a[0], a[1], b[0], b[1]);
+    if (c[0] != d[0] || c[1] != d[1]) bearing2 = bearingDegrees2D(c[0], c[1], d[0], d[1]);
     var b2 = getPlanarSegmentEndpoint(b[0], b[1], bearing1, len);
     var c2 = getPlanarSegmentEndpoint(c[0], c[1], bearing2 + 180, len);
     return bufferSegmentIntersection(a, b2, c2, d);

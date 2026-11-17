@@ -362,8 +362,8 @@ function makeGapFillPolygonBuffer(lyr, dataset, opts) {
   //   - circumscribe_joins: the round joins are otherwise inscribed in the true
   //     circular offset and fall a join sagitta short of it (~0.5% of r at the
   //     default 8 segments/quadrant). See makeInscribedRoundJoin: the correction
-  //     costs no vertices, in contrast to raising quad-segs, whose cost is linear
-  //     in vertices through every stage below (dilate, union, erode, mask).
+  //     costs one vertex per join, in contrast to raising quad-segs, whose cost is
+  //     linear in vertices through every stage below (dilate, union, erode, mask).
   //   - tolerance 0: the default pre-simplification budget is 1% of the radius,
   //     several times a hairline gap's width, so it smooths away the very tips
   //     being bridged (and undoes the join correction with them). Skipping it
