@@ -23,9 +23,9 @@ describe('Butterfly projections', function() {
         [[120, -30], [13093815.265308343, 6223940.576395109]]
       ],
       cahill_keyes: [
-        [[0, 0], [3724414.5350762657, 1404499.1133618308]],
-        [[-74, 40], [-6481963.309702179, 3183578.0832191235]],
-        [[120, -30], [18094076.64206148, -2413997.168872486]]
+        [[0, 0], [2602069.427144385, 1404499.1133618308]],
+        [[-74, 40], [-7604308.417634061, 3183578.0832191235]],
+        [[120, -30], [16971731.5341296, -2413997.168872486]]
       ]
     };
     Object.keys(fixtures).forEach(function(id) {
@@ -50,6 +50,17 @@ describe('Butterfly projections', function() {
     ];
     fixtures.forEach(function(test) {
       almostEqualPoint(raw(test[0][0] * r, test[0][1] * r), test[1], 1e-9);
+    });
+  });
+
+  it('keeps the Cahill-Keyes 15th parallel continuous near octant edges', function() {
+    var raw = createCahillKeyesRaw(10000);
+    var r = Math.PI / 180;
+    // octants are centered on 45 degrees, so these are within a degree of an edge
+    [0.025, 0.5, 1, 89.5, 90.5].forEach(function(lon) {
+      var a = raw(lon * r, (15 - 1e-9) * r);
+      var b = raw(lon * r, (15 + 1e-9) * r);
+      assert(Math.hypot(a[0] - b[0], a[1] - b[1]) < 1, String(lon));
     });
   });
 
@@ -250,19 +261,11 @@ describe('Butterfly projections', function() {
         base + '-graticule outline -o target=outline outline.json', input);
       var polygon = JSON.parse(polygonOut['polygon.json']).geometries[0];
       var outline = JSON.parse(outlineOut['outline.json']).geometries[0];
-      if (id == 'cahill_keyes') {
-        assert.equal(polygon.type, 'MultiPolygon', id);
-        assert.equal(outline.type, 'MultiLineString', id);
-        assert(polygon.coordinates.length > 1, id);
-        assert(outline.coordinates.length > 1, id);
-        assertNoExtremeOutlineConnectors(outline.coordinates);
-      } else {
-        assert.equal(polygon.type, 'Polygon', id);
-        assert.equal(outline.type, 'LineString', id);
-        assert(polygon.coordinates[0].length > 10, id);
-        assert.deepEqual(outline.coordinates,
-          polygon.coordinates[0].slice().reverse(), id);
-      }
+      assert.equal(polygon.type, 'Polygon', id);
+      assert.equal(outline.type, 'LineString', id);
+      assert(polygon.coordinates[0].length > 10, id);
+      assert.deepEqual(outline.coordinates,
+        polygon.coordinates[0].slice().reverse(), id);
     }
   });
 
@@ -385,27 +388,6 @@ function maxSegmentLength(coords) {
     return max;
   }
   return Math.max.apply(null, coords.map(maxSegmentLength));
-}
-
-function assertNoExtremeOutlineConnectors(paths) {
-  var points = paths.flat();
-  var xmin = Math.min.apply(null, points.map(function(p) {return p[0];}));
-  var xmax = Math.max.apply(null, points.map(function(p) {return p[0];}));
-  var ymin = Math.min.apply(null, points.map(function(p) {return p[1];}));
-  var ymax = Math.max.apply(null, points.map(function(p) {return p[1];}));
-  var width = xmax - xmin;
-  var height = ymax - ymin;
-  paths.forEach(function(path) {
-    for (var i = 1; i < path.length; i++) {
-      var a = path[i - 1];
-      var b = path[i];
-      var atTop = Math.min(a[1], b[1]) >= ymax - height * 1e-3;
-      var atBottom = Math.max(a[1], b[1]) <= ymin + height * 1e-3;
-      var flat = Math.abs(a[1] - b[1]) <= height * 1e-4;
-      var wide = Math.abs(a[0] - b[0]) >= width * 0.02;
-      assert(!(atTop || atBottom) || !flat || !wide);
-    }
-  });
 }
 
 function almostEqualPoint(a, b, tolerance) {

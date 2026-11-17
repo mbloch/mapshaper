@@ -22,6 +22,7 @@ var TOPOLOGY_VERTEX_INSET = 1e-7;
 var PIECE_SAMPLE_STEPS = 4;
 var EXPANDED_FACET_MAX_EDGE_DEGREES = 2;
 var EXPANDED_FACET_MAX_CLIP_ERROR = 0.02;
+var MAX_PIECEWISE_CELL_DEGREES = 8;
 // Area averaging reads at most this many source pixels along each side of a
 // footprint, so a nearly degenerate mesh triangle can't make it read the
 // whole source grid for one output pixel.
@@ -138,7 +139,8 @@ function buildPiecewiseProjectedRasterMesh(grid, srcCRS, destCRS, interval, topo
   var toGeographic = getRasterGeographicTransform(srcCRS);
   var fromGeographic = getProjTransform2(wgs84, srcCRS);
   var toDestination = getProjTransform2(wgs84, destCRS);
-  interval = Math.min(interval, topology.raster_mesh_interval || interval);
+  interval = Math.min(interval, topology.raster_mesh_interval || interval,
+    getMaxPiecewiseMeshInterval(grid, toGeographic));
   var breaks = getGeographicMeshBreaks(grid, srcCRS);
   var xs = getMeshStops(grid.width, interval, breaks && breaks.xs);
   var ys = getMeshStops(grid.height, interval, breaks && breaks.ys);
@@ -176,6 +178,22 @@ function buildPiecewiseProjectedRasterMesh(grid, srcCRS, destCRS, interval, topo
     }
   }
   return mesh;
+}
+
+// A piecewise cell is drawn as two flat triangles in every region it touches,
+// using that region's projection even for corners far outside the region. A
+// cell of a coarse raster can span a large part of a facet, so cap its size
+// in degrees as well as in pixels.
+function getMaxPiecewiseMeshInterval(grid, toGeographic) {
+  var px = grid.width / 2;
+  var py = grid.height / 2;
+  var a = toGeographic.apply(null, rasterPixelToMapXY(grid, px, py));
+  var b = toGeographic.apply(null, rasterPixelToMapXY(grid, px + 1, py));
+  var c = toGeographic.apply(null, rasterPixelToMapXY(grid, px, py + 1));
+  var degrees = a && b && c ?
+    Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]),
+      Math.abs(c[0] - a[0]), Math.abs(c[1] - a[1])) : 0;
+  return degrees > 0 ? Math.max(1, Math.floor(MAX_PIECEWISE_CELL_DEGREES / degrees)) : Infinity;
 }
 
 function buildExpandedFacetRasterMesh(grid, srcCRS, destCRS, interval, topology) {

@@ -285,7 +285,7 @@ describe('interrupted projections', function() {
 
   it('gives a regional raster its own extent in a facet layout, without repeating its edges', function() {
     var src = api.internal.parseCrsString('wgs84');
-    ['dymaxion', 'butterfly', 'markley', 'narukawa2022', 'hemispheres'].forEach(function(id) {
+    ['dymaxion', 'butterfly', 'cahill_keyes', 'markley', 'narukawa2022', 'hemispheres'].forEach(function(id) {
       var dest = api.internal.parseCrsString('+proj=' + id + ' +R=6371000');
       var project = api.internal.getProjTransform2(src, dest);
       var grid = api.internal.projectRasterGridForward(
@@ -299,6 +299,35 @@ describe('interrupted projections', function() {
         assert(p[0] > bbox[0] - 1e3 && p[0] < bbox[2] + 1e3 && p[1] > bbox[1] - 1e3 && p[1] < bbox[3] + 1e3, id);
       });
       assert(covered > 0.3 && covered < 1, id + ' coverage: ' + covered);
+    });
+  });
+
+  it('projects raster pixels to the same places as vector points', function() {
+    var src = api.internal.parseCrsString('wgs84');
+    ['dymaxion', 'butterfly', 'butterfly2', 'cahill_keyes'].forEach(function(id) {
+      var dest = api.internal.parseCrsString('+proj=' + id + ' +R=6371000');
+      var project = api.internal.getProjTransform2(src, dest);
+      var grid = api.internal.projectRasterGridForward(
+        getSmoothWorldRaster(1, 0), src, dest, {fill_uncovered: false});
+      var bbox = grid.bbox;
+      var points = 0, missing = 0, maxDiff = 0;
+      for (var lon = -179.75; lon < 180; lon += 0.5) {
+        for (var lat = -89.75; lat < 90; lat += 0.5) {
+          var p = project(lon, lat);
+          var col = Math.floor((p[0] - bbox[0]) / (bbox[2] - bbox[0]) * grid.width);
+          var row = Math.floor((bbox[3] - p[1]) / (bbox[3] - bbox[1]) * grid.height);
+          var i = row * grid.width + col;
+          points++;
+          if (col < 0 || row < 0 || col >= grid.width || row >= grid.height || !grid.coverage[i]) {
+            missing++;
+          } else {
+            maxDiff = Math.max(maxDiff, Math.abs(grid.samples[i] - getSmoothWorldValue(lon, lat)));
+          }
+        }
+      }
+      assert(missing < points * 0.02, id + ' missing: ' + missing);
+      // pixels are about 100 km across, and values change by less than 1 per km
+      assert(maxDiff < 150, id + ' max difference: ' + maxDiff);
     });
   });
 
@@ -344,9 +373,7 @@ function getSmoothWorldRaster(res, margin) {
       var lon = -180 - margin + (x + 0.5) * res;
       var lat = 90 + margin - (y + 0.5) * res;
       samples[y * width + x] = Math.abs(lon) > 180 || Math.abs(lat) > 90 ?
-        nodata :
-        1000 * Math.sin(3 * lon * Math.PI / 180) * Math.cos(lat * Math.PI / 180) +
-          1000 * Math.sin(2 * lat * Math.PI / 180);
+        nodata : getSmoothWorldValue(lon, lat);
     }
   }
   return {
@@ -362,6 +389,11 @@ function getSmoothWorldRaster(res, margin) {
       transform: [res, 0, -180 - margin, 0, -res, 90 + margin]
     }
   };
+}
+
+function getSmoothWorldValue(lon, lat) {
+  return 1000 * Math.sin(3 * lon * Math.PI / 180) * Math.cos(lat * Math.PI / 180) +
+    1000 * Math.sin(2 * lat * Math.PI / 180);
 }
 
 function getRegionalRaster(bbox, res) {

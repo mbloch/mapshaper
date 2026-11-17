@@ -12,7 +12,7 @@ import {createPolyhedralProjection} from './mapshaper-polyhedral-projection';
 import {createGnomonicProjector} from './mapshaper-slice-and-dice';
 import {
   createCahillKeyesFaceRaw,
-  createCahillKeyesRaw
+  createCahillKeyesOctantRaw
 } from './mapshaper-cahill-keyes';
 import {
   createRadialFacetProjector,
@@ -76,9 +76,6 @@ function initButterfly(P, method) {
     }
   };
   P.__projection_topology = engine.getTopology(P.lam0 * R2D);
-  if (engine.removeOutlineExtremeConnectors) {
-    P.__remove_outline_extreme_connectors = true;
-  }
   if (engine.useProjectedOutline !== false) {
     P.__projected_outline = engine.outline;
   }
@@ -104,8 +101,9 @@ function createButterflyEngine() {
     faceProjector: function(face) {
       var baseId = face.id < 8 ? face.id : data.parents[face.id];
       var center = faceCenters[baseId] * D2R;
+      var hemisphere = baseId % 4 < 2 ? 1 : -1;
       var raw = function(lam, phi) {
-        return faceRaw(normalizeRadians(lam - center), phi);
+        return faceRaw(normalizeRadians(lam - center), hemisphere * phi);
       };
       return createNormalizedFacetProjector(face.coords, raw);
     }
@@ -211,25 +209,30 @@ function createCahillKeyesEngine() {
     Math.sin(17 * D2R),
     [-1, 3, 0, 2, 0, 1, 4, 5]
   );
-  var raw = createCahillKeyesRaw(10000);
+  // Octahedron face index -> Cahill-Keyes octant (see ll2mp()).
+  var octants = [2, 3, 7, 8, 1, 4, 6, 5];
+  var raw = createCahillKeyesOctantRaw(10000);
   var engine = createPolyhedralProjection({
     faces: data.faces,
     parents: data.parents,
     rotation: [0, 0, 0],
     angle: 0,
     findFace: createTruncatedFaceFinder(data.cornerNormals),
-    faceProjector: function() {
+    // Every face uses the global 12-zone layout, but with its own octant, so
+    // that edges on the antimeridian and polar vertices (whose longitude is
+    // arbitrary) stay attached to their face.
+    faceProjector: function(face) {
+      var octant = octants[face.id < 8 ? face.id : Math.floor((face.id - 8) / 3)];
       return function(lam, phi) {
-        var p = raw(lam, phi);
+        var p = raw(lam, phi, octant);
         return [p[0], -p[1]];
       };
     }
   });
-  // The 12-zone transform positions all octants directly in its M-profile.
-  // Its face-tree boundary retraces several edges, so derive graticule
-  // footprints through the normal spherical clipping path instead.
+  // Octant edges bend at the 15th and 73rd parallels, which straight chords
+  // between face corners would cut off, so derive graticule footprints through
+  // the normal spherical clipping path instead.
   engine.useProjectedOutline = false;
-  engine.removeOutlineExtremeConnectors = true;
   return engine;
 }
 

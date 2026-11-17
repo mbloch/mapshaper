@@ -15,15 +15,31 @@ export function createCahillKeyesRaw(mg) {
   return createCahillKeyesTransform(mg, false);
 }
 
-function createCahillKeyesTransform(mg, faceOnly) {
+// Returns function(lambda, phi, octant), which projects with a fixed octant
+// (1-4 north, 5-8 south, numbered as in ll2mp()). Points outside the octant
+// extrapolate its zones instead of jumping to a neighboring octant, so a face
+// keeps a continuous image up to and slightly past its edges.
+export function createCahillKeyesOctantRaw(mg) {
+  return createCahillKeyesTransform(mg, false, true);
+}
+
+function createCahillKeyesTransform(mg, faceOnly, fixedOctant) {
   var CK = {lengthMG: mg || 10000};
+  var NORTH_OCTANT = [0, 1, 2, 3, 4, 4, 1, 2, 3];
   init();
 
-  return function(lambda, phi) {
+  return function(lambda, phi, octant) {
+    var meridian, side, local;
+    if (fixedOctant) {
+      meridian = ((lambda * R2D - NORTH_OCTANT[octant] * 90 + 225) % 360 + 540) % 360 - 180;
+      side = meridian < 0 ? -1 : meridian > 0 ? 1 : 0;
+      local = mp2xy(Math.abs(meridian), (octant <= 4 ? 1 : -1) * phi * R2D);
+      return mj2g([local[0], side * local[1]], octant);
+    }
     if (faceOnly) {
-      var lon = lambda * R2D;
-      var side = lon < 0 ? -1 : lon > 0 ? 1 : 0;
-      var local = mp2xy(Math.abs(lon), Math.abs(phi * R2D));
+      meridian = lambda * R2D;
+      side = meridian < 0 ? -1 : meridian > 0 ? 1 : 0;
+      local = mp2xy(Math.abs(meridian), phi * R2D);
       return [local[0], side * local[1]];
     }
     var res = ll2mp(lambda * R2D, phi * R2D);
@@ -213,7 +229,9 @@ function createCahillKeyesTransform(mg, faceOnly) {
     var lM = lengthMiddleSegment(m);
     var lF = p73a.lengthParallel73;
     var l = l15 + (p - 15) * (lT + lM + lF - l15) / 58;
-    if (l <= lT) return interpolate(l, lT, jointE(m), jointF(m));
+    // d3-geo-polygon interpolates toward jointF here, which tears the map
+    // just north of the 15th parallel within about a degree of each octant edge
+    if (l <= lT) return interpolate(l, lT, jointE(m), jointT(m));
     if (l <= lT + lM) {
       return interpolate(l - lT, lM, jointT(m), jointF(m));
     }
@@ -332,6 +350,9 @@ function createCahillKeyesTransform(mg, faceOnly) {
   }
 }
 
+// Projects one half-octant pair in face-local coordinates: lambda is relative
+// to the face's central meridian and phi is positive toward the face's pole,
+// so a face extends continuously past the equator.
 export function createCahillKeyesFaceRaw(mg) {
   return createCahillKeyesTransform(mg, true);
 }

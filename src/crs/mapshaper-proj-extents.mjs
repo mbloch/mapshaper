@@ -8,7 +8,6 @@ import { Bounds } from '../geom/mapshaper-bounds';
 import { getCircleGeoJSON } from '../buffer/mapshaper-point-buffer';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { verbose, error, message } from '../utils/mapshaper-logging';
-import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { rotateDataset } from '../commands/mapshaper-rotate';
 import { projectDataset } from '../commands/mapshaper-proj';
 import { polygonsToLines } from '../commands/mapshaper-lines';
@@ -77,9 +76,6 @@ export function getOutlineDataset(src, dest, opts) {
       removeTinyFootprintRings(dataset);
     }
     dataset.layers[0].geometry_type = 'polyline';
-    if (dest.__remove_outline_extreme_connectors) {
-      dataset = removeOutlineExtremeConnectors(dataset);
-    }
   }
   return dataset || null;
 }
@@ -149,54 +145,6 @@ function removeTinyFootprintRings(dataset) {
     }
   });
   dissolveArcs(dataset);
-}
-
-// Polygon clipping closes open interrupted-projection boundaries to form valid
-// rings. In Cahill-Keyes, some closures connect unrelated polar facet images.
-// Remove only long, nearly horizontal segments at the map's vertical extent.
-function removeOutlineExtremeConnectors(dataset) {
-  var bounds = getDatasetBounds(dataset);
-  var width = bounds.width();
-  var height = bounds.height();
-  var edgeTolerance = height * 1e-3;
-  var flatTolerance = height * 1e-4;
-  var arcs = dataset.arcs;
-  var lyr = dataset.layers[0];
-  var paths = [];
-  var removed = 0;
-  lyr.shapes.forEach(function(shp) {
-    (shp || []).forEach(function(path) {
-      var points = [];
-      var iter = arcs.getShapeIter(path);
-      while (iter.hasNext()) {
-        points.push([iter.x, iter.y]);
-      }
-      var part = [points[0]];
-      for (var i = 1; i < points.length; i++) {
-        var a = points[i - 1];
-        var b = points[i];
-        var atTop = Math.min(a[1], b[1]) >= bounds.ymax - edgeTolerance;
-        var atBottom = Math.max(a[1], b[1]) <= bounds.ymin + edgeTolerance;
-        var isFlat = Math.abs(a[1] - b[1]) <= flatTolerance;
-        var isWide = Math.abs(a[0] - b[0]) >= width * 0.02;
-        if ((atTop || atBottom) && isFlat && isWide) {
-          if (part.length > 1) paths.push(part);
-          part = [b];
-          removed++;
-        } else {
-          part.push(b);
-        }
-      }
-      if (part.length > 1) paths.push(part);
-    });
-  });
-  if (removed === 0) return dataset;
-  var cleaned = importGeoJSON({
-    type: paths.length == 1 ? 'LineString' : 'MultiLineString',
-    coordinates: paths.length == 1 ? paths[0] : paths
-  });
-  cleaned.info = dataset.info;
-  return cleaned;
 }
 
 function getBoundingRectangle(dest, opts) {
