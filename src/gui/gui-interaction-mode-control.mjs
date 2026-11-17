@@ -4,6 +4,7 @@ import { getLabelTarget } from './gui-label-commands';
 import { formatLayerNameForDisplay } from './gui-layer-utils';
 import { addEmptyLayer } from './gui-add-layer';
 import { layerHasPaletteRaster } from './gui-raster-band-values';
+import { blendIsAvailable } from './gui-blend-sources';
 
 export function InteractionMode(gui) {
   var self = this;
@@ -41,14 +42,16 @@ export function InteractionMode(gui) {
     rectangles: ['info', 'selection', 'polygon_style', 'rectangles', 'box', 'ruler'],
     lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],
     table: ['info', 'selection'],
-    raster: ['box', 'ruler'],
+    // 'blend' is offered only where there is a hillshade to blend, and not on
+    // a hillshade (see getRasterModes())
+    raster: ['blend', 'box', 'ruler'],
     // an RGB image, which -tone can adjust
-    image: ['tone', 'box', 'ruler'],
+    image: ['tone', 'blend', 'box', 'ruler'],
     // a data raster (a DEM, land cover...), which -classify can color
-    dataRaster: ['palette', 'box', 'ruler'],
+    dataRaster: ['palette', 'blend', 'box', 'ruler'],
     // a grayscale image, which -tone can adjust (apart from its colors) and
     // -classify can color
-    grayImage: ['tone', 'palette', 'box', 'ruler'],
+    grayImage: ['tone', 'palette', 'blend', 'box', 'ruler'],
     labels: ['info', 'label', 'symbols', 'selection', 'box', 'ruler'],
     // a layer of symbols, which the point tools have no controls for
     symbols: ['info', 'symbols', 'selection', 'box', 'ruler'],
@@ -84,6 +87,7 @@ export function InteractionMode(gui) {
     polygon_style: 'style/edit polygons',
     tone: 'adjust colors',
     palette: 'color palette',
+    blend: 'blend hillshade',
     edit_points: 'style/edit points',
     edit_lines: 'draw lines',
     edit_polygons: 'draw polygons',
@@ -278,9 +282,7 @@ export function InteractionMode(gui) {
       return menus.empty; // TODO: more sensible handling of missing layer
     }
     if (internal.layerHasRaster(o.layer)) {
-      if (internal.rasterCanBeToned(o.layer.raster)) return menus.image;
-      if (internal.rasterIsGrayImage(o.layer.raster)) return menus.grayImage;
-      return layerHasPaletteRaster(o.layer) ? menus.dataRaster : menus.raster;
+      return getRasterModes(o.layer);
     }
     if (!o.layer.geometry_type) {
       return menus.table;
@@ -306,6 +308,15 @@ export function InteractionMode(gui) {
     }
 
     return menus.standard;
+  }
+
+  function getRasterModes(lyr) {
+    var modes = internal.rasterCanBeToned(lyr.raster) ? menus.image :
+      internal.rasterIsGrayImage(lyr.raster) ? menus.grayImage :
+      layerHasPaletteRaster(lyr) ? menus.dataRaster : menus.raster;
+    return blendIsAvailable(gui.model, lyr) ? modes : modes.filter(function(mode) {
+      return mode != 'blend';
+    });
   }
 
   function getInteractionMode() {

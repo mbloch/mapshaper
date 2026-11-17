@@ -79,6 +79,16 @@ describe('mapshaper-blend.mjs', function () {
       assert.deepEqual(blendOne([40, 160, 60], 0), [40, 160, 60]);
     });
 
+    it('writes to @out if given (as the GUI preview does, to a canvas)', function () {
+      var samples = new Uint8Array([40, 160, 60, 255, 40, 160, 60, 128]);
+      var amounts = new Float32Array([-0.5, 0.4]);
+      var opts = {shadow: BLACK, highlight: WHITE, shadowChroma: 0, highlightChroma: 1};
+      var out = new Uint8ClampedArray(8).fill(7);
+      assert.equal(internal.blendShadingPixels(samples, 4, amounts, opts, out), out);
+      assert.deepEqual(Array.from(out),
+        Array.from(internal.blendShadingPixels(samples, 4, amounts, opts)));
+    });
+
     it('chroma 0 stacks the shadow and highlight colors', function () {
       var stack = {shadowChroma: 0, highlightChroma: 0};
       assert.deepEqual(blendOne([40, 160, 60], -0.5, stack), [20, 80, 30]);
@@ -161,6 +171,54 @@ describe('mapshaper-blend.mjs', function () {
 
     it('returns null with no visible pixels', function () {
       assert.strictEqual(internal.guessBaseColor(new Uint8Array([9, 9, 9, 0])), null);
+    });
+  });
+
+  describe('rasterLooksLikeHillshade()', function () {
+    function makeImage(bands, pixel, opts) {
+      var n = 100;
+      var samples = new Uint8Array(n * bands);
+      for (var i = 0; i < n; i++) samples.set(pixel, i * bands);
+      return Object.assign({
+        interpretation: 'image',
+        grid: {width: 10, height: 10, bands: bands, samples: samples, bbox: [0, 0, 1, 1]}
+      }, opts);
+    }
+
+    it('takes layers made by -hillshade, but not elevation or color imagery', async function () {
+      var catalog = await run(makeDataset(20, 20, ridge, [40, 160, 60]),
+        '-hillshade target=dem name=hs +');
+      assert.equal(internal.rasterLooksLikeHillshade(findLayer(catalog, 'hs').raster), true);
+      assert.equal(internal.rasterLooksLikeHillshade(findLayer(catalog, 'dem').raster), false);
+      assert.equal(internal.rasterLooksLikeHillshade(findLayer(catalog, 'img').raster), false);
+    });
+
+    it('takes gray 8-bit images from elsewhere', function () {
+      assert.equal(internal.rasterLooksLikeHillshade(makeImage(1, [120])), true);
+      assert.equal(internal.rasterLooksLikeHillshade(makeImage(3, [120, 122, 119])), true);
+      assert.equal(internal.rasterLooksLikeHillshade(makeImage(4, [0, 0, 0, 90])), true);
+      assert.equal(internal.rasterLooksLikeHillshade(makeImage(3, [120, 140, 110])), false);
+    });
+
+    it('leaves out palette rasters and -blend output', function () {
+      var palette = makeImage(1, [3]);
+      palette.grid.colorModel = 'palette';
+      assert.equal(internal.rasterLooksLikeHillshade(palette), false);
+      assert.equal(internal.rasterLooksLikeHillshade(
+        makeImage(3, [120, 120, 120], {derivation: {type: 'blend'}})), false);
+    });
+  });
+
+  describe('scaleShadingAmounts()', function () {
+    it('scales shadows and highlights separately, up to full opacity', function () {
+      var amounts = new Float32Array([-0.6, 0.3, 0.6]);
+      var out = internal.scaleShadingAmounts(amounts, 2, 0.5, new Float32Array(3));
+      assert.deepEqual(Array.from(out), [-1, 0.15, 0.3].map(Math.fround));
+      assert.deepEqual(Array.from(amounts), [-0.6, 0.3, 0.6].map(Math.fround));
+      internal.scaleShadingAmounts(amounts, 1, 1, out);
+      assert.deepEqual(Array.from(out), Array.from(amounts));
+      internal.scaleShadingAmounts(amounts, 0, 2);
+      assert.deepEqual(Array.from(amounts), [0, 0.6, 1].map(Math.fround));
     });
   });
 
@@ -252,10 +310,24 @@ describe('mapshaper-blend.mjs', function () {
         strength: [1, 1], chroma: [0.5, 0.5], base_color: null});
     });
 
+    it('defaults to stacked shadows and highlights without haze (chroma=0,1)', async function () {
+      var catalog = await run(makeDataset(20, 20, ridge, [40, 160, 60]),
+        '-hillshade target=dem name=hs -blend hs target=img');
+      var params = findLayer(catalog, 'img').raster.derivation;
+      assert.deepEqual([params.strength, params.chroma], [[1, 1], [0, 1]]);
+    });
+
     it('+ keeps the target and the hillshade', async function () {
       var catalog = await run(makeDataset(20, 20, ridge, [40, 160, 60]),
         '-hillshade target=dem name=hs -blend hs target=img + name=out');
       assert.deepEqual(catalog.getLayers().map(function(o) { return o.layer.name; }).sort(), ['hs', 'img', 'out']);
+    });
+
+    it('keep-source keeps the hillshade and replaces the target', async function () {
+      var catalog = await run(makeDataset(20, 20, ridge, [40, 160, 60]),
+        '-hillshade target=dem name=hs -blend hs target=img keep-source');
+      assert.deepEqual(catalog.getLayers().map(function(o) { return o.layer.name; }).sort(), ['hs', 'img']);
+      assert.equal(findLayer(catalog, 'img').raster.derivation.type, 'blend');
     });
 
     it('blends one hillshade into several targets before removing it', async function () {
@@ -411,6 +483,13 @@ describe('mapshaper-blend.mjs', function () {
         var stack = getStackedNames(catalog);
         assert.deepEqual(getNames(catalog), ['blend', 'hs', 'img', 'land', 'map']);
         assert.equal(stack.indexOf('blend'), stack.indexOf('land') + 1);
+      });
+
+      it('keep-source keeps the hillshade and replaces the targets', async function () {
+        var catalog = await run(makeDataset(20, 20, ridge, [40, 160, 60]),
+          SETUP + ' -blend hs target=land keep-source');
+        assert.deepEqual(getNames(catalog), ['hs', 'img', 'land', 'map']);
+        assert(internal.layerHasRaster(findLayer(catalog, 'land')));
       });
 
       it('overlay recolors the hillshade to give the blend when stacked on the targets', async function () {

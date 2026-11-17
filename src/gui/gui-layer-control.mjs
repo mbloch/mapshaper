@@ -22,6 +22,7 @@ import {
 } from './gui-app-undo';
 import { FrameVisibilityRuns } from './gui-frame-visibility-runs';
 import { layerHasPaletteRaster } from './gui-raster-band-values';
+import { blendIsAvailable } from './gui-blend-sources';
 
 export function LayerControl(gui) {
   var model = gui.model;
@@ -747,6 +748,17 @@ export function LayerControl(gui) {
       }
     }
 
+    // The blend panel acts on the active layer, as it does from the arrow menu
+    function blendLayer() {
+      var target = findLayerById(id);
+      if (!target) return;
+      if (!map.isActiveLayer(target.layer)) {
+        target.layer.hidden = false;
+        model.selectLayer(target.layer, target.dataset);
+      }
+      gui.interaction.setMode('blend');
+    }
+
     function openLayerMenu(e) {
       var menuEvent = e;
       var target = findLayerById(id);
@@ -796,6 +808,10 @@ export function LayerControl(gui) {
         } else if (target.layer.geometry_type == 'polygon') {
           menuEvent.styleLayerName = 'style/edit polygons';
         }
+      }
+      // where the arrow menu would offer it, with the layer active
+      if (!isFrame && target && blendIsAvailable(model, target.layer)) {
+        menuEvent.blendLayer = blendLayer;
       }
       menuEvent.contextMenuId = 'layer-' + id;
       openContextMenu(menuEvent, null, null);

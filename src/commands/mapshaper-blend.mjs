@@ -3,7 +3,7 @@ import { parseColor } from '../color/color-utils';
 import { getLayerBounds, layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { requireOverlaySourceCRS } from '../crs/mapshaper-projections';
 import { blendShadingPixels, getShadingOverlayPixels } from '../rasters/mapshaper-raster-color';
-import { getShadingAmounts, resampleShadingAmounts } from '../rasters/mapshaper-raster-blend';
+import { getShadingAmounts, resampleShadingAmounts, scaleShadingAmounts } from '../rasters/mapshaper-raster-blend';
 import { drawLayersOnGrid } from '../rasters/mapshaper-raster-draw';
 import { getRasterGrid, rasterGridIsRotated, renderRasterPreview } from '../rasters/mapshaper-raster-utils';
 import { getFrameLayerData } from '../furniture/mapshaper-frame-utils';
@@ -176,15 +176,6 @@ function readShadowHighlightPair(arr, defaultVal, name) {
     stop(name + '= should be one value, or two (shadows,highlights), of 0 or more');
   }
   return arr.length == 1 ? [arr[0], arr[0]] : arr.concat();
-}
-
-function scaleShadingAmounts(amounts, shadows, highlights) {
-  var i, a;
-  if (shadows == 1 && highlights == 1) return;
-  for (i = 0; i < amounts.length; i++) {
-    a = amounts[i];
-    amounts[i] = a < 0 ? Math.max(-1, a * shadows) : Math.min(1, a * highlights);
-  }
 }
 
 // RGB(A) images are blended as they are; other rasters (e.g. a tinted or

@@ -50,3 +50,11 @@ export function shrinkRgbaPixels(pixels, width, height, k) {
   }
   return {pixels: out, width: w2, height: h2, coverWidth: width / k, coverHeight: height / k};
 }
+
+// The extent of a reduced @copy of an image covering @bbox: partial blocks
+// make the copy reach a little past the image's right and bottom edges
+export function getShrunkBBox(bbox, copy) {
+  var dx = (bbox[2] - bbox[0]) / copy.coverWidth;
+  var dy = (bbox[3] - bbox[1]) / copy.coverHeight;
+  return [bbox[0], bbox[3] - dy * copy.height, bbox[0] + dx * copy.width, bbox[3]];
+}

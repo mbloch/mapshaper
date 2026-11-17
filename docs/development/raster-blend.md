@@ -61,7 +61,10 @@ now part of the imagery.
   `-tone` and `-tint`, and the hillshade layer is removed too. A hillshade
   left in place would be drawn over the blended layer, shading it twice, in
   the GUI and in exported maps. `+` (with optional `name=`) adds a new layer
-  and keeps both inputs.
+  and keeps both inputs. `keep-source` keeps the hillshade (to blend it
+  again, or for a different layer) and still replaces the target; the
+  output of drawn targets is then added above them rather than taking the
+  hillshade's place.
 - To use one hillshade for several raster layers, blend them in one command
   (`target=imagery,tint`); each is blended on its own, and the hillshade is
   removed after the last one. A hillshade read from a file isn't in the
@@ -206,10 +209,13 @@ toward the target pixel's:
 - `1` keeps the target's chroma and hue, so only lightness changes. In
   highlights, lit slopes are lighter but not hazy. In shadows, colors stay
   vivid (and so become more saturated, since they are darker).
-- Values above 1 go further than the target's own color: more vivid lit
-  slopes, limited by the gamut.
+- Values above 1 go further than the target's own color: more vivid
+  slopes, limited by the gamut. The GUI's sliders go to 2.
 
 The default is `chroma=0,1`: shadows as stacked, highlights without haze.
+(`chroma=0`, plain stacking, was considered as a more neutral default, but
+then a default `-blend` would look the same as the hillshade drawn over the
+target.)
 
 Colors outside the sRGB gamut are fitted at the same lightness and hue by
 reducing chroma, as `oklchToRgb()` does. Very saturated colors lose some
@@ -411,11 +417,21 @@ rounding of the alpha channel.
   which renders the layers with the SVG exporter at the grid's pixel size
   (`svg_image_size`) and rasterizes them (`rasterizeSVGPixels()`; resvg's
   premultiplied pixels are converted back).
-- GUI: a later panel modeled on the Color & tone panel (shadow and
-  highlight sliders for `strength=` and `chroma=`),
-  committing a `-blend` command. Because blending in place compounds, the
-  panel has to re-run from the unblended target (via undo) rather than
-  blending its own output again.
+- GUI: the "blend hillshade" mode (`src/gui/gui-raster-blend-tool.mjs`),
+  modeled on the Color & tone panel: a menu of hillshade layers in the
+  target's frame (`gui-blend-sources.mjs`; layers made by -hillshade, or
+  gray 8-bit rasters from elsewhere, as `rasterLooksLikeHillshade()`
+  decides, leaving out those -blend would stop on)
+  and shadow and highlight sliders for `strength=` and `chroma=`
+  (`gui-blend-settings.mjs`). The map shows a blended copy of the target's
+  preview and leaves out the hillshade (`gui-raster-blend-preview.mjs`;
+  a reduced copy of a large preview while a slider is dragged); Apply
+  commits a `-blend` command, which replaces the target and removes the
+  hillshade, as on the command line, unless "Keep hillshade" is checked
+  (`keep-source`). No preview where the map is
+  reprojected, and raster targets only (no `overlay`, no vector targets).
+  Because blending in place compounds, adjusting a blend means undoing it
+  rather than blending its own output again.
 
 ## Phases
 
@@ -424,7 +440,7 @@ rounding of the alpha channel.
 2. Vector targets and `overlay` (done); `shadow-tint=` and
    `highlight-tint=` if the hillshade's own colors aren't enough.
    (`base-color=` and the guess for hillshades from elsewhere are done.)
-3. GUI panel; standard modes for opaque hillshades; a `-composite` command
+3. GUI panel (done, for raster targets); standard modes for opaque hillshades; a `-composite` command
    if chaining isn't enough.
 
 ## Open questions

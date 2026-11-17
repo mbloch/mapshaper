@@ -15,6 +15,13 @@ var WHITE = {r: 255, g: 255, b: 255};
 // least this share of its visible pixels is partly transparent
 var PARTIAL_ALPHA_SHARE = 0.01;
 
+// An RGB(A) raster from elsewhere is taken for a hillshade if this share of
+// its visible pixels (in a sample of about GRAY_SAMPLE_COUNT) have channels
+// within GRAY_TOLERANCE of each other, which allows for compression noise
+var GRAY_PIXEL_SHARE = 0.98;
+var GRAY_TOLERANCE = 4;
+var GRAY_SAMPLE_COUNT = 20000;
+
 // Returns {amounts, width, height, bbox, shadow, highlight}: one signed amount
 // per pixel (below 0, the opacity of the shadow color stacked on flat ground;
 // above 0, the opacity of the highlight color), and the two colors
@@ -68,6 +75,39 @@ export function getShadingAmounts(raster, baseColor) {
     shadow: colors.shadow,
     highlight: colors.highlight
   };
+}
+
+// Whether a raster is a hillshade: made by -hillshade, or for a raster from
+// elsewhere (such as a GeoTIFF from GDAL, or exported by mapshaper, which
+// doesn't keep the hillshade settings), an 8-bit gray image, with or without
+// alpha. Color imagery, palette and data rasters, and -blend output, are not.
+export function rasterLooksLikeHillshade(raster) {
+  var grid = getRasterGrid(raster);
+  var params = raster.derivation || {};
+  if (params.type == 'hillshade') return true;
+  if (params.type == 'blend' || !grid || !grid.samples || !isEightBit(grid.samples)) return false;
+  if (grid.colorModel == 'palette' || grid.displayBands ||
+      raster.interpretation && raster.interpretation != 'image') return false;
+  if (grid.bands <= 2) return true;
+  return grid.bands <= 4 && samplesAreGray(grid.samples, grid.bands);
+}
+
+// True if nearly all of a sample of the visible pixels are gray
+function samplesAreGray(samples, bands) {
+  var n = samples.length / bands;
+  var step = Math.max(1, Math.floor(n / GRAY_SAMPLE_COUNT));
+  var visible = 0, gray = 0;
+  var i, j, r, g, b;
+  for (i = 0; i < n; i += step) {
+    j = i * bands;
+    if (bands == 4 && samples[j + 3] === 0) continue;
+    r = samples[j];
+    g = samples[j + 1];
+    b = samples[j + 2];
+    visible++;
+    if (Math.max(r, g, b) - Math.min(r, g, b) <= GRAY_TOLERANCE) gray++;
+  }
+  return visible > 0 && gray >= visible * GRAY_PIXEL_SHARE;
 }
 
 // A one-band 8-bit hillshade (e.g. from GDAL) is read as gray values, not
@@ -219,6 +259,23 @@ function getGrayValue(r, g, b) {
   getOklchLightnessChroma(r, g, b, lc);
   y = lc[0] * lc[0] * lc[0];
   return y <= 0.0031308 ? 12.92 * y : 1.055 * Math.pow(y, 1 / 2.4) - 0.055;
+}
+
+// Multiplies shadow amounts by @shadows and highlight amounts by @highlights
+// (strength=), up to full opacity
+// @out optional array to write to; by default @amounts is changed in place
+export function scaleShadingAmounts(amounts, shadows, highlights, out) {
+  var i, a;
+  out = out || amounts;
+  if (shadows == 1 && highlights == 1) {
+    if (out != amounts) out.set(amounts);
+    return out;
+  }
+  for (i = 0; i < amounts.length; i++) {
+    a = amounts[i];
+    out[i] = a < 0 ? Math.max(-1, a * shadows) : Math.min(1, a * highlights);
+  }
+  return out;
 }
 
 // Bilinear resampling of shading amounts onto a north-up grid; zero outside

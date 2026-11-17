@@ -2658,14 +2658,18 @@ export function getOptionParser() {
     .describe('apply a hillshade\'s shadows and highlights to a raster layer, or to vector layers drawn as a raster')
     .option('source', {
       DEFAULT: true,
-      describe: 'hillshade layer to blend (made by -hillshade); removed unless + is used'
+      describe: 'hillshade layer to blend (made by -hillshade); removed unless + or keep-source is used'
+    })
+    .option('keep-source', {
+      describe: 'keep the hillshade layer (the targets are still replaced)',
+      type: 'flag'
     })
     .option('strength', {
       describe: 'multiply the shading\'s opacity: one value, or shadows,highlights (default is 1)',
       type: 'numbers'
     })
     .option('chroma', {
-      describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color; one value, or shadows,highlights (default is 0,1)',
+      describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color, above 1 adds color; one value, or shadows,highlights (default is 0,1)',
       type: 'numbers'
     })
     .option('base-color', {

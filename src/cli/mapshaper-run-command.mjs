@@ -419,7 +419,7 @@ export async function runCommand(command, job) {
       for (let lyr of targetLayers) {
         outputLayers = outputLayers.concat(cmd.blend(lyr, targetDataset, source, opts));
       }
-      if (!opts.no_replace) {
+      if (!opts.no_replace && !opts.keep_source) {
         removeBlendSource(job.catalog, source);
       }
 
@@ -869,7 +869,7 @@ async function findLayerOption(name, catalog, targets, opts) {
 }
 
 // -blend merges the hillshade into the target, so the hillshade layer is
-// removed (unless + is used). A source read from a file isn't in the catalog,
+// removed (unless + or keep-source is used). A source read from a file isn't in the catalog,
 // and with targets in several datasets the layer is gone after the first.
 function removeBlendSource(catalog, source) {
   var found = catalog.findLayer(source.layer);
@@ -896,8 +896,9 @@ function getStackedTargetLayers(catalog, targets) {
 }
 
 // The output of -blend with drawn targets goes directly above the topmost of
-// them. Without +, it takes the place of the hillshade, and the targets are
-// removed, unless the output is an overlay, which is drawn on them.
+// them. Without + or keep-source, it takes the place of the hillshade; without
+// +, the targets are removed, unless the output is an overlay, which is drawn
+// on them.
 function addDrawnBlendOutput(catalog, out, drawn, source, opts) {
   var found = catalog.findLayer(source.layer);
   var dataset = found ? found.dataset : Object.assign({}, source.dataset, {layers: [out]});
@@ -905,7 +906,7 @@ function addDrawnBlendOutput(catalog, out, drawn, source, opts) {
     // a hillshade read from a file
     inheritFrameRef(dataset, utils.uniq(utils.pluck(drawn, 'dataset')));
     catalog.addDataset(dataset);
-  } else if (!opts.no_replace) {
+  } else if (!opts.no_replace && !opts.keep_source) {
     replaceLayers(dataset, [source.layer], [out]);
   } else {
     noteDatasetWillChange(dataset, {operation: 'appendOutputLayers', command: 'blend'});

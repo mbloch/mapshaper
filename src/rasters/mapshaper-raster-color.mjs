@@ -113,13 +113,14 @@ export function toneRgbPixels(samples, bands, opts, out) {
 //   shadowChroma, highlightChroma  0 or more
 // Where the image is partly or fully transparent, the shading is stacked on
 // nothing, so the output alpha can exceed the image's.
-// Returns a new Uint8Array of @samples' layout
-export function blendShadingPixels(samples, bands, amounts, opts) {
-  var out = new Uint8Array(samples.length);
+// @out optional array of @samples' layout to write to (e.g. a canvas's pixels)
+// Returns @out, or a new Uint8Array
+export function blendShadingPixels(samples, bands, amounts, opts, out) {
   var shadow = opts.shadow, highlight = opts.highlight;
   var rgb = [0, 0, 0];
   var lab = [0, 0, 0];
   var i, k, a, ta, oa, K, q, r, g, b, sr, sg, sb, A, B, w;
+  out = out || new Uint8Array(samples.length);
   initTables();
   for (i = 0, k = 0; i < samples.length; i += bands, k++) {
     a = amounts[k];

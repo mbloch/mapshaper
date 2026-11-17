@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { getShrinkFactor, shrinkRgbaPixels } from '../src/gui/gui-raster-shrink.mjs';
+import { getShrinkFactor, getShrunkBBox, shrinkRgbaPixels } from '../src/gui/gui-raster-shrink.mjs';
 
 describe('gui-raster-shrink.mjs', function () {
   it('getShrinkFactor() finds the smallest whole-number factor that fits', function () {
@@ -31,5 +31,11 @@ describe('gui-raster-shrink.mjs', function () {
     assert.deepEqual(Array.from(out.pixels), [200, 100, 50, 64]);
     out = shrinkRgbaPixels(new Uint8ClampedArray(16), 2, 2, 2);
     assert.deepEqual(Array.from(out.pixels), [0, 0, 0, 0]);
+  })
+
+  it('getShrunkBBox() extends the extent over partial blocks', function () {
+    // 3 x 3 pixels shrunk by 2: 2 x 2 pixels covering 1.5 x 1.5 of them
+    var copy = shrinkRgbaPixels(new Uint8ClampedArray(36), 3, 3, 2);
+    assert.deepEqual(getShrunkBBox([0, 0, 30, 30], copy), [0, -10, 40, 30]);
   })
 })

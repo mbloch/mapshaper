@@ -14,6 +14,9 @@ import { compositeGlows, getGlowMargin, getGlowSourceCanvas, MAX_GLOW_MARGIN } f
 import { getHighlightWidth, getHandleRadius } from './gui-highlight-width';
 import { getRasterTonePreview, getTonedRasterCanvas } from './gui-raster-tone-preview';
 import {
+  getBlendedRasterCanvas, getRasterBlendPreview, rasterIsHiddenByBlendPreview
+} from './gui-raster-blend-preview';
+import {
   previewHasSourcePixels,
   rasterPreviewIsSmoothed
 } from './gui-raster-display-utils';
@@ -193,9 +196,14 @@ export function DisplayCanvas() {
     var options = opts || {};
     var preview = null;
     var tone = getRasterTonePreview(layer);
+    var blend = getRasterBlendPreview(layer);
     var opacity = internal.getRasterViewOpacity(raster) * (tone && tone.opacity >= 0 ? tone.opacity : 1);
+    var recolor = getRasterRecoloring(tone, blend);
     var bbox, grid, sourcePixels;
+    if (rasterIsHiddenByBlendPreview(layer)) return;
     if (layer.gui && layer.gui.dynamic_crs) {
+      // the hillshade can't be resampled onto a reprojected preview
+      if (blend) recolor = null;
       preview = getCachedRasterReprojectedPreview(layer, _ext);
       if (!preview) {
         if (options.action != 'nav' && options.onViewportPreviewReady) {
@@ -205,7 +213,7 @@ export function DisplayCanvas() {
       }
       bbox = preview.bbox;
       if (!preview.pixels || !bbox) return;
-      drawRasterPreview(preview, bbox, preview.sourcePixels, tone, opacity);
+      drawRasterPreview(preview, bbox, preview.sourcePixels, recolor, opacity);
       if (options.action != 'nav' && options.onViewportPreviewReady) {
         scheduleRasterReprojectedPreview(layer, _ext, options.onViewportPreviewReady);
       }
@@ -227,8 +235,24 @@ export function DisplayCanvas() {
       }
     }
     if (!preview || !preview.pixels || !bbox) return;
-    drawRasterPreview(preview, bbox, sourcePixels, tone, opacity);
+    drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
   };
+
+  // A recolored copy of a preview that the tone or blend panel is showing,
+  // as function(preview, bbox) returning {canvas, width, height}, or null
+  function getRasterRecoloring(tone, blend) {
+    if (blend) {
+      return function(preview, bbox) {
+        return getBlendedRasterCanvas(preview, bbox, blend);
+      };
+    }
+    if (tone && tone.opts) {
+      return function(preview) {
+        return getTonedRasterCanvas(preview, tone);
+      };
+    }
+    return null;
+  }
 
   /*
   // Original function, not optimized
@@ -596,10 +620,10 @@ export function DisplayCanvas() {
   // sourcePixels: true if one pixel of the preview is one pixel of the raster,
   // so that drawing it as squares shows the data rather than an artifact of
   // whatever it was scaled down to.
-  // tone: settings previewed by the tone panel (see gui-raster-tone-preview)
+  // recolor: see getRasterRecoloring()
   // opacity: the raster's display opacity, times any being previewed
-  function drawRasterPreview(preview, bbox, sourcePixels, tone, opacity) {
-    var img = tone && tone.opts ? getTonedRasterCanvas(preview, tone) :
+  function drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity) {
+    var img = recolor ? recolor(preview, bbox) :
       {canvas: getRasterCanvas(preview), width: preview.width, height: preview.height};
     var t = _ext.getTransform(GUI.getPixelRatio());
     if (img.width < preview.width) sourcePixels = false; // a reduced copy, while dragging
