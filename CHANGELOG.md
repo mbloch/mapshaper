@@ -1,3 +1,7 @@
+v0.8.4
+* The blended hypsometric palette is now compatible with non-invertible projections.
+* Fixes for raster projection of some interrupted projections.
+
 v0.8.3
 * [web] Added a panel for interactively blending hillshades and imagery.
 
