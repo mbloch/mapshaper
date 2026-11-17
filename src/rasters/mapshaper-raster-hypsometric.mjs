@@ -3,7 +3,8 @@ import { parseColor } from '../color/color-utils';
 import { getHypsometricSchemeNames, getClimateSchemeNames, getHypsometricStops } from '../color/hypsometric-schemes';
 import { getClimateWeights } from '../color/hypsometric-climate';
 import { getBathymetricSchemeNames, getBathymetricStops } from '../color/bathymetric-schemes';
-import { getProjTransform2, parseCrsString, crsToProj4 } from '../crs/mapshaper-projections';
+import { getProjTransform2, parseCrsString, crsToProj4, isLatLngCRS, isInvertibleCRS } from '../crs/mapshaper-projections';
+import { projectRasterGridForward } from './mapshaper-raster-reprojection';
 import { getVerticalUnitMeters } from './mapshaper-vertical-units';
 import { getInlandSeaSeeds } from './mapshaper-inland-seas';
 import { getRasterGrid } from './mapshaper-raster-utils';
@@ -265,7 +266,9 @@ function getPresetRamp(name, meters) {
 //     matters where sea=land colors the sea.
 //   preset: the preset with the most weight, by area
 //   key: changes with the weights, for caching what is drawn with them
-// Returns null if no cell is on land, or the CRS can't be inverted
+// A CRS without an inverse gets its field by projecting the climate data
+// forward (see getForwardClimateWeightField()).
+// Returns null if no cell is on land
 export function getClimateWeightField(bbox, crs, cells) {
   var n = cells || FIELD_CELLS;
   var w = bbox[2] - bbox[0], h = bbox[3] - bbox[1];
@@ -273,8 +276,11 @@ export function getClimateWeightField(bbox, crs, cells) {
   var height = Math.max(2, Math.round(h >= w ? n : n * h / w));
   var names = getClimateSchemeNames();
   var lookups = [], areaSums = names.map(function() { return 0; }), landCells = 0;
-  var toLngLat, weights, i, j, p, cell;
+  var toLngLat, i, j, p, cell;
   if (!(w > 0 && h > 0)) return null;
+  if (!isLatLngCRS(crs) && !isInvertibleCRS(crs)) {
+    return getForwardClimateWeightField(bbox, crs, width, height);
+  }
   try {
     toLngLat = getProjTransform2(crs, parseCrsString('wgs84'));
   } catch(e) {
@@ -294,9 +300,19 @@ export function getClimateWeightField(bbox, crs, cells) {
     }
   }
   if (landCells === 0) return null;
-  weights = fillFieldGaps(lookups.map(function(cell) {
+  return makeClimateWeightField(bbox, crs, width, height, lookups.map(function(cell) {
     return cell ? names.slice(0, -1).map(function(name) { return cell[name]; }) : null;
-  }), width, height, names.length - 1).map(function(val) { return Math.round(val * 255); });
+  }), areaSums);
+}
+
+// @cells: the weights of the presets but the last, for each cell, or null for
+//   cells to fill (see fillFieldGaps())
+// @areaSums: the weight of each preset across the field
+function makeClimateWeightField(bbox, crs, width, height, cells, areaSums) {
+  var names = getClimateSchemeNames();
+  var weights = fillFieldGaps(cells, width, height, names.length - 1).map(function(val) {
+    return Math.round(val * 255);
+  });
   return {
     bbox: bbox.concat(),
     width: width,
@@ -305,6 +321,80 @@ export function getClimateWeightField(bbox, crs, cells) {
     preset: names[areaSums.indexOf(Math.max.apply(null, areaSums))],
     key: getFieldKey(bbox, width, height, weights, crs)
   };
+}
+
+// For a CRS without an inverse (e.g. Dymaxion), whose cells can't be placed
+// on the globe: the climate data, as a lon-lat raster (see getClimateGrid()),
+// projected forward onto the field's cells, the way -proj projects a raster.
+// Sea cells are left out of the interpolation, so the projected grid's
+// coverage is the land; cells at sea, or outside the projection's outline,
+// are filled in as in getClimateWeightField(). The preset is chosen by
+// projected area.
+export function getForwardClimateWeightField(bbox, crs, width, height) {
+  var names = getClimateSchemeNames();
+  var k = names.length - 1;
+  var areaSums = names.map(function() { return 0; });
+  var cells = [], landCells = 0;
+  var grid, i, j, vals, rest;
+  try {
+    grid = projectRasterGridForward(getClimateGrid(), parseCrsString('wgs84'), crs, {
+      output_bbox: bbox, output_width: width, output_height: height,
+      resampling: 'bilinear', raster_mesh_interval: CLIMATE_MESH_INTERVAL, fill_uncovered: false, fill_layout: false
+    });
+  } catch(e) {
+    return null;
+  }
+  for (i = 0; i < width * height; i++) {
+    if (!grid.coverage[i]) {
+      cells.push(null);
+      continue;
+    }
+    vals = [];
+    rest = 1;
+    for (j = 0; j < k; j++) {
+      vals.push(grid.samples[i * k + j]);
+      areaSums[j] += vals[j];
+      rest -= vals[j];
+    }
+    areaSums[k] += rest;
+    cells.push(vals);
+    landCells++;
+  }
+  if (landCells === 0) return null;
+  return makeClimateWeightField(bbox, crs, width, height, cells, areaSums);
+}
+
+// mesh vertices every 2 degrees, about as far as the climate data is
+// interpolated between its 1-degree cells
+var CLIMATE_MESH_INTERVAL = 2;
+var climateGrid = null;
+
+// The weights of the presets but the last (see getClimateWeights()), as a
+// lon-lat raster of the climate data's 1-degree cells, with the land as its
+// coverage
+function getClimateGrid() {
+  var names = getClimateSchemeNames();
+  var k = names.length - 1;
+  var width = 360, height = 180;
+  var samples, coverage, r, c, i, j, cell;
+  if (climateGrid) return climateGrid;
+  samples = new Float32Array(width * height * k);
+  coverage = new Uint8Array(width * height);
+  for (r = 0; r < height; r++) {
+    for (c = 0; c < width; c++) {
+      cell = getClimateWeights(-179.5 + c, 89.5 - r);
+      if (!cell) continue;
+      i = r * width + c;
+      coverage[i] = 1;
+      for (j = 0; j < k; j++) samples[i * k + j] = cell[names[j]];
+    }
+  }
+  climateGrid = {
+    width: width, height: height, bands: k, pixelType: 'float32',
+    samples: samples, coverage: coverage, nodata: null,
+    bbox: [-180, -90, 180, 90], transform: [1, 0, -180, 0, -1, 90]
+  };
+  return climateGrid;
 }
 
 // Fills the null cells of a grid of arrays of @k values, and returns them all

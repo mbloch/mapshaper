@@ -283,6 +283,25 @@ describe('interrupted projections', function() {
     });
   });
 
+  it('gives a regional raster its own extent in a facet layout, without repeating its edges', function() {
+    var src = api.internal.parseCrsString('wgs84');
+    ['dymaxion', 'butterfly', 'markley', 'narukawa2022', 'hemispheres'].forEach(function(id) {
+      var dest = api.internal.parseCrsString('+proj=' + id + ' +R=6371000');
+      var project = api.internal.getProjTransform2(src, dest);
+      var grid = api.internal.projectRasterGridForward(
+        getRegionalRaster([10, 45, 11, 46], 0.01), src, dest, {fill_uncovered: false});
+      var bbox = grid.bbox;
+      var covered = grid.coverage.filter(Boolean).length / grid.coverage.length;
+      // a degree is about 111 km
+      assert(bbox[2] - bbox[0] < 300e3 && bbox[3] - bbox[1] < 300e3, id + ': ' + bbox);
+      [[10, 45], [11, 45], [10, 46], [11, 46]].forEach(function(lonlat) {
+        var p = project(lonlat[0], lonlat[1]);
+        assert(p[0] > bbox[0] - 1e3 && p[0] < bbox[2] + 1e3 && p[1] > bbox[1] - 1e3 && p[1] < bbox[3] + 1e3, id);
+      });
+      assert(covered > 0.3 && covered < 1, id + ' coverage: ' + covered);
+    });
+  });
+
   // Fetched rasters have a nodata margin beyond the antimeridian and poles
   it('ignores a nodata margin beyond the antimeridian and poles', function() {
     var src = api.internal.parseCrsString('wgs84');
@@ -341,6 +360,21 @@ function getSmoothWorldRaster(res, margin) {
       nodata: nodata,
       bbox: [-180 - margin, -90 - margin, 180 + margin, 90 + margin],
       transform: [res, 0, -180 - margin, 0, -res, 90 + margin]
+    }
+  };
+}
+
+function getRegionalRaster(bbox, res) {
+  var width = Math.round((bbox[2] - bbox[0]) / res);
+  var height = Math.round((bbox[3] - bbox[1]) / res);
+  var samples = new Float32Array(width * height);
+  samples.fill(500);
+  return {
+    interpretation: 'continuous',
+    grid: {
+      width: width, height: height, bands: 1, pixelType: 'float32',
+      samples: samples, nodata: -32768, bbox: bbox,
+      transform: [res, 0, bbox[0], 0, -res, bbox[3]]
     }
   };
 }

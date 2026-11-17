@@ -186,9 +186,35 @@ describe('-classify hypsometric=', function() {
     assert.notEqual(after.key, before.key);
     assert(after.weights[0] > 200);
   });
+
+  it('blended works in projections without an inverse, before or after -proj', async function() {
+    var europe = [], i;
+    for (i = 0; i < 60 * 30; i++) europe.push(500);
+    for (var proj of ['dymaxion', 'butterfly']) {
+      var catalog = await importRaster(makeGeoTIFF(europe, 60, [-10, 60]));
+      var field;
+      await runCommand(catalog, '-proj init=wgs84 -proj ' + proj + ' -classify hypsometric=blended');
+      field = getPalette(catalog).blend.field;
+      assert.deepEqual(field.bbox, catalog.getActiveLayer().layer.raster.grid.bbox);
+      catalog = await importRaster(makeGeoTIFF(europe, 60, [-10, 60]));
+      await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=blended -proj ' + proj);
+      assert(getPalette(catalog).blend, proj + ' kept the blend');
+    }
+  });
 });
 
 describe('climate weight fields', function() {
+  it('projected forward, for a CRS without an inverse, match those of the inverse', function() {
+    var crs = internal.parseCrsString('robinson');
+    var bbox = [-2e6, -4e6, 6e6, 4.5e6]; // Africa and Europe
+    var inv = internal.getClimateWeightField(bbox, crs);
+    var fwd = internal.getForwardClimateWeightField(bbox, crs, inv.width, inv.height);
+    var diffs = inv.weights.map(function(w, i) { return Math.abs(w - fwd.weights[i]); }).sort(function(a, b) { return a - b; });
+    assert.equal(fwd.preset, inv.preset);
+    assert.equal(diffs[diffs.length >> 1], 0);
+    assert(diffs[Math.floor(diffs.length * 0.99)] <= 2);
+  });
+
   it('fade across the sea, without steps where the climate grid ends', function() {
     // the Pacific, west of California and north of Hawaii: columns 0-35
     // (to 128W) are open sea

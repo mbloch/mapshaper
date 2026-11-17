@@ -440,10 +440,18 @@ tested.
    that `sea=land` fades between coasts; each cell has a weight for each
    preset but the last, which has the rest). Each pixel mixes the six ramps' colors (in RGB) by the field's
    weights, bilinear between its cells (`renderBlendedPaletteGridPreview()`).
+   A CRS without an inverse (Dymaxion, the butterfly projections) can't
+   place the field's cells on the globe, so the climate grid is projected
+   forward instead, as a lon-lat raster with the land as its coverage, by
+   the mesh rasterizer that `-proj` uses (`getForwardClimateWeightField()`).
    `-proj` makes the field again in the new CRS; `-clip` keeps it, since
    its coordinates don't change. The GUI's reprojected preview draws a grid
    in the display CRS, so it passes a field for the view, in that CRS
-   (`renderRasterPreview()`'s `blendField`). In the panel, Blended is an
+   (`renderRasterPreview()`'s `blendField`); a display CRS without an
+   inverse gets one field for the whole raster, kept across views, since
+   projecting forward is too slow to redo for each view. For the menu, the
+   panel finds the raster's lon-lat samples numerically in such a CRS
+   (`invertNumerically()`). In the panel, Blended is an
    item in the Elevation palette menu, offered where the raster can be
    placed on land. The six presets have the same six elevations, which a
    blend shares: `breaks=` (every elevation) moves them all, and named

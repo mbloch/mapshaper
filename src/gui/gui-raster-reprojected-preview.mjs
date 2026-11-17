@@ -70,12 +70,32 @@ function getRenderOptions(params, grid) {
   var opts = {};
   if (!palette) return null;
   if (palette.blend) {
-    opts.blendField = internal.getClimateWeightField(grid.bbox, params.displayCRS, BLEND_FIELD_CELLS);
+    opts.blendField = getBlendField(params, grid);
   }
   if (palette.sea && palette.seaSeeds) {
     opts.seaSeeds = internal.getInlandSeaSeeds(params.displayCRS);
   }
   return opts;
+}
+
+// A display CRS without an inverse gets its weights by projecting the climate
+// data forward, which is too slow to redo for each view, so its field covers
+// the whole raster and is kept until the raster or the CRS changes
+var forwardBlendFields = new WeakMap();
+
+function getBlendField(params, grid) {
+  var crs = params.displayCRS;
+  var key, entry;
+  if (internal.isLatLngCRS(crs) || internal.isInvertibleCRS(crs)) {
+    return internal.getClimateWeightField(grid.bbox, crs, BLEND_FIELD_CELLS);
+  }
+  key = params.rasterBbox.join(',') + '|' + internal.crsToProj4(crs);
+  entry = forwardBlendFields.get(params.grid);
+  if (!entry || entry.key != key) {
+    entry = {key: key, field: internal.getClimateWeightField(params.rasterBbox, crs)};
+    forwardBlendFields.set(params.grid, entry);
+  }
+  return entry.field;
 }
 
 function getRasterReprojectedPreviewParams(layer, ext) {
@@ -101,6 +121,7 @@ function getRasterReprojectedPreviewParams(layer, ext) {
     sourceCRS: sourceCRS,
     displayCRS: displayCRS,
     bbox: bbox,
+    rasterBbox: rasterBbox,
     width: size.width,
     height: size.height,
     recipe: recipe,

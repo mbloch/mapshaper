@@ -45,7 +45,9 @@ export function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
   outGrid = createProjectedRasterGrid(grid, raster, bbox, outSize.width, outSize.height, opts);
   timeStart(timing, 'rasterize');
   rasterizeProjectedMesh(grid, outGrid, mesh, getRasterProjectionSampleMethod(raster, opts));
-  if (mesh.fillOutputCoverage) {
+  // fill_layout: false leaves the gaps along a layout's outline, for callers
+  // that use the coverage as a mask
+  if (mesh.fillOutputCoverage && opts.fill_layout !== false && meshCoversLayout(mesh)) {
     fillProjectedRasterCoverage(outGrid);
   } else {
     fillIsolatedProjectedRasterHoles(outGrid);
@@ -146,6 +148,9 @@ function buildPiecewiseProjectedRasterMesh(grid, srcCRS, destCRS, interval, topo
     ys: ys,
     vertices: [],
     cells: [],
+    sourceWidth: grid.width,
+    sourceHeight: grid.height,
+    sourceIsGlobal: rasterSpansGlobe(grid, srcCRS),
     topologyAware: true,
     subdivisionSkippedCellCount: 0,
     fillRegionMask: topology.fill_raster_mask,
@@ -181,6 +186,9 @@ function buildExpandedFacetRasterMesh(grid, srcCRS, destCRS, interval, topology)
     vertices: [],
     cells: [],
     triangles: [],
+    sourceWidth: grid.width,
+    sourceHeight: grid.height,
+    sourceIsGlobal: rasterSpansGlobe(grid, srcCRS),
     topologyAware: true,
     subdivisionSkippedCellCount: 0,
     fillRegionMask: topology.fill_raster_mask,
@@ -264,7 +272,9 @@ function subdivideSphericalRasterTriangle(context, triangle, region, pieces, dep
   var rawVertices = triangle.map(function(lonlat) {
     return projectSphericalRawVertex(context, lonlat, region);
   });
+  var sourceIsLinear;
   normalizeWrappedTrianglePixels(rawVertices, context.mesh.sourceWrap);
+  sourceIsLinear = sourcePixelsAreLinear(context, triangle, rawVertices);
   pieces.forEach(function(piece) {
     var polygon = context.topology.clipRasterRegionPolygon(
       rawVertices, piece.id);
@@ -284,9 +294,33 @@ function subdivideSphericalRasterTriangle(context, triangle, region, pieces, dep
         b: vertices[1],
         c: vertices[2],
         region: piece.id,
+        sourceIsLinear: sourceIsLinear,
         valid: vertices.every(vertexIsValid)
       });
     }
+  });
+}
+
+// Whether a triangle's source pixels can be interpolated between its vertices:
+// each edge's midpoint is near the middle of the edge in source pixels. Not
+// for a triangle that crosses a discontinuity of the source CRS, e.g. the
+// antimeridian of a lat-long grid that doesn't wrap, where interpolating
+// sweeps across the whole grid.
+var MAX_SOURCE_MIDPOINT_ERROR = 0.25;
+
+function sourcePixelsAreLinear(context, triangle, vertices) {
+  var grid = context.grid, wrap = context.mesh.sourceWrap;
+  return [0, 1, 2].every(function(i) {
+    var j = (i + 1) % 3, a = vertices[i], b = vertices[j];
+    var mid = sphericalPointMidpoint(triangle[i], triangle[j]);
+    var xy = context.fromGeographic(mid[0], mid[1]);
+    var p = xy && rasterMapXYToPixel(grid, xy[0], xy[1]);
+    var dx, dy;
+    if (!p || !isFinite(a.sx + a.sy + b.sx + b.sy)) return false;
+    dx = p[0] - (a.sx + b.sx) / 2;
+    dy = p[1] - (a.sy + b.sy) / 2;
+    if (wrap) dx = modulo(dx + wrap.period / 2, wrap.period) - wrap.period / 2;
+    return Math.hypot(dx, dy) <= 1 + MAX_SOURCE_MIDPOINT_ERROR * Math.hypot(b.sx - a.sx, b.sy - a.sy);
   });
 }
 
@@ -369,7 +403,9 @@ function normalizeVector3(p) {
 }
 
 function appendPiecewiseMeshCells(context, x0, y0, x1, y1) {
-  getPieceRegionsInCell(context, x0, y0, x1, y1).forEach(function(regionId) {
+  var core = [];
+  samplePieceRegions(context, core, x0, y0, x1, y1);
+  getPieceRegionsInCell(context, x0, y0, x1, y1, core).forEach(function(regionId) {
     var v00 = projectPiecewiseMeshVertex(context, x0, y0, regionId);
     var v10 = projectPiecewiseMeshVertex(context, x1, y0, regionId);
     var v01 = projectPiecewiseMeshVertex(context, x0, y1, regionId);
@@ -380,6 +416,9 @@ function appendPiecewiseMeshCells(context, x0, y0, x1, y1) {
       v01: v01,
       v11: v11,
       region: regionId,
+      // in a region only because it is near the cell, which the region mask
+      // hides outside the region
+      halo: core.indexOf(regionId) == -1,
       valid: vertexIsValid(v00) && vertexIsValid(v10) &&
         vertexIsValid(v01) && vertexIsValid(v11)
     };
@@ -388,10 +427,10 @@ function appendPiecewiseMeshCells(context, x0, y0, x1, y1) {
   });
 }
 
-function getPieceRegionsInCell(context, x0, y0, x1, y1) {
-  var ids = [];
+// @core: the regions found in the cell itself
+function getPieceRegionsInCell(context, x0, y0, x1, y1, core) {
+  var ids = core.concat();
   var halo = context.pieceHalo;
-  samplePieceRegions(context, ids, x0, y0, x1, y1);
   if (halo > 0) {
     samplePieceRegions(
       context,
@@ -883,28 +922,136 @@ function rasterMapXYToPixel(grid, x, y) {
   ];
 }
 
+// A mesh of a layout's regions (facets, lobes) gets the extent of the raster
+// in the layout, so that a regional raster gets a regional grid; a raster that
+// covers (nearly) the whole layout gets the layout's extent.
 function getProjectedMeshBBox(mesh) {
-  var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
-  if (mesh.projectedRegions) {
-    mesh.projectedRegions.forEach(function(region) {
-      region.boundary.forEach(expand);
-    });
-  } else {
-    mesh.cells.forEach(function(cell) {
-      if (!cell.valid) return;
-      [cell.v00, cell.v10, cell.v01, cell.v11].forEach(expand);
-    });
+  var layout, footprint;
+  if (!mesh.projectedRegions) {
+    return getBoundsBBox(mesh.cells.reduce(function(bounds, cell) {
+      if (cell.valid) [cell.v00, cell.v10, cell.v01, cell.v11].forEach(function(p) { expandBounds(bounds, p.x, p.y); });
+      return bounds;
+    }, newBounds()));
   }
-  function expand(p) {
-    if (!p) return;
-    var x = Array.isArray(p) ? p[0] : p.x;
-    var y = Array.isArray(p) ? p[1] : p.y;
-    if (x < xmin) xmin = x;
-    if (x > xmax) xmax = x;
-    if (y < ymin) ymin = y;
-    if (y > ymax) ymax = y;
+  layout = getProjectedRegionsBBox(mesh.projectedRegions);
+  footprint = getMeshFootprintBBox(mesh);
+  if (!layout || !footprint) return footprint || layout;
+  return meshCoversLayout(mesh) ? layout : [
+    Math.max(footprint[0], layout[0]), Math.max(footprint[1], layout[1]),
+    Math.min(footprint[2], layout[2]), Math.min(footprint[3], layout[3])
+  ];
+}
+
+// The raster covers a layout's regions if its extent in the layout comes
+// within this fraction of the layout's width and height on each side
+var LAYOUT_COVERAGE_TOLERANCE = 0.01;
+
+function meshCoversLayout(mesh) {
+  var layout, footprint, dx, dy;
+  if (!mesh.projectedRegions) return false;
+  if (mesh.sourceIsGlobal) return true;
+  if (mesh.coversLayout === undefined) {
+    layout = getProjectedRegionsBBox(mesh.projectedRegions);
+    footprint = getMeshFootprintBBox(mesh);
+    dx = layout ? (layout[2] - layout[0]) * LAYOUT_COVERAGE_TOLERANCE : 0;
+    dy = layout ? (layout[3] - layout[1]) * LAYOUT_COVERAGE_TOLERANCE : 0;
+    mesh.coversLayout = !!(layout && footprint &&
+      footprint[0] <= layout[0] + dx && footprint[1] <= layout[1] + dy &&
+      footprint[2] >= layout[2] - dx && footprint[3] >= layout[3] - dy);
   }
-  return xmin < Infinity && xmax > xmin && ymax > ymin ? [xmin, ymin, xmax, ymax] : null;
+  return mesh.coversLayout;
+}
+
+// A lat-long grid all the way around the globe (which may leave out the polar
+// regions) is a world raster, and gets a layout's full extent
+function rasterSpansGlobe(grid, srcCRS) {
+  var a, b;
+  if (!isLatLngCRS(srcCRS)) return false;
+  a = rasterPixelToMapXY(grid, 0, 0);
+  b = rasterPixelToMapXY(grid, grid.width, 0);
+  return Math.abs(b[0] - a[0]) >= 360 - 1e-6;
+}
+
+function getProjectedRegionsBBox(regions) {
+  return getBoundsBBox(regions.reduce(function(bounds, region) {
+    region.boundary.forEach(function(p) { if (p) expandBounds(bounds, p[0], p[1]); });
+    return bounds;
+  }, newBounds()));
+}
+
+// The extent of the raster in a mesh of a layout's regions, which also covers
+// places outside the raster: each triangle clipped to the source grid, in
+// source pixels. Cells in a region only as a halo are left out, since the
+// region mask hides them (see appendPiecewiseMeshCells()).
+function getMeshFootprintBBox(mesh) {
+  var bounds, wrapX;
+  if (mesh.footprint !== undefined) return mesh.footprint;
+  bounds = newBounds();
+  // the source wraps around the globe, so it has no sides
+  wrapX = !!mesh.sourceWrap;
+  (mesh.triangles || []).forEach(function(t) {
+    if (t.valid && t.sourceIsLinear !== false) addClippedTriangleBounds(bounds, [t.a, t.b, t.c], mesh, wrapX);
+  });
+  mesh.cells.forEach(function(cell) {
+    if (!cell.valid || cell.halo) return;
+    addClippedTriangleBounds(bounds, [cell.v00, cell.v10, cell.v11], mesh, wrapX);
+    addClippedTriangleBounds(bounds, [cell.v00, cell.v11, cell.v01], mesh, wrapX);
+  });
+  mesh.footprint = getBoundsBBox(bounds);
+  return mesh.footprint;
+}
+
+function addClippedTriangleBounds(bounds, triangle, mesh, wrapX) {
+  var poly = triangle;
+  if (!poly.every(function(p) { return isFinite(p.sx) && isFinite(p.sy); })) return;
+  if (!wrapX) {
+    poly = clipSourcePolygon(poly, 'sx', 0, 1);
+    poly = clipSourcePolygon(poly, 'sx', mesh.sourceWidth, -1);
+  }
+  poly = clipSourcePolygon(poly, 'sy', 0, 1);
+  poly = clipSourcePolygon(poly, 'sy', mesh.sourceHeight, -1);
+  poly.forEach(function(p) { expandBounds(bounds, p.x, p.y); });
+}
+
+// The part of polygon @poly (mesh vertices) on the side of a source grid edge
+// at @edge on axis @key (sx or sy) where @sign * (value - edge) >= 0. Mesh
+// triangles map source pixels to projected coordinates linearly, so new
+// vertices interpolate both.
+function clipSourcePolygon(poly, key, edge, sign) {
+  var out = [], n = poly.length, i, p, q, dp, dq, t;
+  for (i = 0; i < n; i++) {
+    p = poly[i];
+    q = poly[(i + 1) % n];
+    dp = sign * (p[key] - edge);
+    dq = sign * (q[key] - edge);
+    if (dp >= 0) out.push(p);
+    if (dp >= 0 != dq >= 0) {
+      t = dp / (dp - dq);
+      out.push({
+        sx: p.sx + t * (q.sx - p.sx),
+        sy: p.sy + t * (q.sy - p.sy),
+        x: p.x + t * (q.x - p.x),
+        y: p.y + t * (q.y - p.y)
+      });
+    }
+  }
+  return out;
+}
+
+function newBounds() {
+  return [Infinity, Infinity, -Infinity, -Infinity];
+}
+
+function expandBounds(bounds, x, y) {
+  if (!isFinite(x) || !isFinite(y)) return;
+  if (x < bounds[0]) bounds[0] = x;
+  if (y < bounds[1]) bounds[1] = y;
+  if (x > bounds[2]) bounds[2] = x;
+  if (y > bounds[3]) bounds[3] = y;
+}
+
+function getBoundsBBox(bounds) {
+  return bounds[0] < Infinity && bounds[2] > bounds[0] && bounds[3] > bounds[1] ? bounds : null;
 }
 
 function createProjectedRasterGrid(grid, raster, bbox, widthArg, heightArg, opts) {
@@ -961,7 +1108,7 @@ function rasterizeProjectedMesh(srcGrid, destGrid, mesh, sampleMethodArg) {
     rasterizeProjectedTriangle(
       srcGrid, destGrid, triangle.a, triangle.b, triangle.c,
       sampleMethod, regionData && regionData.mask, regionValue,
-      mesh.sourceWrap
+      mesh.sourceWrap, true, triangle.sourceIsLinear === false
     );
   });
   mesh.cells.forEach(function(cell) {
@@ -1096,9 +1243,17 @@ function rasterizeRegionMask(grid, mask, boundary, value) {
 }
 
 // @sourceWrap: optional window from getSourceWrapWindow()
-function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod, regionMask, regionValue, sourceWrap) {
-  var bbox, x0, x1, y0, y1, det, w1, w2, w3, sx, sy, ap, bp, cp;
+// @clipToSource: skip pixels whose source position is outside the source grid,
+//   for meshes that cover the whole globe, beyond the raster (the sampler
+//   would repeat the grid's edge pixels there)
+// @nonlinear: the triangle's source pixels can't be interpolated (see
+//   sourcePixelsAreLinear()), so with @clipToSource it is skipped unless it is
+//   inside the source grid
+function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod, regionMask, regionValue, sourceWrap, clipToSource, nonlinear) {
+  var bbox, x0, x1, y0, y1, det, w1, w2, w3, sx, sy, ap, bp, cp, outside;
   if (!vertexIsValid(a) || !vertexIsValid(b) || !vertexIsValid(c)) return;
+  outside = clipToSource && !triangleIsInsideSource(srcGrid, a, b, c, sourceWrap);
+  if (outside && nonlinear) return;
   ap = vertexToDestPixel(destGrid, a);
   bp = vertexToDestPixel(destGrid, b);
   cp = vertexToDestPixel(destGrid, c);
@@ -1116,10 +1271,17 @@ function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod, re
       if (w1 < -1e-9 || w2 < -1e-9 || w3 < -1e-9) continue;
       sx = w1 * a.sx + w2 * b.sx + w3 * c.sx;
       sy = w1 * a.sy + w2 * b.sy + w3 * c.sy;
+      if (outside && (sy < 0 || sy > srcGrid.height || !sourceWrap && (sx < 0 || sx > srcGrid.width))) continue;
       copyRasterSample(
         srcGrid, destGrid, sx, sy, x, y, sampleMethod, sourceWrap);
     }
   }
+}
+
+function triangleIsInsideSource(grid, a, b, c, sourceWrap) {
+  return [a, b, c].every(function(p) {
+    return p.sy >= 0 && p.sy <= grid.height && (sourceWrap || p.sx >= 0 && p.sx <= grid.width);
+  });
 }
 
 function vertexToDestPixel(grid, vertex) {
