@@ -56402,14 +56402,18 @@ ${css.join('\n')}
       .describe('apply a hillshade\'s shadows and highlights to a raster layer, or to vector layers drawn as a raster')
       .option('source', {
         DEFAULT: true,
-        describe: 'hillshade layer to blend (made by -hillshade); removed unless + is used'
+        describe: 'hillshade layer to blend (made by -hillshade); removed unless + or keep-source is used'
+      })
+      .option('keep-source', {
+        describe: 'keep the hillshade layer (the targets are still replaced)',
+        type: 'flag'
       })
       .option('strength', {
         describe: 'multiply the shading\'s opacity: one value, or shadows,highlights (default is 1)',
         type: 'numbers'
       })
       .option('chroma', {
-        describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color; one value, or shadows,highlights (default is 0,1)',
+        describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color, above 1 adds color; one value, or shadows,highlights (default is 0,1)',
         type: 'numbers'
       })
       .option('base-color', {
@@ -93003,13 +93007,14 @@ ${css.join('\n')}
   //   shadowChroma, highlightChroma  0 or more
   // Where the image is partly or fully transparent, the shading is stacked on
   // nothing, so the output alpha can exceed the image's.
-  // Returns a new Uint8Array of @samples' layout
-  function blendShadingPixels(samples, bands, amounts, opts) {
-    var out = new Uint8Array(samples.length);
+  // @out optional array of @samples' layout to write to (e.g. a canvas's pixels)
+  // Returns @out, or a new Uint8Array
+  function blendShadingPixels(samples, bands, amounts, opts, out) {
     var shadow = opts.shadow, highlight = opts.highlight;
     var rgb = [0, 0, 0];
     var lab = [0, 0, 0];
     var i, k, a, ta, oa, K, q, r, g, b, sr, sg, sb, A, B, w;
+    out = out || new Uint8Array(samples.length);
     initTables();
     for (i = 0, k = 0; i < samples.length; i += bands, k++) {
       a = amounts[k];
@@ -100554,6 +100559,13 @@ ${css.join('\n')}
   // least this share of its visible pixels is partly transparent
   var PARTIAL_ALPHA_SHARE = 0.01;
 
+  // An RGB(A) raster from elsewhere is taken for a hillshade if this share of
+  // its visible pixels (in a sample of about GRAY_SAMPLE_COUNT) have channels
+  // within GRAY_TOLERANCE of each other, which allows for compression noise
+  var GRAY_PIXEL_SHARE = 0.98;
+  var GRAY_TOLERANCE = 4;
+  var GRAY_SAMPLE_COUNT = 20000;
+
   // Returns {amounts, width, height, bbox, shadow, highlight}: one signed amount
   // per pixel (below 0, the opacity of the shadow color stacked on flat ground;
   // above 0, the opacity of the highlight color), and the two colors
@@ -100607,6 +100619,39 @@ ${css.join('\n')}
       shadow: colors.shadow,
       highlight: colors.highlight
     };
+  }
+
+  // Whether a raster is a hillshade: made by -hillshade, or for a raster from
+  // elsewhere (such as a GeoTIFF from GDAL, or exported by mapshaper, which
+  // doesn't keep the hillshade settings), an 8-bit gray image, with or without
+  // alpha. Color imagery, palette and data rasters, and -blend output, are not.
+  function rasterLooksLikeHillshade(raster) {
+    var grid = getRasterGrid(raster);
+    var params = raster.derivation || {};
+    if (params.type == 'hillshade') return true;
+    if (params.type == 'blend' || !grid || !grid.samples || !isEightBit(grid.samples)) return false;
+    if (grid.colorModel == 'palette' || grid.displayBands ||
+        raster.interpretation && raster.interpretation != 'image') return false;
+    if (grid.bands <= 2) return true;
+    return grid.bands <= 4 && samplesAreGray(grid.samples, grid.bands);
+  }
+
+  // True if nearly all of a sample of the visible pixels are gray
+  function samplesAreGray(samples, bands) {
+    var n = samples.length / bands;
+    var step = Math.max(1, Math.floor(n / GRAY_SAMPLE_COUNT));
+    var visible = 0, gray = 0;
+    var i, j, r, g, b;
+    for (i = 0; i < n; i += step) {
+      j = i * bands;
+      if (bands == 4 && samples[j + 3] === 0) continue;
+      r = samples[j];
+      g = samples[j + 1];
+      b = samples[j + 2];
+      visible++;
+      if (Math.max(r, g, b) - Math.min(r, g, b) <= GRAY_TOLERANCE) gray++;
+    }
+    return visible > 0 && gray >= visible * GRAY_PIXEL_SHARE;
   }
 
   // A one-band 8-bit hillshade (e.g. from GDAL) is read as gray values, not
@@ -100760,6 +100805,23 @@ ${css.join('\n')}
     return y <= 0.0031308 ? 12.92 * y : 1.055 * Math.pow(y, 1 / 2.4) - 0.055;
   }
 
+  // Multiplies shadow amounts by @shadows and highlight amounts by @highlights
+  // (strength=), up to full opacity
+  // @out optional array to write to; by default @amounts is changed in place
+  function scaleShadingAmounts(amounts, shadows, highlights, out) {
+    var i, a;
+    out = out || amounts;
+    if (shadows == 1 && highlights == 1) {
+      if (out != amounts) out.set(amounts);
+      return out;
+    }
+    for (i = 0; i < amounts.length; i++) {
+      a = amounts[i];
+      out[i] = a < 0 ? Math.max(-1, a * shadows) : Math.min(1, a * highlights);
+    }
+    return out;
+  }
+
   // Bilinear resampling of shading amounts onto a north-up grid; zero outside
   // the shading's extent
   // @shading from getShadingAmounts()
@@ -100826,7 +100888,9 @@ ${css.join('\n')}
     decodeShadowStyleShading: decodeShadowStyleShading,
     getShadingAmounts: getShadingAmounts,
     guessBaseColor: guessBaseColor,
-    resampleShadingAmounts: resampleShadingAmounts
+    rasterLooksLikeHillshade: rasterLooksLikeHillshade,
+    resampleShadingAmounts: resampleShadingAmounts,
+    scaleShadingAmounts: scaleShadingAmounts
   });
 
   // Draws layers onto the pixels of a north-up raster grid, the way PNG output
@@ -101251,15 +101315,6 @@ ${css.join('\n')}
       stop$1(name + '= should be one value, or two (shadows,highlights), of 0 or more');
     }
     return arr.length == 1 ? [arr[0], arr[0]] : arr.concat();
-  }
-
-  function scaleShadingAmounts(amounts, shadows, highlights) {
-    var i, a;
-    if (shadows == 1 && highlights == 1) return;
-    for (i = 0; i < amounts.length; i++) {
-      a = amounts[i];
-      amounts[i] = a < 0 ? Math.max(-1, a * shadows) : Math.min(1, a * highlights);
-    }
   }
 
   // RGB(A) images are blended as they are; other rasters (e.g. a tinted or
@@ -112582,7 +112637,7 @@ ${css.join('\n')}
         for (let lyr of targetLayers) {
           outputLayers = outputLayers.concat(cmd.blend(lyr, targetDataset, source, opts));
         }
-        if (!opts.no_replace) {
+        if (!opts.no_replace && !opts.keep_source) {
           removeBlendSource(job.catalog, source);
         }
 
@@ -113032,7 +113087,7 @@ ${css.join('\n')}
   }
 
   // -blend merges the hillshade into the target, so the hillshade layer is
-  // removed (unless + is used). A source read from a file isn't in the catalog,
+  // removed (unless + or keep-source is used). A source read from a file isn't in the catalog,
   // and with targets in several datasets the layer is gone after the first.
   function removeBlendSource(catalog, source) {
     var found = catalog.findLayer(source.layer);
@@ -113059,8 +113114,9 @@ ${css.join('\n')}
   }
 
   // The output of -blend with drawn targets goes directly above the topmost of
-  // them. Without +, it takes the place of the hillshade, and the targets are
-  // removed, unless the output is an overlay, which is drawn on them.
+  // them. Without + or keep-source, it takes the place of the hillshade; without
+  // +, the targets are removed, unless the output is an overlay, which is drawn
+  // on them.
   function addDrawnBlendOutput(catalog, out, drawn, source, opts) {
     var found = catalog.findLayer(source.layer);
     var dataset = found ? found.dataset : Object.assign({}, source.dataset, {layers: [out]});
@@ -113068,7 +113124,7 @@ ${css.join('\n')}
       // a hillshade read from a file
       inheritFrameRef(dataset, utils.uniq(utils.pluck(drawn, 'dataset')));
       catalog.addDataset(dataset);
-    } else if (!opts.no_replace) {
+    } else if (!opts.no_replace && !opts.keep_source) {
       replaceLayers(dataset, [source.layer], [out]);
     } else {
       noteDatasetWillChange(dataset, {operation: 'appendOutputLayers', command: 'blend'});
@@ -113205,7 +113261,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.8.2";
+  var version = "0.8.3";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
