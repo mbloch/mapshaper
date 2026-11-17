@@ -1,3 +1,6 @@
+v0.8.3
+* [web] Added a panel for interactively blending hillshades and imagery.
+
 v0.8.2
 * Fixed artifacts when projecting some world rasters to interrupted projections.
 * Fixed hypsometric tinting of inland seas and depressions.
