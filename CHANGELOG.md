@@ -1,3 +1,6 @@
+v0.8.5
+* Improvements to -buffer and -deshadow
+
 v0.8.4
 * The blended hypsometric palette is now compatible with non-invertible projections.
 * Fixes for raster projection of some interrupted projections.
