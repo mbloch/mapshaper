@@ -580,6 +580,88 @@ describe('mapshaper-deshadow.mjs', function () {
     });
   });
 
+  describe('getAreaSizes()', function () {
+    it('gives each pixel the size of its 4-connected area', function () {
+      var mask = Uint8Array.from([
+        1, 1, 0, 0, 1,
+        0, 1, 0, 1, 0,
+        0, 0, 0, 1, 0]);
+      assert.deepEqual(Array.from(internal.getAreaSizes(mask, 5, 3)), [
+        3, 3, 0, 0, 1,
+        0, 3, 0, 2, 0,
+        0, 0, 0, 2, 0]);
+    });
+  });
+
+  describe('addSmallShadows()', function () {
+    // 8m pixels and DEM cells: sunlit ground, a large masked shadow (x < 15),
+    // and dark ground 1.84 times darker than the ground, in a line (x = 40)
+    // and a large area (x 20-29) in the shadows of a lower sun, and in a line
+    // (x = 50) outside them
+    var W = 60, H = 40, N = W * H;
+    function scene() {
+      var samples = new Uint8Array(N * 3), hard = new Uint8Array(N), near = new Uint8Array(N);
+      for (var i = 0; i < N; i++) {
+        var x = i % W, y = Math.floor(i / W), c = [150, 120, 100];
+        var line = (x == 40 || x == 50) && y >= 10 && y < 15, area = x >= 20 && x < 30 && y >= 25 && y < 33;
+        if (x < 15) {
+          c = [40, 40, 50];
+          hard[i] = 1;
+        } else if (line || area) {
+          c = [80, 66, 55];
+        }
+        near[i] = x >= 35 && x <= 45 || area ? 1 : 0;
+        samples.set(c, i * 3);
+      }
+      return {image: {samples: samples, bands: 3, width: W, height: H}, near: near,
+        mask: {hard: hard, threshold: 80, near: new Uint8Array(N).fill(1), count: 0}};
+    }
+
+    function gainsAt(small, i) {
+      for (var p = 0, j = 0; p < i; p++) if (small.pixels[p]) j += 3;
+      return Array.from(small.gains.subarray(j, j + 3));
+    }
+
+    it('adds small dark areas in the shadows of a lower sun, relit to the color of the ground', function () {
+      var s = scene(), mask = s.mask;
+      var n = internal.addSmallShadows(mask, s.image, new Uint8Array(N).fill(1), s.near, W, H, 8, 8);
+      assert.equal(n, 5);
+      assert.equal(mask.hard[12 * W + 40], 1);
+      assert.equal(mask.small.pixels[12 * W + 40], 1);
+      [150 / 80, 120 / 66, 100 / 55].forEach(function(v, k) {
+        var g = gainsAt(mask.small, 12 * W + 40)[k];
+        assert(Math.abs(g - v) < 0.02, k + ': ' + g);
+      });
+      // sunlit ground next to them isn't brightened
+      assert.equal(mask.small.pixels[12 * W + 41], 2);
+      assert.deepEqual(gainsAt(mask.small, 12 * W + 41), [1, 1, 1]);
+      assert.equal(mask.hard[12 * W + 50], 0);
+      assert.equal(mask.hard[28 * W + 25], 0);
+      assert.equal(mask.small.pixels[20 * W + 5], 0);
+    });
+
+    it('with despeckle, also adds small dark areas outside the shadows of a lower sun', function () {
+      var s = scene(), mask = s.mask;
+      var n = internal.addSmallShadows(mask, s.image, new Uint8Array(N).fill(1), s.near, W, H, 8, 8, true);
+      assert.equal(n, 10);
+      assert.equal(mask.small.pixels[12 * W + 50], 1);
+      assert.equal(mask.hard[28 * W + 25], 0);
+    });
+
+    it('with despeckle, still adds the parts of larger dark areas in the shadows of a lower sun', function () {
+      // a dark band across the edge of the lower sun's shadows (x = 45): only
+      // its part inside them is small enough
+      var s = scene(), mask = s.mask;
+      for (var y = 2; y < 6; y++) {
+        for (var x = 42; x < 58; x++) s.image.samples.set([80, 66, 55], (y * W + x) * 3);
+      }
+      var n = internal.addSmallShadows(mask, s.image, new Uint8Array(N).fill(1), s.near, W, H, 8, 8, true);
+      assert.equal(mask.hard[3 * W + 43], 1);
+      assert.equal(mask.hard[3 * W + 50], 0);
+      assert.equal(n, 10 + 16);
+    });
+  });
+
   describe('excludeUncertain()', function () {
     it('sets uncertain sunlit and shadow samples between them', function () {
       var gap = Float32Array.from([0, 1, 0.3, 0, 1]);

@@ -20,7 +20,11 @@ var PROGRESS_TICK = 100;
 
 // Terrain cells are about this size, or the size of an image pixel if larger
 var TERRAIN_CELL = 1.2;
+// The terrain grid has up to this many cells, or (in larger images, which need
+// as much memory per pixel) this many per image pixel: coarser terrain misses
+// the shadows of smaller features
 var MAX_TERRAIN_CELLS = 16e6;
+var MAX_TERRAIN_CELLS_PER_PIXEL = 2;
 // Terrain beyond the image is read out to the length of the shadow of the
 // DEM's relief at this sun altitude, up to MAX_MARGIN meters
 var MIN_SHADOW_ALTITUDE = 15;
@@ -97,7 +101,8 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume, signal
       image: {samples: grid.samples, bands: grid.bands, width: grid.width, height: grid.height,
         nodata: grid.nodata},
       terrain: terrain, nir: nir, pixelSize: pixelSize, demPixelSize: demPixelSize, path: path,
-      options: {balancedThreshold: !!opts.balanced_threshold || coarseDem, imageShadows: opts.image_shadows}
+      options: {balancedThreshold: !!opts.balanced_threshold || coarseDem, imageShadows: opts.image_shadows,
+        despeckle: !!opts.despeckle}
     }, printer.update, signal);
   } finally {
     resume();
@@ -359,6 +364,7 @@ function getTerrainGrid(demGrid, grid, pixelW, pixelH) {
   var bbox = grid.bbox, db = demGrid.bbox;
   var unitX = (bbox[2] - bbox[0]) / grid.width, unitY = (bbox[3] - bbox[1]) / grid.height;
   var unitMeters = getElevationUnitMeters(demGrid);
+  var maxCells = Math.max(MAX_TERRAIN_CELLS, MAX_TERRAIN_CELLS_PER_PIXEL * grid.width * grid.height);
   var margin, cw, ch, x0, y0, x1, y1, Z, i;
   if (db[0] >= bbox[2] || db[2] <= bbox[0] || db[1] >= bbox[3] || db[3] <= bbox[1]) return null;
   margin = Math.min(MAX_MARGIN, getRelief(demGrid) * unitMeters / Math.tan(MIN_SHADOW_ALTITUDE * Math.PI / 180));
@@ -370,7 +376,7 @@ function getTerrainGrid(demGrid, grid, pixelW, pixelH) {
     x1 = Math.max(0, Math.min(Math.ceil(margin / (pixelW * factor)), Math.ceil((db[2] - bbox[2]) / cw)));
     y0 = Math.max(0, Math.min(Math.ceil(margin / (pixelH * factor)), Math.ceil((db[3] - bbox[3]) / ch)));
     y1 = Math.max(0, Math.min(Math.ceil(margin / (pixelH * factor)), Math.ceil((bbox[1] - db[1]) / ch)));
-    if ((x0 + x1 + Math.ceil(grid.width / factor)) * (y0 + y1 + Math.ceil(grid.height / factor)) <= MAX_TERRAIN_CELLS) break;
+    if ((x0 + x1 + Math.ceil(grid.width / factor)) * (y0 + y1 + Math.ceil(grid.height / factor)) <= maxCells) break;
     factor++;
   }
   var width = x0 + x1 + Math.ceil(grid.width / factor);

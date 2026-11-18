@@ -227,6 +227,11 @@ var COLOR_BINS = 12;
 var COLOR_COVERAGE = 0.95;
 var MIN_COLOR_SAMPLES = 100;
 var EDGE_RADIUS = 1.8;
+// see addSmallShadows()
+var SMALL_SHADOW_REF = 6; // DEM cells
+var SMALL_SHADOW_CELLS = 48;
+var SMALL_SHADOW_NEIGHBORS = 4;
+var NEAR_SHADOW_ALTITUDE = 6; // degrees
 var BLOCK_SIZE = 18;
 var CHROMA_RADIUS = 1.8;
 var CONTRAST_RADIUS = 3.6;
@@ -1161,9 +1166,10 @@ function compactSuns(suns, labels, tw, th, keepFirst) {
 // I of each terrain cell, blended between the suns of nearby tiles
 // @regions see fitRegionSuns()
 // @level the fit level that @regions was fitted on
-// Returns {I, direct, flat}: Float32Arrays of I, of I without cast shadows,
-//   and of I on flat ground (sine of the sun's altitude); NaN outside
-//   @region and where I is unknown
+// Returns {I, direct, flat, near}: Float32Arrays of I, of I without cast
+//   shadows, and of I on flat ground (sine of the sun's altitude), NaN
+//   outside @region and where I is unknown; and a Uint8Array with 1 for cells
+//   in the shadows of suns NEAR_SHADOW_ALTITUDE degrees lower
 function getCellLighting(terrain, region, demPixelSize, regions, level) {
   var w = terrain.width, h = terrain.height, suns = regions.suns;
   var cell = Math.sqrt(terrain.cellWidth * terrain.cellHeight);
@@ -1173,6 +1179,12 @@ function getCellLighting(terrain, region, demPixelSize, regions, level) {
   var shadows = suns.map(function(sun) {
     return castTerrainShadow(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight, sun, region);
   });
+  var lowered = suns.map(function(sun) {
+    var alt = Math.max(MIN_ALTITUDE * Math.PI / 180, sun.altitude - NEAR_SHADOW_ALTITUDE * Math.PI / 180);
+    return castTerrainShadow(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight,
+      {azimuth: sun.azimuth, altitude: alt}, region);
+  });
+  var near = new Uint8Array(w * h), inNear;
   var vecs = suns.map(function(sun) {
     return [Math.sin(sun.azimuth) * Math.cos(sun.altitude), Math.cos(sun.azimuth) * Math.cos(sun.altitude),
       Math.sin(sun.altitude)];
@@ -1207,6 +1219,7 @@ function getCellLighting(terrain, region, demPixelSize, regions, level) {
       sum = 0;
       fsum = 0;
       dsum = 0;
+      inNear = 1;
       for (k = 0; k < suns.length; k++) {
         if (weights[k] === 0) continue;
         v = vecs[k];
@@ -1215,13 +1228,15 @@ function getCellLighting(terrain, region, demPixelSize, regions, level) {
         dsum += weights[k] * s;
         sum += shadows[k][i] ? 0 : weights[k] * s;
         fsum += weights[k] * v[2];
+        inNear &= lowered[k][i];
       }
       I[i] = sum;
       direct[i] = dsum;
       flat[i] = fsum;
+      near[i] = inNear;
     }
   }
-  return {I: I, direct: direct, flat: flat};
+  return {I: I, direct: direct, flat: flat, near: near};
 }
 
 // I of each pixel. Near the edges of the DEM's shadows (within @band pixels),
@@ -1278,7 +1293,8 @@ function getPixelLighting(lin, valid, I, W, H, band) {
 //   latitude (optional) excludes sun positions that never occur there
 // @nir optional near-infrared value of each pixel
 // @pixelSize ground size of a pixel, in meters
-// @demPixelSize ground size of the DEM's own pixels, in meters
+// @demPixelSize ground size of the DEM's own pixels, in meters (terrain cells
+//   larger than that are the DEM's resolution instead)
 // @path optional {latitude, declination}, to fit the sun along its path on
 //   the image's date (see fitSunPosition)
 // Returns {samples, sun, suns, diffuse, typicalDiffuse, response, shadowGains, shadowShare, failure}:
@@ -1295,14 +1311,15 @@ function getPixelLighting(lin, valid, I, W, H, band) {
 //   'color' (shadows aren't bluer than sunlit ground)
 // @progress optional function receiving the share of the work done (0 to 1)
 //   as it increases (see REST_WORK)
-// @options optional {balancedThreshold, imageShadows} (see
-//   getAgreementThreshold() and getPixelShadows())
+// @options optional {balancedThreshold, imageShadows, despeckle} (see
+//   getAgreementThreshold(), getPixelShadows() and addSmallShadows())
 export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path, progress, options) {
   var W = image.width, H = image.height, N = W * H;
   var work = getWorkTracker(progress || function() {}, N);
   var valid = getValidPixels(image);
   var lin = getLinearImage(image);
   var region = getTerrainRegion(terrain, W, H);
+  demPixelSize = Math.max(demPixelSize, Math.sqrt(terrain.cellWidth * terrain.cellHeight));
   var cells = getPixelCells(terrain, W, H);
   var result = {samples: null, sun: null, suns: null, diffuse: null, shadowGains: null,
     shadowShare: 0, failure: null};
@@ -1352,9 +1369,10 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   direct = getPixelValues(light.direct, cells, Float32Array);
   hardI = getPixelValues(light.I, cells, Float32Array);
   for (i = 0, predicted = new Uint8Array(N); i < N; i++) predicted[i] = hardI[i] === 0 ? 1 : 0;
-  shadows = getPixelShadows(image, nir, valid, predicted, cells, terrain, region, regions,
+  shadows = getPixelShadows(image, nir, valid, predicted, getPixelValues(light.near, cells, Uint8Array),
+    cells, terrain, region, regions,
     W, H, pixelSize, demPixelSize, work.rest, !!(options && options.balancedThreshold),
-    options && options.imageShadows);
+    options && options.imageShadows, !!(options && options.despeckle));
   work.rest(PROGRESS.shadows);
   result.masked = shadows.masked;
   result.maskRatio = shadows.ratio;
@@ -2283,15 +2301,8 @@ function sortedQuantile(arr, q) {
 function relightShadows(image, L, valid, mask, pixelSize, sun) {
   var W = image.width, H = image.height, N = W * H, bands = image.bands;
   var src = image.samples, hard = mask.hard;
-  var edge = maskMean(hard, W, H, toPixels(EDGE_RADIUS, pixelSize));
-  // samples at least two pixels from the edges: in resampled imagery (e.g.
-  // map tiles), pixels next to an edge are partly shadowed
-  var edgeR = toPixels(EDGE_RADIUS, pixelSize);
-  var gap = edgeR >= 2 ? edge : maskMean(hard, W, H, 2);
-  // pixels that may be shadowed are neither sunlit nor shadow samples
-  if (mask.uncertain) gap = excludeUncertain(gap, mask.uncertain);
-  // shadows the mask has missed, and partly lit pixels, aren't sunlit
-  var litT = Math.max(mask.threshold, getLitThreshold(L, valid, gap, mask.near));
+  var samples = getMaskSamples(L, valid, mask, W, H, pixelSize);
+  var edge = samples.edge, gap = samples.gap, litT = samples.litT;
   var gains = measureGains(src, bands, L, valid, gap, litT, W, H, pixelSize);
   if (!gains) return null;
   if (gains[0] < gains[2] * MIN_RED_BLUE_GAIN) return {samples: null, gains: gains};
@@ -2336,6 +2347,7 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
   var r = toPixels(CHROMA_RADIUS, pixelSize), mw = boxMean(wt, W, H, r, wt);
   logG.forEach(function(arr) { boxMean(arr, W, H, r, arr); });
   applyRankGains(logG, mw, rg, L, cls, bare, W, H);
+  if (mask.small) applySmallShadowGains(logG, mw, alpha, mask.small);
   // the relit values are written over the log gains
   relit = logG;
   for (i = 0; i < N; i++) {
@@ -2347,6 +2359,7 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
     if (a < 0.01) continue;
     cap = Math.min(imageCap, classes.cap[cls[i]]);
     if (bare[i] > 0) cap = (1 - bare[i]) * cap + bare[i] * imageCap;
+    if (mask.small && mask.small.pixels[i]) cap = imageCap;
     y = 0.299 * relit[0][i] + 0.587 * relit[1][i] + 0.114 * relit[2][i];
     if (y > cap && y > L[i]) {
       f = Math.max(L[i], cap) / y;
@@ -2358,6 +2371,189 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
     samples: writeRelitSamples(src, bands, relit, alpha, edge, valid, W, H, pixelSize),
     gains: gains
   };
+}
+
+// Sets the gains (@logG, sums of log gains over @mw pixels) of the shadows
+// added by addSmallShadows() to their own, and their @alpha to 1
+// @small mask.small (see addSmallShadows())
+function applySmallShadowGains(logG, mw, alpha, small) {
+  for (var i = 0, j = 0, k; i < alpha.length; i++) {
+    if (!small.pixels[i]) continue;
+    if (mw[i] > 0) {
+      alpha[i] = 1;
+      for (k = 0; k < 3; k++) logG[k][i] = Math.log(small.gains[j + k]) * mw[i];
+    }
+    j += 3;
+  }
+}
+
+// Returns {edge, gap, litT}: edge is the share of the mask's shadow pixels
+//   within EDGE_RADIUS of each pixel; gap is the same with shadow samples
+//   (gap > 0.999) and sunlit samples (gap 0, and luma above litT) at least two
+//   pixels from the edges
+function getMaskSamples(L, valid, mask, W, H, pixelSize) {
+  var hard = mask.hard, edgeR = toPixels(EDGE_RADIUS, pixelSize);
+  var edge = maskMean(hard, W, H, edgeR);
+  // in resampled imagery (e.g. map tiles), pixels next to an edge are partly
+  // shadowed
+  var gap = edgeR >= 2 ? edge : maskMean(hard, W, H, 2);
+  // pixels that may be shadowed are neither sunlit nor shadow samples
+  if (mask.uncertain) gap = excludeUncertain(gap, mask.uncertain);
+  // shadows the mask has missed, and partly lit pixels, aren't sunlit
+  var litT = Math.max(mask.threshold, getLitThreshold(L, valid, gap, mask.near));
+  return {edge: edge, gap: gap, litT: litT};
+}
+
+// Adds to the mask shadows too small for it (and for the DEM to cast
+// reliably), e.g. of ledges a few meters high in imagery of several meters per
+// pixel: pixels in the shadows of suns NEAR_SHADOW_ALTITUDE degrees lower
+// (@nearShadows; a DEM smoother than the terrain casts shorter shadows, and
+// not those of features about its cell size) that are at least half shadowed,
+// by their luma, the mean luma of the sunlit pixels within SMALL_SHADOW_REF
+// DEM cells and the luma gain of the image's shadows. (Their color doesn't
+// tell them: small shadows can be lit by sunlit ground around them, e.g. red
+// rock, more than by the sky.) Connected areas of those pixels larger than
+// SMALL_SHADOW_CELLS DEM cells are left out, as more likely darker ground.
+// With @despeckle, small areas of those pixels outside the lower suns'
+// shadows are added too: small shadows the DEM doesn't cast at all are then
+// relit, along with small dark trees and water.
+// The shadows of the mask that small, with those added, are relit to the
+// luma of that sunlit ground, in the color of the sunlit ground nearest them
+// (see relightShadows()): they are too small for their own color to be worth
+// keeping, and gains for the whole image leave those that are bluer (deeper,
+// lit more by the sky) grayish.
+// Sets mask.small to {pixels, gains}: pixels is 1 for the pixels of the small
+//   shadows and 2 for the pixels around them (0 for others); gains are each
+//   of those pixels' gains (three, in order of their indexes)
+// Returns the number of pixels added
+export function addSmallShadows(mask, image, valid, nearShadows, W, H, pixelSize, demPixelSize, despeckle) {
+  var N = W * H, src = image.samples, bands = image.bands, hard = mask.hard;
+  var L = getLuma(src, bands, N), samples = getMaskSamples(L, valid, mask, W, H, pixelSize);
+  var gains = measureGains(src, bands, L, valid, samples.gap, samples.litT, W, H, pixelSize);
+  if (!gains) return 0;
+  var g = Math.exp(0.299 * Math.log(gains[0]) + 0.587 * Math.log(gains[1]) + 0.114 * Math.log(gains[2]));
+  if (!(g > 1)) return 0;
+  var w = new Float32Array(N), ref = [0, 1, 2].map(function() { return new Float32Array(N); });
+  var cell = Math.max(demPixelSize, pixelSize) / pixelSize;
+  var ratio = new Float32Array(N), r = Math.max(1, Math.round(SMALL_SHADOW_REF * cell)), i, k, n, lr;
+  for (i = 0; i < N; i++) {
+    if (!valid[i] || hard[i] || !(L[i] > samples.litT)) continue;
+    w[i] = 1;
+    for (k = 0; k < 3; k++) ref[k][i] = src[i * bands + k];
+  }
+  boxMean(w, W, H, r, w);
+  ref.forEach(function(arr) { boxMean(arr, W, H, r, arr); });
+  for (i = 0; i < N; i++) {
+    if (!valid[i] || hard[i] || !(despeckle || nearShadows[i]) || !(w[i] > 0.25)) continue;
+    lr = (0.299 * ref[0][i] + 0.587 * ref[1][i] + 0.114 * ref[2][i]) / w[i];
+    if ((1 - L[i] / lr) / (1 - 1 / g) >= 0.5) ratio[i] = lr / Math.max(1, L[i]);
+  }
+  var maxSize = SMALL_SHADOW_CELLS * cell * cell, sizes = getAreaSizes(ratio, W, H), nearSizes = sizes;
+  var all = new Uint8Array(N), small = new Uint8Array(N), large = new Uint8Array(N);
+  if (despeckle) {
+    // those in the lower suns' shadows are added as they would be without
+    // @despeckle, also where they are part of larger areas
+    for (i = 0; i < N; i++) all[i] = ratio[i] > 0 && nearShadows[i] ? 1 : 0;
+    nearSizes = getAreaSizes(all, W, H);
+  }
+  for (i = 0, n = 0; i < N; i++) {
+    if (sizes[i] > maxSize && !(nearShadows[i] && nearSizes[i] > 0 && nearSizes[i] <= maxSize)) ratio[i] = 0;
+    if (ratio[i] > 0) n++;
+    all[i] = hard[i] || ratio[i] > 0 ? 1 : 0;
+  }
+  // small shadows already in the mask are relit like those added, and the
+  // pixels added next to larger ones like those
+  sizes = getAreaSizes(all, W, H);
+  var pixels = new Uint8Array(N), m = 0, near, edge, edgeR = toPixels(EDGE_RADIUS, pixelSize), j;
+  for (i = 0; i < N; i++) {
+    if (!all[i]) continue;
+    hard[i] = 1;
+    lr = (0.299 * ref[0][i] + 0.587 * ref[1][i] + 0.114 * ref[2][i]) / w[i];
+    if (sizes[i] > maxSize || !(w[i] > 0.25) || !(lr > L[i])) {
+      large[i] = 1;
+    } else {
+      small[i] = pixels[i] = 1;
+      m++;
+    }
+  }
+  mask.count += n;
+  if (m === 0) return n;
+  // the partly shadowed pixels around them (away from larger shadows); those
+  // as light as the ground around them are kept
+  near = maskMean(small, W, H, edgeR);
+  edge = maskMean(large, W, H, edgeR);
+  for (i = 0; i < N; i++) {
+    if (all[i] || !(near[i] > 0) || edge[i] > 0 || !valid[i] || !(w[i] > 0.25)) continue;
+    pixels[i] = 2;
+    m++;
+  }
+  // their color is that of the nearest sunlit ground, which is more likely
+  // the same ground than all the ground within SMALL_SHADOW_REF
+  var lit = new Uint8Array(N), color = [0, 0, 0], lc;
+  for (i = 0; i < N; i++) lit[i] = valid[i] && !all[i] && pixels[i] != 2 && L[i] > samples.litT ? 1 : 0;
+  gains = new Float32Array(m * 3).fill(1);
+  for (i = 0, j = 0; i < N; i++) {
+    if (!pixels[i]) continue;
+    lr = (0.299 * ref[0][i] + 0.587 * ref[1][i] + 0.114 * ref[2][i]) / w[i];
+    if (pixels[i] == 1 || lr > L[i]) {
+      if (getNearbyColor(src, bands, lit, W, H, i, r, color) > 0) {
+        lc = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2];
+      } else {
+        for (k = 0; k < 3; k++) color[k] = ref[k][i] / w[i];
+        lc = lr;
+      }
+      for (k = 0; k < 3; k++) gains[j + k] = Math.max(1, color[k] * lr / Math.max(1, lc)) / Math.max(1, src[i * bands + k]);
+    }
+    j += 3;
+  }
+  mask.small = {pixels: pixels, gains: gains};
+  return n;
+}
+
+// The mean color of the @lit pixels in the smallest square around pixel @i
+// (radius 2, 4, 8... up to @maxR) with at least SMALL_SHADOW_NEIGHBORS of them
+// Returns their number (0 if there are too few within @maxR), and sets @out
+function getNearbyColor(src, bands, lit, W, H, i, maxR, out) {
+  var x0 = i % W, y0 = Math.floor(i / W), r, x, y, j, n, k;
+  for (r = 2; ; r = Math.min(maxR, r * 2)) {
+    out[0] = out[1] = out[2] = 0;
+    n = 0;
+    for (y = Math.max(0, y0 - r); y <= Math.min(H - 1, y0 + r); y++) {
+      for (x = Math.max(0, x0 - r); x <= Math.min(W - 1, x0 + r); x++) {
+        j = y * W + x;
+        if (!lit[j]) continue;
+        for (k = 0; k < 3; k++) out[k] += src[j * bands + k];
+        n++;
+      }
+    }
+    if (n >= SMALL_SHADOW_NEIGHBORS || r >= maxR) break;
+  }
+  if (n < SMALL_SHADOW_NEIGHBORS) return 0;
+  for (k = 0; k < 3; k++) out[k] /= n;
+  return n;
+}
+
+// The size (pixels) of the connected area (4-connected) of @mask that each
+// pixel is in, or 0
+export function getAreaSizes(mask, W, H) {
+  var N = W * H, seen = new Uint8Array(N), queue = new Int32Array(N), sizes = new Int32Array(N);
+  var i, j, x, head, tail, k;
+  for (i = 0; i < N; i++) {
+    if (!mask[i] || seen[i]) continue;
+    head = tail = 0;
+    seen[i] = 1;
+    queue[tail++] = i;
+    while (head < tail) {
+      j = queue[head++];
+      x = j % W;
+      if (x > 0 && mask[j - 1] && !seen[j - 1]) { seen[j - 1] = 1; queue[tail++] = j - 1; }
+      if (x < W - 1 && mask[j + 1] && !seen[j + 1]) { seen[j + 1] = 1; queue[tail++] = j + 1; }
+      if (j >= W && mask[j - W] && !seen[j - W]) { seen[j - W] = 1; queue[tail++] = j - W; }
+      if (j < N - W && mask[j + W] && !seen[j + W]) { seen[j + W] = 1; queue[tail++] = j + W; }
+    }
+    for (k = 0; k < tail; k++) sizes[queue[k]] = tail;
+  }
+  return sizes;
 }
 
 // A copy of @gap (share of shadow pixels nearby: 0 for sunlit samples, 1 for
@@ -3280,11 +3476,12 @@ function softenShadows(shadow, direct, W, H, r) {
 // @balanced see getAgreementThreshold()
 // @imageShadows optional 'on' to use the mask whatever its size (see
 //   MAX_MASK_RATIO), or 'off' to use the DEM's shadows
+// @despeckle see addSmallShadows()
 // Returns {shadow, masked, count, ratio, mask, sun}: masked is true if the
 //   shadows are from the mask (see getShadowMask()), cast by @sun; ratio is
 //   the mask's size over the DEM's shadows'
-function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, regions,
-    W, H, pixelSize, demPixelSize, progress, balanced, imageShadows) {
+function getPixelShadows(image, nir, valid, predicted, nearShadows, cells, terrain, region, regions,
+    W, H, pixelSize, demPixelSize, progress, balanced, imageShadows, despeckle) {
   var N = W * H, L = getLuma(image.samples, image.bands, N);
   var band = Math.max(MIN_BAND, demPixelSize * BAND_DEM_PIXELS);
   var shadow = new Float32Array(N), stretch = 1, mask, n, i, maskSun, dark, lowered;
@@ -3309,6 +3506,7 @@ function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, r
     addDemShadows(mask, predicted, valid, W, H);
     addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, regions.suns, W, H,
       band / pixelSize, progress);
+    addSmallShadows(mask, image, valid, nearShadows, W, H, pixelSize, demPixelSize, despeckle);
     for (i = 0; i < N; i++) shadow[i] = mask.hard[i];
     return {shadow: shadow, masked: true, count: mask.count, ratio: mask.count / n, mask: mask,
       sun: maskSun || regions.suns[0]};
@@ -3800,15 +3998,19 @@ export function getShadowMask(L, nir, valid, predicted, W, H, pixelSize, band, f
   var majBoth = darkBoth == dark ? maj : r > 0 ? boxMean(darkBoth, W, H, r) : darkBoth;
   var hard = new Uint8Array(N);
   var regionR = toPixels(REGION_RADIUS, pixelSize);
+  // in coarse imagery a window of whole pixels is wider than REGION_RADIUS
+  // (3 pixels of 8m, for 1.2 pixels), and would leave out shadows a few
+  // pixels wide: it needs the share of itself that the window would have
+  var regionShare = REGION_SHARE * Math.min(1, (2 * REGION_RADIUS / pixelSize + 1) / (2 * regionR + 1));
   var share, region, dist, grow, count = 0;
   region = new Uint8Array(N);
   for (i = 0; i < N; i++) majBoth[i] = majBoth[i] > 0.5 ? 1 : 0;
   share = boxMean(majBoth, W, H, regionR);
-  for (i = 0; i < N; i++) region[i] = share[i] > REGION_SHARE ? 1 : 0;
+  for (i = 0; i < N; i++) region[i] = share[i] > regionShare ? 1 : 0;
   share = majBoth = darkBoth = null;
   dist = chamferDistance(region, W, H);
   // the window test pulls a straight edge in by about this many pixels
-  grow = Math.ceil(regionR * (2 * REGION_SHARE - 1)) + 1;
+  grow = Math.max(0, Math.ceil(regionR * (2 * regionShare - 1))) + 1;
   for (i = 0; i < N; i++) hard[i] = maj[i] > 0.5 && dist[i] <= grow * 3 ? 1 : 0;
   dist = maj = null;
   removeUnmatchedAreas(hard, predicted, W, H, SMALL_AREA / (pixelSize * pixelSize));
