@@ -250,12 +250,12 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     assert.deepEqual(getSchemeColors(sea), gray.map(function(o) { return o.color; }));
     // moved, but not recolored
     cmd = formatSchemeCommand(setSeaScheme(scheme, setSchemeBreak(sea, o.lyr, 1, -7000)), getAppliedColors(scheme), {layer: o.lyr});
-    assert(/ sea=gray breaks=sea:-11000,-7000,-6000,[^ ]*,0$/.test(cmd));
+    assert(/ sea=gray breaks=sea:-10000,-7000,-3000,[^ ]*,0$/.test(cmd));
     sea = setSchemeBreak(setTileColor(sea, 0, '#000000'), o.lyr, 1, -7000);
     scheme = setSeaScheme(scheme, sea);
     assert.equal(getSeaLabel(scheme), 'Custom');
     cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
-    assert(/ sea=gray colors=sea:#000000,[^ ]* breaks=sea:-11000,-7000,-6000,[^ ]*,0$/.test(cmd));
+    assert(/ sea=gray colors=sea:#000000,[^ ]* breaks=sea:-10000,-7000,-3000,[^ ]*,0$/.test(cmd));
     await runCommand(o.catalog, cmd);
     palette = o.lyr.raster.view.recipe.palette;
     assert.equal(palette.sea, 'custom');
@@ -266,7 +266,7 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
   it('the sea\'s breaks run from its deepest stop to 0, whatever the data', async function() {
     var land = await importDEM([5, 200, 300, 1000]);
     var info = getSchemeBreaks(getSeaScheme(chooseSeaPreset(useElevations(land.lyr), 'Blue')), land.lyr);
-    assert.deepEqual([info.min, info.max], [-11000, 0]);
+    assert.deepEqual([info.min, info.max], [-10000, 0]);
   });
 
   it('transparent land leaves only the sea, which then needs colors', async function() {

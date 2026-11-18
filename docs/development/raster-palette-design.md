@@ -512,7 +512,10 @@ tested.
    continuously through its own table, `getRasterSeaTable()`), blended or
    not. Pale is fitted to the ocean of Patterson's map by depth
    (`__hypsometric/bathy.mjs`); Blue and Gray have its lightness steps,
-   stronger, with more or less chroma. `colors=sea:...` with
+   stronger, with more or less chroma. Each has five stops (0, -200, -3000,
+   -5000 and -10000 m), taken from a 12-stop fit that OKLCH
+   interpolation between them reproduces within 1.4 dE (OKLab x 100) above
+   10000 m; trenches below take the deepest color. `colors=sea:...` with
    `breaks=sea:...` give a custom sea ramp (`sea: 'custom'`), and either
    one recolors or moves a `sea=` preset (also `'custom'`), and `hypsometric=none` leaves the
    land out (`palette.land = 'transparent'`, with the sea's colors as the

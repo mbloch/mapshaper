@@ -373,7 +373,7 @@ describe('sea=', function() {
     assert.deepEqual(palette.seaRamp.breaks, stops.map(function(o) { return o.elevation; }));
     preview = internal.renderRasterPreview(catalog.getActiveLayer().layer.raster.grid, {palette: palette}, 5, 4);
     assert.equal(preview.pixels[0 * 4 + 3], 255);
-    // -10 m, between the -50 and 0 m stops
+    // -10 m, between the -200 and 0 m stops
     assert.notEqual(hex(preview.pixels, 0), internal.getHypsometricStops('Desert')[0].color);
     assert.equal(hex(preview.pixels, 7), internal.getHypsometricStops('Desert')[0].color);
   });
@@ -420,7 +420,7 @@ describe('sea=', function() {
     await assert.rejects(runCommand(catalog, '-classify hypsometric=desert colors=sea:red,blue breaks=sea:0,-20'), /ascending/);
     await assert.rejects(runCommand(catalog, '-classify hypsometric=desert colors=sea:red breaks=sea:-20,0'), /same number/);
     await assert.rejects(runCommand(catalog, '-classify hypsometric=desert colors=sea:red,blue'), /needs colors=sea:... and breaks=sea:/);
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=desert sea=pale colors=sea:red,blue'), /needs 12 colors/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=desert sea=pale colors=sea:red,blue'), /needs 5 colors/);
     await assert.rejects(runCommand(catalog, '-classify hypsometric=desert sea=transparent colors=sea:red,blue breaks=sea:-20,0'),
       /work with a bathymetric sea=/);
   });
@@ -429,7 +429,7 @@ describe('sea=', function() {
     var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
     catalog.getActiveLayer().layer.raster.grid.verticalUnits = 'ft';
     await runCommand(catalog, '-classify hypsometric=desert sea=Pale');
-    assert.equal(getPalette(catalog).seaRamp.breaks[0], -36089.2);
+    assert.equal(getPalette(catalog).seaRamp.breaks[0], -32808.4);
   });
 });
 
