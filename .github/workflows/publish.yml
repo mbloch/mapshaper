@@ -1,0 +1,84 @@
+# Publishes mapshaper to npm using trusted publishing (OIDC, no npm token),
+# then creates a GitHub release with notes taken from CHANGELOG.md.
+#
+# Runs when a version tag (e.g. v0.8.6) is pushed; `npm publish` in a local
+# checkout pushes the tag (see ./pre-publish). Can also be run by hand to
+# publish an existing tag:  gh workflow run publish.yml -f tag=v0.8.6
+#
+# npmjs.com setup: package Settings > Trusted Publisher > GitHub Actions,
+# user "mbloch", repository "mapshaper", workflow filename "publish.yml".
+
+name: Publish to npm
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to publish (e.g. v0.8.6)
+        required: true
+
+permissions:
+  contents: write # create the GitHub release
+  id-token: write # npm trusted publishing
+
+concurrency: publish-${{ inputs.tag || github.ref_name }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing requires npm 11.5.1 or later
+      - run: npm install -g npm@latest
+
+      - name: Check that the tag matches package.json
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::Tag $TAG does not match package.json version $VERSION"
+            exit 1
+          fi
+
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - run: npm run build
+
+      # --ignore-scripts skips prepublishOnly/postpublish, which are for
+      # local releases (tests are run locally before the tag is pushed).
+      - name: Publish
+        run: |
+          if npm view "mapshaper@$VERSION" version > /dev/null 2>&1; then
+            echo "mapshaper@$VERSION is already on npm, skipping publish"
+          else
+            npm publish --ignore-scripts
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node -e '
+            const tag = process.argv[1];
+            const text = require("fs").readFileSync("CHANGELOG.md", "utf8");
+            const re = new RegExp("^" + tag.replace(/\./g, "\\.") + "\\n((?:\\n?\\*.+)+)", "m");
+            const match = re.exec(text);
+            process.stdout.write(match ? match[1].trim() + "\n" : "");
+          ' "$TAG" > release-notes.md
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists"
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file release-notes.md
+          fi
