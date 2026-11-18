@@ -33,6 +33,6 @@ Difficulty: easy
 
 ![Step 6](/docs/images/canyon5.jpg)
 
-7. Blend the hillshade and the imagery, sharpen a bit (`-blend 3dep-1m strength=1.15,1 chroma=0.9,1 -sharpen 0.25`)
+7. Blend the hillshade and the imagery, sharpen a bit (the blend panel in the web UI lets you set blending parameters interactively) (`-blend 3dep-1m strength=1.15,1 chroma=0.9,1 -sharpen 0.25`)
 
 ![Step 7](/docs/examples/data/canyon6.jpg)

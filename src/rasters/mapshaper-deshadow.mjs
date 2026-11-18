@@ -21,9 +21,12 @@
 //    darken forest less than rock or snow (sunlit forest is partly shadowed
 //    by its own trees), so forest has a larger c.
 
-// Tiles that the sun's position is fitted in (cells at the fit level), and
-// the fewest cells a tile is scored with
-var FIT_TILE = 4000;
+// The sun's position is fitted in tiles: the fit level's region is divided
+// into about FIT_TILES tiles (at least MIN_FIT_TILE cells on a side) whatever
+// its size, so that the regions of a mosaic have enough tiles to be fitted on
+// their own (see MAX_BLOCKS). Tiles are scored with at least MIN_TILE_CELLS
+// cells.
+var FIT_TILES = 240;
 var MIN_FIT_TILE = 16;
 var MIN_TILE_CELLS = 50;
 // lowest sun altitude fitted, in degrees
@@ -42,15 +45,18 @@ var COARSE_FIT_CELLS = 25000;
 var MAX_COARSE_FIT_CELL = 120;
 // Mosaics: the image is divided into up to MAX_BLOCKS x MAX_BLOCKS blocks of
 // at least BLOCK_TILES tiles, and a block's sun position is used if it
-// matches the block better than the image's does by REGION_GAIN; each tile
-// gets the sun that matches it and its neighbors best, if by LABEL_MARGIN
-// better than the image's, and areas of fewer than MIN_REGION_TILES tiles get
-// the sun of the tiles around them. Each sun is fitted again on its tiles,
-// and the tiles labeled again, up to MAX_REFITS times. Positions within
-// SAME_SUN degrees are merged.
+// matches the block's tiles better than the image's does by REGION_Z
+// standard errors (see getPairedZ()); each tile gets the sun that matches it
+// and its neighbors best, if by LABEL_MARGIN better than the image's, and
+// areas of fewer than MIN_REGION_TILES tiles get the sun of the tiles around
+// them. Each sun is fitted again on its tiles, and the tiles labeled again,
+// up to MAX_REFITS times. Positions within SAME_SUN degrees are merged, and
+// an area whose sun doesn't match its tiles better than a neighboring area's
+// sun by REGION_Z standard errors takes that sun (see mergeAreaLabels()).
 var MAX_BLOCKS = 4;
 var BLOCK_TILES = 15;
-var REGION_GAIN = 0.04;
+var REGION_Z = 5;
+var MIN_PAIRED_TILES = 4;
 var LABEL_MARGIN = 0.03;
 var MIN_REGION_TILES = 9;
 var SAME_SUN = 5;
@@ -197,6 +203,11 @@ var FIT_DIFFUSE = 0.3;
 // smoothes cliffs into slopes lit at a lower angle)
 var LIT_CAP_QUANTILE = 0.98;
 var LIT_FLOOR = 0.25;
+// meters from the edges of masked shadows within which sunlit ground is lit at
+// least as much as its luma shows (see raiseEdgeLighting()): an image and a
+// DEM can be misregistered by a few pixels, which leaves the DEM's slopes
+// facing away from the sun on sunlit ground next to the shadows
+var EDGE_LIGHTING = 40;
 // Brightened pixels (by at least BOOSTED_GAIN) are kept within the colors of
 // sunlit ground (lit at least LIT_SHARE of flat ground) of similar luma (in
 // bins of COLOR_LUMA_STEP, log scale, with the bins next to them), within
@@ -595,7 +606,7 @@ function fitSunPath(level, path) {
   var hi = path.declinations ? path.declinations[1] : path.declination;
   var steps = Math.ceil((hi - lo) / DECLINATION_STEP);
   var best = null;
-  var hour, j, s, c, ds;
+  var hour, j, s, c, ds, moved;
   function candidate(hour, dec) {
     var pos = getSunPosition(path.latitude, dec, hour);
     if (hour < -90 || hour > 90 || dec < lo || dec > hi || pos.altitude < MIN_ALTITUDE) return null;
@@ -610,11 +621,21 @@ function fitSunPath(level, path) {
   }
   if (!best || best.score <= -1) return {azimuth: 0, altitude: 0, score: -1};
   ds = steps > 0 ? (hi - lo) / steps / 2 : 0;
-  for (s = 3.75; s >= 0.25; s /= 2, ds /= 2) {
+  // pattern search: a step is halved once no move from the best position
+  // improves on it
+  for (s = 3.75; s >= 0.25; ) {
+    moved = false;
     [[-s, 0], [s, 0], [0, -ds], [0, ds]].forEach(function(d) {
       var c = d[0] || d[1] ? candidate(best.hour + d[0], best.declination + d[1]) : null;
-      if (c && c.score > best.score) best = c;
+      if (c && c.score > best.score) {
+        best = c;
+        moved = true;
+      }
     });
+    if (!moved) {
+      s /= 2;
+      ds /= 2;
+    }
   }
   return best;
 }
@@ -679,13 +700,14 @@ function scoreSun(level, azimuth, altitude, tileR) {
 
 // The grids reduced by an integer factor, to have up to @maxCells cells in the
 // region (means, ignoring NaN), with cells no larger than @maxCell meters
-// Returns {Z, B, w, h, cellW, cellH, region, factor}
+// Returns {Z, B, w, h, cellW, cellH, region, factor, tile}: tile is the side
+//   of a fit tile, in cells (see FIT_TILES)
 export function getFitLevel(Z, B, w, h, cellW, cellH, region, maxCells, maxCell) {
   var cells = (region.x1 - region.x0) * (region.y1 - region.y0);
   var f = Math.min(Math.ceil(Math.sqrt(cells / maxCells)),
     Math.floor(maxCell / Math.max(cellW, cellH)));
   f = Math.max(1, f);
-  var tile = Math.max(MIN_FIT_TILE, Math.round(FIT_TILE / (Math.sqrt(cellW * cellH) * f)));
+  var tile = Math.max(MIN_FIT_TILE, Math.round(Math.sqrt(cells / (f * f) / FIT_TILES)));
   if (f == 1) return {Z: Z, B: B, w: w, h: h, cellW: cellW, cellH: cellH, region: region, factor: 1, tile: tile};
   return {
     Z: downsampleMeans(Z, w, h, f),
@@ -785,7 +807,7 @@ function fitRegionSuns(level, sun, path) {
       };
       sub = cropLevel(level, region, margin);
       fit = fitRegionSun(sub, sun, path, false);
-      if (fit.score > scoreSun(sub, sun.azimuth, sun.altitude) + REGION_GAIN &&
+      if (getPairedZ(getTileScores(sub, fit), getTileScores(sub, sun)) >= REGION_Z &&
           !suns.some(function(s) { return isSameSun(s, fit); })) {
         suns.push(fit);
       }
@@ -793,7 +815,7 @@ function fitRegionSuns(level, sun, path) {
   }
   if (suns.length == 1) return single;
   if (work) work.expect((w.refits + w.areas) * cells);
-  out = compactSuns(suns, labelSuns(level, suns, tw, th), tw, th);
+  out = compactSuns(suns, labelSuns(level, suns, tw, th), tw, th, true);
   for (iter = 0; iter < MAX_REFITS && out.labels; iter++) {
     suns = out.suns.map(function(s, k) {
       return refitSun(level, out.labels, k, tw, th, margin, s, path, true);
@@ -803,12 +825,98 @@ function fitRegionSuns(level, sun, path) {
     });
     prev = out.labels;
     // once the image is a mosaic, its own sun is just one of the candidates
-    out = compactSuns(suns, labelSuns(level, suns, tw, th, 0), tw, th);
+    out = compactSuns(suns, labelSuns(level, suns, tw, th, 0), tw, th, true);
     if (out.labels && out.suns.length == suns.length && out.labels.every(function(l, t) { return l == prev[t]; })) break;
   }
   if (work) work.expect(out.labels ? w.areas * cells : 0);
   if (out.labels) out = fitAreaSuns(level, out, margin, path);
+  if (out.labels) {
+    mergeAreaLabels(out.labels, tw, th, out.suns.map(function(s) { return getTileScores(level, s); }));
+    out = compactSuns(out.suns, out.labels, tw, th);
+  }
+  // a lone sun left over may have been fitted on just some of the tiles
+  return out.labels ? out : {suns: [sun], labels: null, tw: tw, th: th};
+}
+
+// Each tile's score for @sun (see scoreSun()), NaN where not scored
+function getTileScores(level, sun) {
+  var r = level.region, T = level.tile;
+  var arr = new Float32Array(Math.ceil((r.x1 - r.x0) / T) * Math.ceil((r.y1 - r.y0) / T));
+  scoreSun(level, sun.azimuth, sun.altitude, arr);
+  return arr;
+}
+
+// How many standard errors the scores in @ra exceed those in @rb, paired over
+// the tiles (indexes in @tiles, or all) that both are scored in; -Infinity
+// with fewer than MIN_PAIRED_TILES. Tiles are the samples, not cells, as
+// neighboring cells' brightness and lighting aren't independent.
+export function getPairedZ(ra, rb, tiles) {
+  var count = tiles ? tiles.length : ra.length, n = 0, sum = 0, sum2 = 0, j, t, d, mean, sd;
+  for (j = 0; j < count; j++) {
+    t = tiles ? tiles[j] : j;
+    d = ra[t] - rb[t];
+    if (d !== d) continue;
+    n++;
+    sum += d;
+    sum2 += d * d;
+  }
+  if (n < MIN_PAIRED_TILES) return -Infinity;
+  mean = sum / n;
+  sd = Math.sqrt(Math.max(1e-12, (sum2 - n * mean * mean) / (n - 1)));
+  return mean / (sd / Math.sqrt(n));
+}
+
+// An area (4-connected tiles with the same label) whose sun doesn't score
+// better in its tiles than the sun of a neighboring area by REGION_Z standard
+// errors (see getPairedZ()) takes that area's sun (the one scoring best in
+// its tiles, if several), smallest areas first, until no area does
+// @tileR each sun's score in each tile (NaN if not scored)
+// Modifies and returns @labels
+export function mergeAreaLabels(labels, tw, th, tileR) {
+  var changed = true, areas, area, k, i, j, t, best, bestMean, m;
+  while (changed) {
+    changed = false;
+    areas = getLabelAreas(labels, tw, th).sort(function(a, b) { return a.length - b.length; });
+    for (i = 0; i < areas.length && !changed; i++) {
+      area = areas[i];
+      k = labels[area[0]];
+      best = -1;
+      for (j of getNeighborLabels(labels, tw, area)) {
+        if (getPairedZ(tileR[k], tileR[j], area) >= REGION_Z) continue;
+        m = getMeanScore(tileR[j], area);
+        if (best < 0 || m > bestMean) {
+          best = j;
+          bestMean = m;
+        }
+      }
+      if (best >= 0) {
+        for (t of area) labels[t] = best;
+        changed = true;
+      }
+    }
+  }
+  return labels;
+}
+
+// Labels of the tiles 4-connected to @area other than its own
+function getNeighborLabels(labels, tw, area) {
+  var own = labels[area[0]], out = [], t, u;
+  for (t of area) {
+    for (u of [t % tw > 0 ? t - 1 : -1, t % tw < tw - 1 ? t + 1 : -1, t - tw, t + tw]) {
+      if (u >= 0 && u < labels.length && labels[u] != own && !out.includes(labels[u])) out.push(labels[u]);
+    }
+  }
   return out;
+}
+
+function getMeanScore(arr, tiles) {
+  var sum = 0, n = 0, t;
+  for (t of tiles) {
+    if (arr[t] !== arr[t]) continue;
+    sum += arr[t];
+    n++;
+  }
+  return n > 0 ? sum / n : -Infinity;
 }
 
 // The number of blocks on each side of the grid that a mosaic's suns are
@@ -1038,9 +1146,9 @@ function modeFilter(labels, tw, th, K) {
   return out;
 }
 
-// Removes suns that no tile has
-function compactSuns(suns, labels, tw, th) {
-  var used = suns.map(function(s, k) { return k === 0 || labels.includes(k); });
+// Removes suns that no tile has (but the first, with @keepFirst)
+function compactSuns(suns, labels, tw, th, keepFirst) {
+  var used = suns.map(function(s, k) { return keepFirst && k === 0 || labels.includes(k); });
   var index = [], kept = [], t;
   suns.forEach(function(s, k) {
     index[k] = used[k] ? kept.length : 0;
@@ -1411,7 +1519,7 @@ function relightMaskedImage(image, lin, valid, labels, ratios, litRatios, flat, 
     pixelSize, margin, work) {
   var N = W * H, lit, relit;
   lit = Object.assign({}, image, {samples: correctSunlitPixels(image, lin, valid, labels, ratios, litRatios,
-    flat, direct, shadows.mask.hard, W, H, pixelSize)});
+    flat, direct, shadows.mask.hard, W, H, pixelSize, Math.max(toPixels(EDGE_LIGHTING, pixelSize), margin * 2))});
   work.rest(PROGRESS.sunlit);
   relit = relightShadows(lit, getLuma(lit.samples, lit.bands, N), valid, shadows.mask, pixelSize, shadows.sun);
   work.rest(PROGRESS.relit);
@@ -1423,16 +1531,59 @@ function relightMaskedImage(image, lin, valid, labels, ratios, litRatios, flat, 
 
 // A copy of @image's samples with the pixels outside the mask @hard corrected
 // for their lighting (see getPixelGains())
-function correctSunlitPixels(image, lin, valid, labels, ratios, litRatios, flat, direct, hard, W, H, pixelSize) {
+// @edge pixels from the mask's edges within which the image's lumas can raise
+//   the DEM's lighting (see raiseEdgeLighting())
+function correctSunlitPixels(image, lin, valid, labels, ratios, litRatios, flat, direct, hard, W, H, pixelSize,
+    edge) {
   var N = W * H, litI = new Float32Array(N), i, b, gains;
   // ground outside the mask is sunlit, even where the DEM faces away from the sun
   for (i = 0; i < N; i++) litI[i] = Math.max(direct[i], LIT_FLOOR * flat[i]);
+  raiseEdgeLighting(lin, valid, hard, litI, W, H, edge);
   gains = getPixelGains(lin, labels, ratios, litRatios, flat, litI, litI, valid, W, H, pixelSize);
   for (i = 0; i < N; i++) {
     if (hard[i]) for (b = 0; b < 3; b++) gains[b][i] = NaN;
   }
   limitBrightness(lin, gains, valid, getLitCap(lin, valid, direct, flat, hard));
   return writeCorrectedSamples(image, lin, gains, valid);
+}
+
+// Raises @litI of sunlit pixels within @r pixels of the mask @hard to the I
+// that their lumas show, Y = Y_lit (I + c) / (I_lit + c), where Y_lit and
+// I_lit are the mean luma and I of the sunlit pixels around them (beyond @r
+// pixels from the mask) and Y_lit c / (I_lit + c) is the mean luma of the
+// shadowed pixels around them (inside the mask, away from its edges), within
+// SHADOW_REFERENCE times @r pixels, if those differ by MIN_SHADOW_CONTRAST
+// (log luma). A pixel darker than that (e.g. of darker ground, or of a shadow
+// the mask has missed) keeps the DEM's I.
+export function raiseEdgeLighting(lin, valid, hard, litI, W, H, r) {
+  var N = W * H, near = maskMean(hard, W, H, r), core = maskMean(hard, W, H, 1);
+  var wLit = new Float32Array(N), yLit = new Float32Array(N), iLit = new Float32Array(N);
+  var wShade = new Float32Array(N), yShade = new Float32Array(N);
+  var i, y, yl, ys, s;
+  for (i = 0; i < N; i++) {
+    if (!valid[i]) continue;
+    y = getLinearLuma(lin, i);
+    if (near[i] < 0.001 && litI[i] === litI[i]) {
+      wLit[i] = 1;
+      yLit[i] = y;
+      iLit[i] = litI[i];
+    } else if (core[i] > 0.999) {
+      wShade[i] = 1;
+      yShade[i] = y;
+    }
+  }
+  [wLit, yLit, iLit, wShade, yShade].forEach(function(arr) {
+    boxMean(arr, W, H, r * SHADOW_REFERENCE, arr);
+  });
+  for (i = 0; i < N; i++) {
+    if (!valid[i] || hard[i] || !(near[i] >= 0.001) || litI[i] !== litI[i] ||
+        !(wLit[i] > 0.01 && wShade[i] > 0.01)) continue;
+    yl = yLit[i] / wLit[i];
+    ys = yShade[i] / wShade[i];
+    if (!(Math.log(yl / ys) >= MIN_SHADOW_CONTRAST)) continue;
+    s = Math.max(0, Math.min(1, (yl - getLinearLuma(lin, i)) / (yl - ys)));
+    litI[i] = Math.max(litI[i], (1 - s) * iLit[i] / wLit[i]);
+  }
 }
 
 // @samples corrected copy of @image's samples, kept within the colors of
@@ -2151,7 +2302,7 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
   var classes = measureClassGains(src, bands, L, valid, hard, edge, pairs, W, H, gains, pixelSize);
   var bare = getBareShare(src, bands, valid, hard, gap, near, W, H, pixelSize);
   var bareGains = measureBareGains(src, bands, pairs, classes.cls, classes.lo.length, W, H, gains, pixelSize);
-  var bareLo = getShadowLightness(L, valid, edge, hard);
+  var bareLo = getBareShadowLightness(L, valid, edge, hard, classes, bare);
   var rg = measureRankGains(src, bands, L, valid, hard, edge, gap, near, litT, W, H, pixelSize);
   weighRankGains(rg, pairs, L, W);
   gap = near = null;
@@ -2173,7 +2324,7 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
     // the shadows' brightened by the gains of their ground there
     g = Math.exp(g);
     la = getLightnessAlpha(L[i], classes.lo[s], Math.max(classes.lo[s] + 1, classes.lo[s] * g));
-    if (b > 0) la = (1 - b) * la + b * getLightnessAlpha(L[i], bareLo, Math.max(bareLo + 1, bareLo * g));
+    if (b > 0) la = (1 - b) * la + b * getLightnessAlpha(L[i], bareLo[s], Math.max(bareLo[s] + 1, bareLo[s] * g));
     if (mask.dem && mask.dem[i]) alpha[i] = 1;
     else if (edge[i] > 0 && edge[i] < 1) alpha[i] = la;
     else if (hard[i]) alpha[i] = Math.min(1, la * 1.5);
@@ -2443,14 +2594,23 @@ function measureBlockGains(src, bands, L, valid, edge, T, W, H, bs, minCount) {
   return ratios.map(function(arr) { return Math.max(1, getMedian(arr)); });
 }
 
-// Shadow luma: the median of the shadows' cores
-function getShadowLightness(L, valid, edge, hard) {
-  var N = L.length, core = [], i;
-  for (i = 0; i < N; i += 13) if (edge[i] > 0.999 && valid[i]) core.push(L[i]);
-  if (core.length === 0) {
-    for (i = 0; i < N; i++) if (hard[i] && edge[i] > 0.999 && valid[i]) core.push(L[i]);
+// Shadow luma of each class of shadowed ground (see measureClassGains()) where
+// it isn't vegetation: the median of the class's shadows' cores where @bare
+// is at least 0.5, or with fewer than MIN_COLOR_SAMPLES of those, the class's
+// lo. (Classes differ in lightness: shadowed snow is several times as light
+// as shadowed rock, and would look sunlit next to the lightness of all the
+// shadows.)
+export function getBareShadowLightness(L, valid, edge, hard, classes, bare) {
+  var K = classes.lo.length, cls = classes.cls, out = new Float32Array(K), i, s, groups;
+  var key = new Int32Array(L.length).fill(-1);
+  for (i = 0; i < L.length; i++) {
+    if (valid[i] && hard[i] && edge[i] > 0.999 && bare[i] >= 0.5) key[i] = cls[i];
   }
-  return getMedian(core);
+  groups = groupValues(key, K, function(i) { return L[i]; });
+  for (s = 0; s < K; s++) {
+    out[s] = groups.start[s + 1] - groups.start[s] >= MIN_COLOR_SAMPLES ? groupMedian(groups, s) : classes.lo[s];
+  }
+  return out;
 }
 
 // How much of a pixel is shadowed (0-1), from its luma: shadows are ground

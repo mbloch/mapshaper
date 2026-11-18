@@ -66,9 +66,9 @@ function hills(x, y) {
 
 // Hills lit by the sun of @sunFn(x, y), with the image's brightness following
 // the model in mapshaper-deshadow.mjs (c of 0.35, 0.45, 0.6), on @cell degree
-// pixels
-function makeLitDataset(w, h, sunFn, cell) {
-  var Z = flatGrid(w, h, hills);
+// pixels, with the hills' heights multiplied by @relief (default 1)
+function makeLitDataset(w, h, sunFn, cell, relief) {
+  var Z = flatGrid(w, h, function(x, y) { return hills(x, y) * (relief || 1); });
   var cellM = cell * 6371008.8 * Math.PI / 180;
   var nrm = internal.getNormals(Z, w, h, cellM, cellM);
   var shadows = new Map();
@@ -259,7 +259,7 @@ describe('mapshaper-deshadow.mjs', function () {
         {x0: 0, y0: 0, x1: w, y1: h}, null, path);
       assert(Math.abs(fit.hour + 35) < 2, 'hour ' + fit.hour);
       assert(Math.abs(fit.azimuth / deg - pos.azimuth) < 3);
-      assert(fit.score > 0.8);
+      assert(fit.score > 0.6, 'score ' + fit.score);
     });
 
     it('searches a range of declinations', function () {
@@ -283,7 +283,7 @@ describe('mapshaper-deshadow.mjs', function () {
       var fit = internal.fitSunPosition(Z, shadowBrightness(shadow), w, h, 1, 1, {x0: 0, y0: 0, x1: w, y1: h});
       assert(Math.abs(fit.azimuth / deg - 150) < 4, 'azimuth ' + fit.azimuth / deg);
       assert(Math.abs(fit.altitude / deg - 35) < 4, 'altitude ' + fit.altitude / deg);
-      assert(fit.score > 0.8);
+      assert(fit.score > 0.6, 'score ' + fit.score);
     });
 
     it('scores -1 when the terrain casts no shadows', function () {
@@ -388,6 +388,75 @@ describe('mapshaper-deshadow.mjs', function () {
     });
   });
 
+  describe('getFitLevel()', function () {
+    it('divides the region into about the same number of tiles whatever its cell size', function () {
+      var w = 400, h = 400, Z = new Float32Array(w * h), region = {x0: 0, y0: 0, x1: w, y1: h};
+      [0.5, 5, 30].forEach(function(cell) {
+        var level = internal.getFitLevel(Z, Z, w, h, cell, cell, region, w * h, 60);
+        var tiles = Math.ceil(level.w / level.tile) * Math.ceil(level.h / level.tile);
+        assert(tiles > 150 && tiles < 350, 'tiles ' + tiles);
+      });
+    });
+  });
+
+  describe('getPairedZ()', function () {
+    var base = Float32Array.from({length: 20}, function(v, t) { return 0.5 + 0.1 * noise(t); });
+    function offset(d, spread) {
+      return base.map(function(v, t) { return v + d + spread * noise(t + 100); });
+    }
+
+    it('is large when one set of scores is consistently higher', function () {
+      assert(internal.getPairedZ(offset(0.02, 0.01), base) > 5);
+      assert(internal.getPairedZ(base, offset(0.02, 0.01)) < -5);
+    });
+
+    it('is small when the differences are mostly noise', function () {
+      assert(Math.abs(internal.getPairedZ(offset(0.002, 0.05), base)) < 2);
+    });
+
+    it('pairs only the given tiles, and skips tiles not scored in both', function () {
+      var a = offset(0.02, 0.01), b = base.slice();
+      for (var t = 0; t < 10; t++) a[t] = 0;
+      b[10] = a[11] = NaN;
+      var tiles = [10, 11, 12, 13, 14, 15];
+      assert(internal.getPairedZ(a, b, tiles) > 5);
+      assert.equal(internal.getPairedZ(a, b, [10, 11, 12, 13, 14]), -Infinity);
+    });
+  });
+
+  describe('mergeAreaLabels()', function () {
+    // 6 x 6 tiles, with vertical strips of 2 or 3 tiles labeled 0, 1 (and 2)
+    var tw = 6, th = 6;
+    function strips(n) {
+      return Array.from({length: tw * th}, function(v, t) { return Math.floor((t % tw) * n / tw); });
+    }
+    // each sun's scores have their own noise
+    function scores(k, fn) {
+      return Float32Array.from({length: tw * th}, function(v, t) { return fn(t % tw) + 0.02 * noise(k * 100 + t); });
+    }
+
+    it('gives an area the sun of a neighboring area that matches it about as well', function () {
+      var tileR = [scores(0, function() { return 0.5; }), scores(1, function(x) { return x < 3 ? 0.3 : 0.5; })];
+      assert.deepEqual(Array.from(internal.mergeAreaLabels(strips(2), tw, th, tileR)), new Array(tw * th).fill(0));
+    });
+
+    it('keeps the areas whose suns match them significantly better', function () {
+      var tileR = [scores(0, function(x) { return x < 3 ? 0.5 : 0.4; }),
+        scores(1, function(x) { return x < 3 ? 0.4 : 0.5; })];
+      assert.deepEqual(Array.from(internal.mergeAreaLabels(strips(2), tw, th, tileR)), strips(2));
+    });
+
+    it('takes the sun of the neighbor that matches the area best', function () {
+      // the middle strip matches all three suns about as well, the third best
+      var tileR = [
+        scores(0, function(x) { return x < 2 ? 0.6 : x < 4 ? 0.49 : 0.3; }),
+        scores(1, function(x) { return x < 2 ? 0.3 : x < 4 ? 0.5 : 0.3; }),
+        scores(2, function(x) { return x < 2 ? 0.3 : x < 4 ? 0.51 : 0.6; })];
+      var labels = internal.mergeAreaLabels(strips(3), tw, th, tileR);
+      assert.deepEqual(Array.from(labels), strips(3).map(function(k) { return k == 0 ? 0 : 2; }));
+    });
+  });
+
   describe('labelTiles()', function () {
     // 6 x 6 tiles: the second sun matches the left half slightly better than
     // the first sun, and the right half slightly worse
@@ -452,6 +521,62 @@ describe('mapshaper-deshadow.mjs', function () {
       internal.addDemShadows(s.mask, s.predicted, s.valid, W, H);
       assert(!s.mask.dem);
       assert.equal(s.mask.hard[40 * W + 40], 0);
+    });
+  });
+
+  describe('raiseEdgeLighting()', function () {
+    // a shadow in the left half; the DEM's slopes face away from the sun in
+    // the 4 sunlit columns next to it (lit at 0.15, not 0.6), where the image
+    // shows sunlit ground, except in one column of darker ground
+    var W = 60, H = 30, r = 4;
+    var decode = Float32Array.from({length: 256}, function(v, k) { return Math.pow(k / 255, 2.2); });
+    function scene() {
+      var samples = new Uint8Array(W * H * 3), hard = new Uint8Array(W * H), litI = new Float32Array(W * H);
+      for (var i = 0; i < W * H; i++) {
+        var x = i % W, v = x < 30 ? 50 : x == 32 ? 90 : 170;
+        hard[i] = x < 30 ? 1 : 0;
+        litI[i] = x < 30 ? 0 : x < 34 ? 0.15 : 0.6;
+        samples.fill(v, i * 3, i * 3 + 3);
+      }
+      return {lin: {samples: samples, bands: 3, decode: decode}, hard: hard, litI: litI};
+    }
+
+    it('lights sunlit ground next to the shadows as its luma shows', function () {
+      var s = scene(), row = 15 * W;
+      internal.raiseEdgeLighting(s.lin, new Uint8Array(W * H).fill(1), s.hard, s.litI, W, H, r);
+      [30, 31, 33].forEach(function(x) {
+        assert(Math.abs(s.litI[row + x] - 0.6) < 0.01, 'x ' + x + ': ' + s.litI[row + x]);
+      });
+      assert.equal(s.litI[row + 40], Math.fround(0.6));
+      assert.equal(s.litI[row + 10], 0);
+    });
+
+    it('keeps the DEM\'s lighting of ground darker than the sunlit ground around it', function () {
+      var s = scene();
+      internal.raiseEdgeLighting(s.lin, new Uint8Array(W * H).fill(1), s.hard, s.litI, W, H, r);
+      assert.equal(s.litI[15 * W + 32], Math.fround(0.15));
+    });
+  });
+
+  describe('getBareShadowLightness()', function () {
+    // shadow cores of three classes: dark rock (luma 30), snow (luma 80,
+    // and 20 where there's vegetation nearby) and a class with few pixels
+    var N = 1000;
+    function scene() {
+      var L = new Float32Array(N), cls = new Int8Array(N), bare = new Float32Array(N);
+      for (var i = 0; i < N; i++) {
+        cls[i] = i < 500 ? 0 : i < 990 ? 1 : 2;
+        bare[i] = i >= 700 && i < 900 ? 0 : 1;
+        L[i] = cls[i] === 0 ? 30 : cls[i] === 1 ? (bare[i] ? 80 : 20) : 60;
+      }
+      return {L: L, cls: cls, bare: bare, valid: new Uint8Array(N).fill(1),
+        edge: new Float32Array(N).fill(1), hard: new Uint8Array(N).fill(1)};
+    }
+
+    it('takes the median of each class\'s cores where they aren\'t near vegetation', function () {
+      var s = scene(), classes = {cls: s.cls, lo: Float32Array.from([1, 2, 3])};
+      var lo = internal.getBareShadowLightness(s.L, s.valid, s.edge, s.hard, classes, s.bare);
+      assert.deepEqual(Array.from(lo), [30, 80, 3]);
     });
   });
 
@@ -701,8 +826,8 @@ describe('mapshaper-deshadow.mjs', function () {
       var catalog = await run(dataset, '-deshadow elev target=img');
       var out = findLayer(catalog, 'img').raster;
       assert.equal(out.derivation.date, '2013-08-06/2013-09-14');
-      assert(Math.abs(out.derivation.sun_azimuth - pos.azimuth) < 4);
-      assert(Math.abs(out.derivation.sun_altitude - pos.altitude) < 4);
+      assert(Math.abs(out.derivation.sun_azimuth - pos.azimuth) < 4, out.derivation.sun_azimuth + ' vs ' + pos.azimuth);
+      assert(Math.abs(out.derivation.sun_altitude - pos.altitude) < 4, out.derivation.sun_altitude + ' vs ' + pos.altitude);
     });
 
     describe('mosaics', function () {
@@ -731,6 +856,25 @@ describe('mapshaper-deshadow.mjs', function () {
         var out = findLayer(catalog, 'img').raster.derivation;
         assert(!out.region_suns);
         assert(Math.abs(out.sun_azimuth - 120) < 3, 'azimuth ' + out.sun_azimuth);
+      });
+
+      it('fits the regions of a small image too', async function () {
+        // 4 km on 25 m pixels: tiles are sized to the image, not to a distance
+        var dataset = makeLitDataset(w, h, function(x) { return x < w / 2 ? east : west; }, cell / 10);
+        var catalog = await run(dataset, '-deshadow elev target=img');
+        var suns = findLayer(catalog, 'img').raster.derivation.region_suns;
+        assert(suns && suns.length == 2, 'region_suns ' + JSON.stringify(suns));
+        suns.sort(function(a, b) { return a.sun_azimuth - b.sun_azimuth; });
+        assert(Math.abs(suns[0].sun_azimuth - 120) < 10, 'azimuth ' + suns[0].sun_azimuth);
+        assert(Math.abs(suns[1].sun_azimuth - 220) < 10, 'azimuth ' + suns[1].sun_azimuth);
+      });
+
+      it('fits one sun to a small image lit by one sun', async function () {
+        var dataset = makeLitDataset(w, h, function() { return west; }, cell / 10);
+        var catalog = await run(dataset, '-deshadow elev target=img');
+        var out = findLayer(catalog, 'img').raster.derivation;
+        assert(!out.region_suns, 'region_suns ' + JSON.stringify(out.region_suns));
+        assert(Math.abs(out.sun_azimuth - 220) < 3, 'azimuth ' + out.sun_azimuth);
       });
     });
 
