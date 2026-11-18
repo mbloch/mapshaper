@@ -39,17 +39,13 @@ cmd.blend = function(lyr, dataset, source, opts) {
     stop('-blend does not support rotated rasters');
   }
   settings = getBlendSettings(opts);
-  shading = getShadingAmounts(source.layer.raster, readBaseColor(opts.base_color));
+  shading = getShadingAmounts(source.layer.raster, readColorOption(opts.base_color, 'base-color'));
   amounts = resampleShadingAmounts(shading, grid);
   if (amounts == shading.amounts) amounts = amounts.slice();
   scaleShadingAmounts(amounts, settings.strength[0], settings.strength[1]);
   image = getImagePixels(lyr.raster);
-  samples = blendShadingPixels(image.samples, image.bands, amounts, {
-    shadow: shading.shadow,
-    highlight: shading.highlight,
-    shadowChroma: settings.chroma[0],
-    highlightChroma: settings.chroma[1]
-  });
+  samples = blendShadingPixels(image.samples, image.bands, amounts,
+    getBlendOptions(shading, settings));
   out = {
     raster_type: 'grid',
     raster: getColoredRaster(lyr.raster, grid, {samples: samples, bands: image.bands},
@@ -82,18 +78,13 @@ cmd.blendDrawnLayers = async function(catalog, layers, source, opts) {
     stop('-blend does not support rotated rasters');
   }
   settings = getBlendSettings(opts);
-  shading = getShadingAmounts(source.layer.raster, readBaseColor(opts.base_color));
+  shading = getShadingAmounts(source.layer.raster, readColorOption(opts.base_color, 'base-color'));
   drawing = getDrawingGrid(catalog, layers, getRasterGrid(source.layer.raster));
   grid = drawing.grid;
   amounts = resampleShadingAmounts(shading, grid);
   scaleShadingAmounts(amounts, settings.strength[0], settings.strength[1]);
   pixels = await drawLayersOnGrid(layers, grid, drawing.scale);
-  blendOpts = {
-    shadow: shading.shadow,
-    highlight: shading.highlight,
-    shadowChroma: settings.chroma[0],
-    highlightChroma: settings.chroma[1]
-  };
+  blendOpts = getBlendOptions(shading, settings);
   samples = blendShadingPixels(pixels, 4, amounts, blendOpts);
   if (opts.overlay) {
     samples = getShadingOverlayPixels(pixels, samples, amounts, blendOpts);
@@ -154,19 +145,38 @@ function getDrawingScale(catalog, layers, grid) {
 }
 
 function getBlendSettings(opts) {
-  return {
+  var settings = {
     strength: readShadowHighlightPair(opts.strength, DEFAULT_STRENGTH, 'strength'),
     chroma: readShadowHighlightPair(opts.chroma, DEFAULT_CHROMA, 'chroma'),
     base_color: opts.base_color || null
   };
+  // recorded only if set, so that a blend's settings name the colors it was
+  // given rather than the hillshade's
+  if (opts.shadow_color) settings.shadow_color = opts.shadow_color;
+  if (opts.highlight_color) settings.highlight_color = opts.highlight_color;
+  return settings;
 }
 
-function readBaseColor(str) {
+// blendShadingPixels() options. shadow-color= and highlight-color= replace
+// the hillshade's colors in the stacking, after its amounts have been read
+// with its own (which tell a transparent hillshade's shadows from its
+// highlights)
+function getBlendOptions(shading, settings) {
+  return {
+    shadow: readColorOption(settings.shadow_color, 'shadow-color') || shading.shadow,
+    highlight: readColorOption(settings.highlight_color, 'highlight-color') || shading.highlight,
+    shadowChroma: settings.chroma[0],
+    highlightChroma: settings.chroma[1]
+  };
+}
+
+// Returns {r, g, b}, or null if @str is empty
+function readColorOption(str, name) {
   var color;
   if (!str) return null;
   color = parseColor(str);
-  if (!color) stop('Unsupported base-color=', str);
-  return color;
+  if (!color) stop('Unsupported ' + name + '=', str);
+  return {r: color.r, g: color.g, b: color.b};
 }
 
 // One value for both shadows and highlights, or shadow,highlight

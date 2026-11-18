@@ -2672,6 +2672,12 @@ export function getOptionParser() {
       describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color, above 1 adds color; one value, or shadows,highlights (default is 0,1)',
       type: 'numbers'
     })
+    .option('shadow-color', {
+      describe: 'color of shadows, in place of the hillshade\'s (shows with chroma below 1)'
+    })
+    .option('highlight-color', {
+      describe: 'color of highlights, in place of the hillshade\'s (shows with chroma below 1)'
+    })
     .option('base-color', {
       describe: 'color of flat ground in an opaque hillshade not made by -hillshade (default is its most common color)'
     })

@@ -11,7 +11,9 @@ var hiddenLayers = new WeakSet(); // hillshades left out of the map
 
 // @source the hillshade layer
 // @shading its shading amounts, from getShadingAmounts()
-// @settings {strength: [shadows, highlights], chroma: [shadows, highlights]}
+// @settings {strength: [shadows, highlights], chroma: [shadows, highlights],
+//   shadow, highlight}, the colors being {r, g, b} in place of the
+//   hillshade's, or null
 // @exact blend the full preview, rather than a reduced copy of a large
 //   preview, which is good enough while a slider is being dragged
 export function setRasterBlendPreview(layer, source, shading, settings, exact) {
@@ -64,8 +66,8 @@ export function getBlendedRasterCanvas(preview, bbox, blend) {
   internal.scaleShadingAmounts(target.amounts, blend.settings.strength[0],
     blend.settings.strength[1], target.scaled);
   internal.blendShadingPixels(src.pixels, 4, target.scaled, {
-    shadow: blend.shading.shadow,
-    highlight: blend.shading.highlight,
+    shadow: blend.settings.shadow || blend.shading.shadow,
+    highlight: blend.settings.highlight || blend.shading.highlight,
     shadowChroma: blend.settings.chroma[0],
     highlightChroma: blend.settings.chroma[1]
   }, target.imageData.data);

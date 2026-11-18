@@ -301,6 +301,35 @@ describe('mapshaper-blend.mjs', function () {
       assert(shaded > 500);
     });
 
+    it('shadow-color= and highlight-color= replace the hillshade\'s colors in the stacking', async function () {
+      var shadow = [40, 30, 120], highlight = [255, 230, 180];
+      var catalog = await run(makeDataset(30, 30, ridge, [40, 160, 60]),
+        '-hillshade target=dem name=hs -blend hs target=img chroma=0 + name=out ' +
+        'shadow-color=#281e78 highlight-color=#ffe6b4');
+      var hs = findLayer(catalog, 'hs').raster.grid.samples;
+      var out = findLayer(catalog, 'out').raster.grid.samples;
+      var i, a, k, color, expected, shadows = 0, highlights = 0;
+      for (i = 0; i < 900; i++) {
+        a = hs[i * 4 + 3] / 255;
+        if (a === 0) continue;
+        // the hillshade's own colors still tell its shadows from its highlights
+        color = hs[i * 4] < 128 ? shadow : highlight;
+        if (color == shadow) shadows++; else highlights++;
+        for (k = 0; k < 3; k++) {
+          expected = Math.round([40, 160, 60][k] + (color[k] - [40, 160, 60][k]) * a);
+          assert(Math.abs(out[i * 3 + k] - expected) <= 1);
+        }
+      }
+      assert(shadows > 100 && highlights > 100);
+      assert.equal(findLayer(catalog, 'out').raster.derivation.shadow_color, '#281e78');
+      assert.equal(findLayer(catalog, 'out').raster.derivation.highlight_color, '#ffe6b4');
+    });
+
+    it('refuses an unsupported color', async function () {
+      await assert.rejects(run(makeDataset(20, 20, ridge, [40, 160, 60]),
+        '-hillshade target=dem name=hs -blend hs target=img shadow-color=nope'), /shadow-color=/);
+    });
+
     it('records its settings and replaces the target and the hillshade', async function () {
       var catalog = await run(makeDataset(20, 20, ridge, [40, 160, 60]),
         '-hillshade target=dem name=hs -blend hs target=img chroma=0.5');

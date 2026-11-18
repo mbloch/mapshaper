@@ -5905,6 +5905,18 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	min-width: 0;
 }
 
+/* A shading color, laid out as a slider row: caption in the sliders' column,
+   then the field, as wide as a slider (short of the readout's 28px) */
+.label-style-panel .raster-blend-color-row {
+	margin-top: 2px;
+}
+
+.label-style-panel .raster-blend-color-row .label-color-field {
+	flex: 1;
+	min-width: 0;
+	margin-right: 28px;
+}
+
 .raster-blend-note {
 	margin-top: 6px;
 	font-size: 11px;

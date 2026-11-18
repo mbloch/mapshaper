@@ -41,6 +41,14 @@ test('the blend panel previews a hillshade on a raster and applies -blend, as on
   }).toBe(true);
   stronger = await readMapColors(page);
 
+  await expect(panel.getByLabel('Shadows color')).toHaveValue('#000000');
+  await panel.getByLabel('Shadows color').fill('#2a2550');
+  await panel.getByLabel('Shadows color').press('Enter');
+  await expect.poll(function() {
+    return readMapColors(page).then(function(colors) { return colors.join() != stronger.join(); });
+  }).toBe(true);
+  stronger = await readMapColors(page);
+
   await panel.getByRole('button', {name: 'Apply'}).click();
   await expect(panel).toBeHidden();
   expect(await getMode(page)).toBe('off');
@@ -48,7 +56,7 @@ test('the blend panel previews a hillshade on a raster and applies -blend, as on
   var blendCommands = (await getSessionCommands(page)).filter(function(cmd) {
     return /^-blend/.test(cmd);
   });
-  expect(blendCommands).toEqual(['-blend source=relief strength=2,1']);
+  expect(blendCommands).toEqual(['-blend source=relief strength=2,1 shadow-color=#2a2550']);
   await expect.poll(function() {
     return readMapColors(page).then(function(colors) { return colors.join(); });
   }).toBe(stronger.join());

@@ -235,12 +235,25 @@ transparent target pixels, and no separate `mode=normal` is needed.
 
 ### Hue
 
-With `chroma=` below 1, the hillshade's own `shadow-color=` and
-`highlight-color=` show through in proportion: a hillshade made with a
-blue-violet shadow color and a warm highlight color gives Imhof-style
-colored light at `chroma=0.5`. That may make separate tint options
-unnecessary. If not, a later `shadow-tint=` and `highlight-tint=` would
-shift hues independently of the hillshade's colors.
+With `chroma=` below 1, the shading's colors show through in proportion: a
+blue-violet shadow color and a warm highlight color give Imhof-style
+colored light at `chroma=0.5`. The colors are the hillshade's own (its
+`shadow-color=` and `highlight-color=`, or black and white), or
+`-blend`'s `shadow-color=` and `highlight-color=`, which replace them:
+
+```
+-blend relief shadow-color=#2a2550 highlight-color=#fff3d6 chroma=0.5
+```
+
+The replacement happens after the hillshade is read, so a transparent
+hillshade's shadows and highlights are still told apart by its own colors.
+The colors are stacked at the shading's amounts like the hillshade's, so a
+color's lightness changes the lightness of the result as well as its hue (a
+lighter shadow color makes shadows fainter), at any `chroma=`; only the hue
+and chroma depend on `chroma=`. That makes the colors a way to tint the
+relief without re-running `-hillshade`, and the blend panel's color fields
+a way to try them out. The derivation records them as `shadow_color` and
+`highlight_color`, if given.
 
 ### Other blend modes
 
@@ -422,8 +435,11 @@ rounding of the alpha channel.
   target's frame (`gui-blend-sources.mjs`; layers made by -hillshade, or
   gray 8-bit rasters from elsewhere, as `rasterLooksLikeHillshade()`
   decides, leaving out those -blend would stop on)
-  and shadow and highlight sliders for `strength=` and `chroma=`
-  (`gui-blend-settings.mjs`). The map shows a blended copy of the target's
+  and a Shadows and a Highlights section, each with sliders for its half
+  of `strength=` and `chroma=` and a color for `shadow-color=` or
+  `highlight-color=` (`gui-blend-settings.mjs`). A color starts as the
+  hillshade's own and is written only once it differs; `base-color=` is
+  left to the command line. The map shows a blended copy of the target's
   preview and leaves out the hillshade (`gui-raster-blend-preview.mjs`;
   a reduced copy of a large preview while a slider is dragged); Apply
   commits a `-blend` command, which replaces the target and removes the
@@ -437,8 +453,8 @@ rounding of the alpha channel.
 
 1. Raster targets; shadow-style and opaque hillshades read from their
    derivations; same or resampled grids; `strength=` and `chroma=`.
-2. Vector targets and `overlay` (done); `shadow-tint=` and
-   `highlight-tint=` if the hillshade's own colors aren't enough.
+2. Vector targets and `overlay` (done); `shadow-color=` and
+   `highlight-color=` in place of the hillshade's own colors (done).
    (`base-color=` and the guess for hillshades from elsewhere are done.)
 3. GUI panel (done, for raster targets); standard modes for opaque hillshades; a `-composite` command
    if chaining isn't enough.

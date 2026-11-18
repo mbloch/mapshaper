@@ -1,18 +1,19 @@
 import { El } from './gui-el';
 import { internal } from './gui-core';
 import { releasePanelFocus } from './gui-panel-focus';
-import { makePanelActionButton, makePanelSection } from './gui-panel-controls';
+import { makeColorField, makePanelActionButton, makePanelSection } from './gui-panel-controls';
+import { ColorPicker, layerColorPresetRows, toSixDigitHex } from './gui-color-picker';
 import { runGuiEditCommand } from './gui-edit-command';
 import { clearRasterBlendPreview, setRasterBlendPreview } from './gui-raster-blend-preview';
 import { blendIsAvailable, getBlendSourceLayers } from './gui-blend-sources';
 import { formatLayerNameForDisplay } from './gui-layer-utils';
 import {
-  BLEND_SECTIONS, BLEND_SLIDERS, getBlendCommand, getBlendOptionValues, getDefaultBlendSettings,
-  roundBlendValue
+  BLEND_SECTIONS, BLEND_SLIDERS, getBlendColorSetting, getBlendCommand, getBlendOptionValues,
+  getDefaultBlendSettings, hexToRgb, rgbToHex, roundBlendValue
 } from './gui-blend-settings';
 
-// The 'blend' mode: a menu of hillshade layers and sliders that preview
-// -blend on a raster layer. The map shows a blended copy of the raster's
+// The 'blend' mode: a menu of hillshade layers, and sliders and colors that
+// preview -blend on a raster layer. The map shows a blended copy of the raster's
 // preview in place of the raster and the hillshade, and neither layer is
 // changed until Apply runs -blend, which is what goes into the session
 // history and the undo stack (and which, as on the command line, replaces
@@ -23,6 +24,8 @@ export function RasterBlendTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel raster-tone-panel raster-blend-panel').appendTo(parent).hide();
   var controls = {}; // slider name -> {input, readout}
+  var colorControls = {}; // settings key of a section's color -> {input, chit, picker}
+  var settingPicker = false; // the picker echoes the colors it is given to onPreview
   var settings = getDefaultBlendSettings();
   var targetLayer = null;
   var sources = []; // [{layer, dataset}], as offered by the menu
@@ -75,10 +78,11 @@ export function RasterBlendTool(gui) {
     BLEND_SECTIONS.forEach(function(section) {
       var el = makePanelSection(slidersEl, section.title);
       BLEND_SLIDERS.filter(function(slider) {
-        return slider.option == section.option;
+        return slider.side == section.side;
       }).forEach(function(slider) {
-        controls[slider.name] = addSliderRow(el, slider);
+        controls[slider.name] = addSliderRow(el, slider, section);
       });
+      colorControls[section.color] = addColorRow(el, section);
     });
     btnRow = El('div').addClass('label-style-row label-panel-button-row raster-tone-buttons').appendTo(panel);
     keepLabel = El('label').addClass('raster-blend-keep-label').appendTo(btnRow);
@@ -89,12 +93,12 @@ export function RasterBlendTool(gui) {
     applyBtn = makePanelActionButton(btnRow, 'Apply', apply);
   }
 
-  function addSliderRow(parentEl, slider) {
+  function addSliderRow(parentEl, slider, section) {
     var row = El('div').addClass('label-style-row raster-tone-slider-row').appendTo(parentEl);
     var readout;
     El('span').addClass('raster-tone-slider-label').appendTo(row).text(slider.label);
     var input = El('input').attr('type', 'range').attr('min', slider.min).attr('max', slider.max)
-      .attr('step', 0.01).attr('aria-label', slider.label + ' ' + slider.option).appendTo(row)
+      .attr('step', 0.01).attr('aria-label', section.title + ' ' + slider.label.toLowerCase()).appendTo(row)
       .on('input', function() {
         settings[slider.name] = roundBlendValue(+input.node().value);
         showSliderValue(slider);
@@ -112,6 +116,78 @@ export function RasterBlendTool(gui) {
     });
     readout = El('span').addClass('raster-tone-slider-value').appendTo(row);
     return {row: row, input: input, readout: readout};
+  }
+
+  // The color stacked in place of the hillshade's own, which it starts as. A
+  // drag in the picker previews on the map, as a drag of a slider does; an
+  // emptied field goes back to the hillshade's color.
+  function addColorRow(parentEl, section) {
+    var row = El('div').addClass('label-style-row raster-tone-slider-row raster-blend-color-row').appendTo(parentEl);
+    var control = {};
+    El('span').addClass('raster-tone-slider-label').appendTo(row).text('Color');
+    control.chit = El('div').addClass('label-color-chit').attr('role', 'button')
+      .on('click', function() {
+        control.picker.toggle();
+      });
+    control.input = El('input').attr('type', 'text')
+      .attr('aria-label', section.title + ' color')
+      .on('change', function() {
+        var str = control.input.node().value.trim();
+        var hex = toSixDigitHex(str);
+        if (str && !hex) {
+          showColor(section);
+          return;
+        }
+        setColor(section, hex, true);
+        showColor(section);
+        releaseFocus();
+      });
+    makeColorField(row, control.chit, control.input);
+    settingPicker = true;
+    control.picker = new ColorPicker(row, {
+      presetRows: layerColorPresetRows,
+      onPreview: function(hex) {
+        if (!settingPicker) setColor(section, hex, false);
+      },
+      onChange: function(hex) {
+        setColor(section, hex, true);
+      }
+    });
+    settingPicker = false;
+    return control;
+  }
+
+  function setColor(section, hex, exact) {
+    var control = colorControls[section.color];
+    settings[section.color] = getBlendColorSetting(hex, getOwnColor(section));
+    hex = settings[section.color] || getOwnColor(section);
+    control.input.node().value = hex;
+    control.chit.css('background-color', hex);
+    schedulePreview(exact);
+  }
+
+  // Shows the section's color in the field and the picker
+  function showColor(section) {
+    var control = colorControls[section.color];
+    var hex = settings[section.color] || getOwnColor(section);
+    settingPicker = true;
+    control.picker.setColor(hex);
+    settingPicker = false;
+    control.input.node().value = hex;
+    control.chit.css('background-color', hex);
+  }
+
+  // The hillshade's own color for a section, as '#rrggbb'
+  function getOwnColor(section) {
+    var shading = source && getShading(source.layer);
+    if (!shading) return section.side === 0 ? '#000000' : '#ffffff';
+    return rgbToHex(section.side === 0 ? shading.shadow : shading.highlight);
+  }
+
+  function hidePickers() {
+    BLEND_SECTIONS.forEach(function(section) {
+      colorControls[section.color].picker.hide();
+    });
   }
 
   function updateSlider(slider) {
@@ -143,6 +219,7 @@ export function RasterBlendTool(gui) {
       pendingFrame = null;
     }
     pendingExact = false;
+    hidePickers();
     if (!keepPreview) {
       clearRasterBlendPreview(targetLayer);
       gui.dispatchEvent('map-needs-refresh');
@@ -181,9 +258,17 @@ export function RasterBlendTool(gui) {
     selectSource(sources.find(function(o) { return o.layer == prev; }) || sources[0] || null);
   }
 
+  // A color that is the hillshade's own follows the hillshade; one that was
+  // changed stays (unless it is the new hillshade's own)
   function selectSource(o) {
     source = o;
     if (source) sourceSelect.node().value = String(sources.indexOf(source));
+    BLEND_SECTIONS.forEach(function(section) {
+      if (settings[section.color]) {
+        settings[section.color] = getBlendColorSetting(settings[section.color], getOwnColor(section));
+      }
+      showColor(section);
+    });
     updatePanelState();
     schedulePreview(true);
   }
@@ -201,6 +286,9 @@ export function RasterBlendTool(gui) {
     slidersEl.classed('disabled', !shading);
     BLEND_SLIDERS.forEach(function(slider) {
       controls[slider.name].input.node().disabled = !shading;
+    });
+    BLEND_SECTIONS.forEach(function(section) {
+      colorControls[section.color].input.node().disabled = !shading;
     });
     applyBtn.classed('disabled', !shading);
     keepLabel.classed('disabled', !shading);
@@ -273,9 +361,16 @@ export function RasterBlendTool(gui) {
     if (!shading || targetIsReprojected()) {
       clearRasterBlendPreview(targetLayer);
     } else {
-      setRasterBlendPreview(targetLayer, source.layer, shading, getBlendOptionValues(settings), exact);
+      setRasterBlendPreview(targetLayer, source.layer, shading, getPreviewSettings(), exact);
     }
     gui.dispatchEvent('map-needs-refresh');
+  }
+
+  function getPreviewSettings() {
+    var o = getBlendOptionValues(settings);
+    o.shadow = settings.shadow_color ? hexToRgb(settings.shadow_color) : null;
+    o.highlight = settings.highlight_color ? hexToRgb(settings.highlight_color) : null;
+    return o;
   }
 
   function releaseFocus() {

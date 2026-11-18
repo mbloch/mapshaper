@@ -1,12 +1,15 @@
 import assert from 'assert';
 import {
-  BLEND_SLIDERS, getBlendCommand, getBlendOptionValues, getDefaultBlendSettings
+  BLEND_SLIDERS, getBlendColorSetting, getBlendCommand, getBlendOptionValues,
+  getDefaultBlendSettings, hexToRgb, rgbToHex
 } from '../src/gui/gui-blend-settings.mjs';
 
 describe('gui-blend-settings.mjs', function () {
   it('defaults are -blend\'s defaults', function () {
-    assert.deepEqual(getBlendOptionValues(getDefaultBlendSettings()),
-      {strength: [1, 1], chroma: [0, 1]});
+    var settings = getDefaultBlendSettings();
+    assert.deepEqual(getBlendOptionValues(settings), {strength: [1, 1], chroma: [0, 1]});
+    assert.equal(settings.shadow_color, null);
+    assert.equal(settings.highlight_color, null);
     assert.equal(BLEND_SLIDERS.length, 4);
   })
 
@@ -32,5 +35,19 @@ describe('gui-blend-settings.mjs', function () {
     settings.highlight_chroma = 0.5;
     assert.equal(getBlendCommand(settings, '"my relief"'),
       '-blend source="my relief" strength=0.8 chroma=0.5');
+  })
+
+  it('writes colors that are not the hillshade\'s own', function () {
+    var settings = getDefaultBlendSettings();
+    settings.shadow_color = getBlendColorSetting('#2A2550', '#000000');
+    settings.highlight_color = getBlendColorSetting('#FFFFFF', '#ffffff');
+    assert.equal(settings.highlight_color, null);
+    assert.equal(getBlendCommand(settings, 'relief'), '-blend source=relief shadow-color=#2a2550');
+    assert.equal(getBlendColorSetting('', '#000000'), null);
+  })
+
+  it('converts colors to and from hex', function () {
+    assert.equal(rgbToHex({r: 42, g: 5, b: 255}), '#2a05ff');
+    assert.deepEqual(hexToRgb('#2a05ff'), {r: 42, g: 5, b: 255});
   })
 })

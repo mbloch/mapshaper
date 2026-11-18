@@ -2038,6 +2038,10 @@ Apply the shadows and highlights of a hillshade layer (made by `-hillshade`) to 
 
 `chroma=`  Share of the target's color kept under the shading: 0 is plain stacking, 1 keeps the color, and values above 1 make it more vivid; one value, or two values for shadows and highlights (default is 0,1).
 
+`shadow-color=`  Color of the shadows, in place of the hillshade's own (black, or the hillshade's `shadow-color=`). Its hue shows where `chroma=` is below 1; its lightness always affects how dark the shadows are.
+
+`highlight-color=`  Color of the highlights, in place of the hillshade's own (white, or the hillshade's `highlight-color=`). Its hue shows where `chroma=` is below 1, so with the default `chroma=0,1`, lower the highlights' chroma to see it.
+
 `base-color=`  Color of flat ground in an opaque hillshade not made by `-hillshade` (default is its most common color).
 
 `overlay`  Keep the targets and recolor the hillshade, so that drawn over the targets it looks like the blend.
