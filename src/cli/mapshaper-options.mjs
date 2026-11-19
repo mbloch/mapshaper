@@ -2758,6 +2758,10 @@ export function getOptionParser() {
     .option('image-shadows', {
       // describe: 'on: use the shadows found in the image even if they are much larger than the DEM\'s; off: use the DEM\'s shadows'
     })
+    .option('workers', {
+      // describe: 'number of worker threads that fit the sun's position (default depends on image size and CPU; 0 is off)',
+      type: 'integer'
+    })
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);

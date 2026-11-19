@@ -121,6 +121,73 @@ function makeAspectDataset(w, h, sun) {
   return gridDataset(w, h, Z, img, cell);
 }
 
+// Rugged terrain on 1.5 m pixels, lit by the sun of @sunFn(x, y) ({azimuth,
+// altitude} in degrees), as in aerial imagery: hills with slopes at several
+// scales, steeper where @opts.rugged(x, y) (0 to 1, default 1) is larger,
+// with a block casting sharp shadows every 50 pixels where it's above 0.3;
+// ground of patchy brightness (by @opts.patches, default 0.35), darker on
+// slopes facing north with @opts.forest (as forest often is); with
+// @opts.trees, trees and their shadows, which the DEM lacks, and the DEM
+// smoothed over 3 x 3 pixels; and with @opts.haze added to every band
+function makeSceneDataset(w, h, sunFn, opts) {
+  var cellM = 1.5, rugged = opts.rugged || function() { return 1; }, patches = opts.patches || 0.35;
+  var Z = flatGrid(w, h, function(x, y) {
+    var r = rugged(x, y), z = [32, 64, 128, 256, 512].reduce(function(z, L, o) {
+      return z + (0.05 + 0.3 * r) * L * cellM / 2 * stretch(function(i, j) {
+        return noise(j * 7919 + i * 31 + o * 104729);
+      }, L, L)(x, y);
+    }, 0);
+    var k = Math.floor(y / 50) * 1000 + Math.floor(x / 50), size = 8 + 5 * (1 + noise(k * 5 + 1));
+    var ox = 5 + 15 * (1 + noise(k * 5 + 2)), oy = 5 + 15 * (1 + noise(k * 5 + 3));
+    var block = r > 0.3 && x % 50 >= ox && x % 50 < ox + size && y % 50 >= oy && y % 50 < oy + size;
+    return block ? z + r * (10 + 8 * noise(k * 5 + 4)) : z;
+  });
+  var nrm = internal.getNormals(Z, w, h, cellM, cellM), shadows = new Map();
+  var img = new Uint8Array(w * h * 3), lit = [0.3, 0.25, 0.2], c = [0.35, 0.45, 0.6];
+  for (var i = 0; i < w * h; i++) {
+    var x = i % w, y = Math.floor(i / w), s = sunFn(x, y), az = s.azimuth * deg, alt = s.altitude * deg;
+    var key = s.azimuth + ',' + s.altitude;
+    if (!shadows.has(key)) shadows.set(key, internal.castTerrainShadow(Z, w, h, cellM, cellM, {azimuth: az, altitude: alt}));
+    var I = shadows.get(key)[i] ? 0 : Math.max(0, nrm.x[i] * Math.sin(az) * Math.cos(alt) +
+      nrm.y[i] * Math.cos(az) * Math.cos(alt) + nrm.z[i] * Math.sin(alt));
+    if (I !== I) I = Math.sin(alt);
+    var albedo = Math.exp(patches * (stretch(function(i, j) { return noise(j * 1000 + i + 99); }, 120, 120)(x, y) +
+      stretch(function(i, j) { return noise(j * 1000 + i + 98); }, 40, 40)(x, y)));
+    if (opts.forest) albedo *= Math.exp(-1.1 * Math.max(0, Math.min(1, (nrm.y[i] || 0) * 4)));
+    if (opts.trees && treeCover(x, y)) albedo *= treeShade(x, y, az, alt);
+    for (var k = 0; k < 3; k++) {
+      var v = albedo * lit[k] * (I + c[k]) / (Math.sin(alt) + c[k]) * (1 + 0.08 * noise(i * 3 + k)) + (opts.haze || 0);
+      img[i * 3 + k] = Math.round(255 * Math.min(1, Math.pow(v, 1 / 2.2)));
+    }
+  }
+  return gridDataset(w, h, opts.trees ? smoothGrid(Z, w, h) : Z, img, cellM / (6371008.8 * deg));
+}
+
+function treeCover(x, y) {
+  return stretch(function(i, j) { return noise(j * 1000 + i + 96); }, 80, 80)(x, y) > -0.2;
+}
+
+// a tree every 6 pixels, with a dark crown and a shadow away from the sun
+function treeShade(x, y, az, alt) {
+  var tx = Math.floor(x / 6), ty = Math.floor(y / 6), k = ty * 3001 + tx;
+  var dx = x - (tx * 6 + 3 + 2 * noise(k * 3)), dy = y - (ty * 6 + 3 + 2 * noise(k * 3 + 1));
+  var len = 1.8 / Math.tan(Math.max(alt, 0.2)), sx = dx + Math.sin(az) * len, sy = dy - Math.cos(az) * len;
+  return dx * dx + dy * dy < 5 ? 0.55 : sx * sx + sy * sy < 5 ? 0.45 : 1;
+}
+
+// means over 3 x 3 cells
+function smoothGrid(Z, w, h) {
+  return flatGrid(w, h, function(x, y) {
+    var sum = 0;
+    for (var j = -1; j <= 1; j++) {
+      for (var i = -1; i <= 1; i++) {
+        sum += Z[Math.min(h - 1, Math.max(0, y + j)) * w + Math.min(w - 1, Math.max(0, x + i))];
+      }
+    }
+    return sum / 9;
+  });
+}
+
 // A lat-long dataset with an elevation layer and an RGB image of the same
 // grid, at TEST_LATITUDE (where the tests' suns can be), with square cells
 function gridDataset(w, h, Z, img, cell) {
@@ -286,11 +353,49 @@ describe('mapshaper-deshadow.mjs', function () {
       assert(fit.score > 0.6, 'score ' + fit.score);
     });
 
+    it('finds the sun position of shadows beside a lake darker than them', function () {
+      var w = 150, h = 150;
+      var Z = flatGrid(w, h, mesas);
+      var sun = {azimuth: 150 * deg, altitude: 35 * deg};
+      var shadow = internal.castTerrainShadow(Z, w, h, 1, 1, sun);
+      // south of the tallest mesa, where a sun from the north would shadow it
+      var B = Float32Array.from(shadow, function(s, i) {
+        var x = i % w, y = Math.floor(i / w), lake = x >= 45 && x < 90 && y >= 70 && y < 98;
+        return (lake ? 0.08 : s ? 0.35 : 1) * (1 + 0.1 * noise(i));
+      });
+      var fit = internal.fitSunPosition(Z, B, w, h, 1, 1, {x0: 0, y0: 0, x1: w, y1: h});
+      assert(Math.abs(fit.azimuth / deg - 150) < 4, 'azimuth ' + fit.azimuth / deg);
+      assert(Math.abs(fit.altitude / deg - 35) < 4, 'altitude ' + fit.altitude / deg);
+    });
+
     it('scores -1 when the terrain casts no shadows', function () {
       var w = 40, h = 40;
       var fit = internal.fitSunPosition(flatGrid(w, h), new Float32Array(w * h).fill(1), w, h, 1, 1,
         {x0: 0, y0: 0, x1: w, y1: h});
       assert.equal(fit.score, -1);
+    });
+  });
+
+  describe('shadowsConfirmSun()', function () {
+    var w = 150, h = 150, Z = flatGrid(w, h, mesas);
+    var sun = {azimuth: 150 * deg, altitude: 35 * deg};
+    // ground cover that varies more than the shading
+    function level(shadow) {
+      var B = Float32Array.from(shadow, function(s, i) {
+        return (s ? 0.2 : 1) * Math.exp(0.6 * noise(Math.floor(i / 9) * 7 + 3));
+      });
+      return {Z: Z, B: B, w: w, h: h, cellW: 1, cellH: 1, region: {x0: 0, y0: 0, x1: w, y1: h}, slopeStep: 3};
+    }
+
+    it('confirms a sun whose cast shadows are dark', function () {
+      var shadow = internal.castTerrainShadow(Z, w, h, 1, 1, sun);
+      assert(internal.shadowsConfirmSun(level(shadow), sun));
+    });
+
+    it('doesn\'t confirm a sun whose cast shadows aren\'t dark', function () {
+      assert(!internal.shadowsConfirmSun(level(new Uint8Array(w * h)), sun));
+      var other = internal.castTerrainShadow(Z, w, h, 1, 1, {azimuth: 240 * deg, altitude: 35 * deg});
+      assert(!internal.shadowsConfirmSun(level(other), sun));
     });
   });
 
@@ -369,25 +474,6 @@ describe('mapshaper-deshadow.mjs', function () {
     });
   });
 
-  describe('getEdgeAltitude()', function () {
-    var w = 150, h = 150, region = {x0: 0, y0: 0, x1: w, y1: h}, azimuth = 150 * deg;
-    function edgeAltitude(Z, altitude) {
-      var shadow = internal.castTerrainShadow(Z, w, h, 1, 1, {azimuth: azimuth, altitude: altitude * deg});
-      var level = internal.getFitLevel(Z, shadowBrightness(shadow), w, h, 1, 1, region, w * h, 60);
-      return internal.getEdgeAltitude(level, azimuth);
-    }
-
-    it('finds the altitude at which the edges of cast shadows are the most distinct', function () {
-      var Z = flatGrid(w, h, mesas);
-      assert.equal(edgeAltitude(Z, 35), 35);
-      assert.equal(edgeAltitude(Z, 50), 50);
-    });
-
-    it('is null when the terrain casts no shadows', function () {
-      assert.strictEqual(edgeAltitude(flatGrid(w, h), 35), null);
-    });
-  });
-
   describe('getFitLevel()', function () {
     it('divides the region into about the same number of tiles whatever its cell size', function () {
       var w = 400, h = 400, Z = new Float32Array(w * h), region = {x0: 0, y0: 0, x1: w, y1: h};
@@ -424,36 +510,95 @@ describe('mapshaper-deshadow.mjs', function () {
     });
   });
 
-  describe('mergeAreaLabels()', function () {
-    // 6 x 6 tiles, with vertical strips of 2 or 3 tiles labeled 0, 1 (and 2)
-    var tw = 6, th = 6;
-    function strips(n) {
-      return Array.from({length: tw * th}, function(v, t) { return Math.floor((t % tw) * n / tw); });
-    }
-    // each sun's scores have their own noise
-    function scores(k, fn) {
-      return Float32Array.from({length: tw * th}, function(v, t) { return fn(t % tw) + 0.02 * noise(k * 100 + t); });
+  describe('getEdgeZ()', function () {
+    // pairs of cells at the edges of shadows, 16 of which count as one observation
+    function edges(observations, share) {
+      return {pairs: observations * 16, darker: observations * 16 * share};
     }
 
-    it('gives an area the sun of a neighboring area that matches it about as well', function () {
-      var tileR = [scores(0, function() { return 0.5; }), scores(1, function(x) { return x < 3 ? 0.3 : 0.5; })];
-      assert.deepEqual(Array.from(internal.mergeAreaLabels(strips(2), tw, th, tileR)), new Array(tw * th).fill(0));
+    it('is large when the shadowed cell is darker much more consistently in one set', function () {
+      assert(internal.getEdgeZ(edges(200, 0.85), edges(200, 0.55)) > 5);
+      assert(internal.getEdgeZ(edges(200, 0.55), edges(200, 0.85)) < -5);
     });
 
-    it('keeps the areas whose suns match them significantly better', function () {
-      var tileR = [scores(0, function(x) { return x < 3 ? 0.5 : 0.4; }),
-        scores(1, function(x) { return x < 3 ? 0.4 : 0.5; })];
-      assert.deepEqual(Array.from(internal.mergeAreaLabels(strips(2), tw, th, tileR)), strips(2));
+    it('compares a set with chance where the other has too few pairs', function () {
+      assert(internal.getEdgeZ(edges(200, 0.85), edges(2, 0)) > 5);
+      assert.equal(internal.getEdgeZ(edges(2, 1), edges(3, 0)), 0);
+    });
+  });
+
+  describe('getAreaSupport()', function () {
+    // countShadowEdges() counts, 16 pairs to an observation; the image's sun's
+    // shadow edges are darker 80% of the time
+    var ref = 0.8, none = {pairs: 0, darker: 0};
+    function edges(observations, share) {
+      return {pairs: observations * 16, darker: observations * 16 * share};
+    }
+
+    it('is supported by brightness alone without shadow edges, unless the image\'s sun has them', function () {
+      assert(internal.getAreaSupport(6, 0, none, none, ref, false) >= 5);
+      assert(internal.getAreaSupport(4, 0, none, none, ref, false) < 5);
+      assert.equal(internal.getAreaSupport(6, 0, none, none, ref, true), -Infinity);
     });
 
-    it('takes the sun of the neighbor that matches the area best', function () {
-      // the middle strip matches all three suns about as well, the third best
-      var tileR = [
-        scores(0, function(x) { return x < 2 ? 0.6 : x < 4 ? 0.49 : 0.3; }),
-        scores(1, function(x) { return x < 2 ? 0.3 : x < 4 ? 0.5 : 0.3; }),
-        scores(2, function(x) { return x < 2 ? 0.3 : x < 4 ? 0.51 : 0.6; })];
-      var labels = internal.mergeAreaLabels(strips(3), tw, th, tileR);
-      assert.deepEqual(Array.from(labels), strips(3).map(function(k) { return k == 0 ? 0 : 2; }));
+    it('is supported by its own shadows\' edges where the other sun casts none', function () {
+      assert(internal.getAreaSupport(1, 0, edges(300, 0.85), none, ref, true) >= 5);
+    });
+
+    it('is supported where the other sun\'s own shadows are lit, as by chance', function () {
+      // a higher sun at the same azimuth casts no shadows that the lower sun doesn't
+      assert(internal.getAreaSupport(1, 0, none, edges(600, 0.52), ref, true) >= 5);
+    });
+
+    it('isn\'t supported where the shadow edges favor the other sun, however well brightness matches', function () {
+      assert.equal(internal.getAreaSupport(10, 0, edges(300, 0.55), edges(300, 0.82), ref, false), -Infinity);
+      assert.equal(internal.getAreaSupport(10, 0, edges(300, 0.55), none, ref, true), -Infinity);
+    });
+
+    it('isn\'t supported where brightness matches the other sun better', function () {
+      assert.equal(internal.getAreaSupport(-3, 0, edges(300, 0.85), edges(300, 0.5), ref, true), -Infinity);
+    });
+
+    it('isn\'t supported where the other sun\'s shadows have more consistently darker edges', function () {
+      // a low sun's long shadows cover the image's sun's, and their extra
+      // edges are darker more often than by chance, but much less consistently
+      var low = edges(3000, 0.77);
+      assert(internal.getAreaSupport(14, 0, low, none, ref, true) >= 5);
+      assert.equal(internal.getAreaSupport(14, -8, low, none, ref, true), -Infinity);
+    });
+
+    it('isn\'t supported by all its shadows\' edges', function () {
+      var a = edges(470, 0.78), b = edges(420, 0.71);
+      assert.equal(internal.getAreaSupport(5, 4, a, b, 0.61, true), -Infinity);
+    });
+  });
+
+  describe('getRegionCandidates()', function () {
+    // 10 x 6 tiles; the image's sun is due south, and another sun matches the
+    // right half better
+    var tw = 10, th = 6, sun = {azimuth: 180 * deg, altitude: 40 * deg};
+    function position(azimuth, fn) {
+      var tileR = Float32Array.from({length: tw * th}, function(v, t) {
+        return fn(t % tw) + 0.02 * noise(azimuth * 100 + t);
+      });
+      return {azimuth: azimuth, altitude: 40, total: 0.5, tileR: tileR, pairs: new Float32Array(tw * th),
+        darker: new Float32Array(tw * th)};
+    }
+
+    it('finds the position that matches a region better than the image\'s sun', function () {
+      var base = position(180, function(x) { return x < 5 ? 0.6 : 0.3; });
+      var grid = [base, position(240, function(x) { return x < 5 ? 0.3 : 0.6; })];
+      var cands = internal.getRegionCandidates(grid, base, sun, tw, th);
+      assert.equal(cands.length, 1);
+      assert(Math.abs(cands[0].sun.azimuth / deg - 240) < 1e-9);
+      // the strongest region is in the right half
+      cands[0].labels.forEach(function(l, t) { if (l) assert(t % tw >= 5, 'tile ' + t); });
+    });
+
+    it('finds none where no region matches another position better', function () {
+      var base = position(180, function() { return 0.5; });
+      var grid = [base, position(240, function() { return 0.45; })];
+      assert.equal(internal.getRegionCandidates(grid, base, sun, tw, th).length, 0);
     });
   });
 
@@ -932,6 +1077,23 @@ describe('mapshaper-deshadow.mjs', function () {
         });
       });
 
+      it('gets the same result with helper workers fitting the suns', async function () {
+        function sunFn(x) { return x < w / 2 ? east : west; }
+        var a = findLayer(await run(makeLitDataset(w, h, sunFn, cell), '-deshadow elev target=img workers=0'), 'img');
+        var b = findLayer(await run(makeLitDataset(w, h, sunFn, cell), '-deshadow elev target=img workers=3'), 'img');
+        assert.equal(a.raster.derivation.region_suns.length, 2);
+        assert.deepStrictEqual(b.raster.derivation, a.raster.derivation);
+        assert(Buffer.from(b.raster.grid.samples).equals(Buffer.from(a.raster.grid.samples)));
+        // along the sun's path
+        a = findLayer(await run(makeLitDataset(w, h, sunFn, cell),
+          '-deshadow elev target=img date=2023-03-01 workers=0'), 'img');
+        b = findLayer(await run(makeLitDataset(w, h, sunFn, cell),
+          '-deshadow elev target=img date=2023-03-01 workers=3'), 'img');
+        assert.equal(a.raster.derivation.date, '2023-03-01');
+        assert.deepStrictEqual(b.raster.derivation, a.raster.derivation);
+        assert(Buffer.from(b.raster.grid.samples).equals(Buffer.from(a.raster.grid.samples)));
+      });
+
       it('fits one sun to an image lit by one sun', async function () {
         var dataset = makeLitDataset(w, h, function() { return east; }, cell);
         var catalog = await run(dataset, '-deshadow elev target=img');
@@ -949,6 +1111,49 @@ describe('mapshaper-deshadow.mjs', function () {
         suns.sort(function(a, b) { return a.sun_azimuth - b.sun_azimuth; });
         assert(Math.abs(suns[0].sun_azimuth - 120) < 10, 'azimuth ' + suns[0].sun_azimuth);
         assert(Math.abs(suns[1].sun_azimuth - 220) < 10, 'azimuth ' + suns[1].sun_azimuth);
+      });
+
+      describe('in imagery of rugged terrain', function () {
+        // 720 x 540 m, with dense trees and patchy ground (see makeSceneDataset())
+        var w = 480, h = 360, rough = {patches: 0.7, trees: true, haze: 0.03};
+        function sun(azimuth, altitude) {
+          return {azimuth: azimuth, altitude: altitude};
+        }
+        async function fitSuns(dataset) {
+          var out = findLayer(await run(dataset, '-deshadow elev target=img'), 'img').raster.derivation;
+          return out.region_suns ? out.region_suns.sort(function(a, b) { return a.sun_azimuth - b.sun_azimuth; }) :
+            [{sun_azimuth: out.sun_azimuth, sun_altitude: out.sun_altitude, share: 1}];
+        }
+
+        it('fits the sun of each region where one sun fits the image poorly', async function () {
+          var east = sun(120, 40), west = sun(220, 40);
+          var suns = await fitSuns(makeSceneDataset(w, h, function(x) { return x < w / 2 ? east : west; }, rough));
+          assert.equal(suns.length, 2, JSON.stringify(suns));
+          [east, west].forEach(function(s, k) {
+            assert(Math.abs(suns[k].sun_azimuth - s.azimuth) < 6, 'azimuth ' + suns[k].sun_azimuth);
+            assert(Math.abs(suns[k].sun_altitude - s.altitude) < 8, 'altitude ' + suns[k].sun_altitude);
+            assert(Math.abs(suns[k].share - 0.5) < 0.1, 'share ' + suns[k].share);
+          });
+        });
+
+        it('fits regions lit from the same azimuth at different altitudes', async function () {
+          var low = sun(180, 28), high = sun(180, 52);
+          var suns = await fitSuns(makeSceneDataset(w, h, function(x) { return x < w / 2 ? low : high; }, {}));
+          assert.equal(suns.length, 2, JSON.stringify(suns));
+          suns.sort(function(a, b) { return a.sun_altitude - b.sun_altitude; });
+          assert(Math.abs(suns[0].sun_altitude - 28) < 4, 'altitude ' + suns[0].sun_altitude);
+          assert(Math.abs(suns[1].sun_altitude - 52) < 4, 'altitude ' + suns[1].sun_altitude);
+        });
+
+        it('fits one sun where only a corner of the image casts shadows', async function () {
+          // without trees: in nearly flat ground, their shade is most of the
+          // image's light and shade. Brightness matches the sun too poorly to
+          // fit it without the confirmation of its cast shadows, as in Sedona.
+          var opts = {forest: true, rugged: function(x, y) { return x < w * 0.4 && y < h * 0.4 ? 1 : 0; }};
+          var suns = await fitSuns(makeSceneDataset(w, h, function() { return sun(110, 62); }, opts));
+          assert.equal(suns.length, 1, JSON.stringify(suns));
+          assert(Math.abs(suns[0].sun_altitude - 62) < 6, 'altitude ' + suns[0].sun_altitude);
+        });
       });
 
       it('fits one sun to a small image lit by one sun', async function () {

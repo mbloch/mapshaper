@@ -8,13 +8,19 @@ import { getVerticalUnitMeters } from '../rasters/mapshaper-vertical-units';
 import { getHillshadeCellSizes } from './mapshaper-hillshade';
 import { getColoredRaster, rasterCanBeToned } from './mapshaper-tone';
 import { endProgress, message, progress, stop, verbose, warn, warnOnce } from '../utils/mapshaper-logging';
-import { startWorkerPool } from '../utils/mapshaper-worker-pool';
+import { getProcessorCount, startWorkerPool } from '../utils/mapshaper-worker-pool';
 import { stopIfInterrupted, whenInterrupted } from '../utils/mapshaper-interrupt';
 import { getProgressMeter } from '../utils/mapshaper-progress-meter';
 
 var DESHADOW_WORKER_SCRIPT = 'deshadow-worker.js';
 // Smaller images take a fraction of a second, and starting a worker has a cost
 var MIN_WORKER_PIXELS = 250000;
+// Fitting the sun's position is divided among helper workers in images of at
+// least this many pixels, where it takes a second or more; each helper holds a
+// copy of the coarser levels of the fit (where memory can't be shared, as in
+// most browser pages), up to about 40 MB
+var MIN_HELPER_PIXELS = 1e6;
+var MAX_AUTO_HELPERS = 8;
 // how often the progress line is updated while waiting for the worker (ms)
 var PROGRESS_TICK = 100;
 
@@ -64,6 +70,9 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume, signal
   if (opts.image_shadows && opts.image_shadows != 'on' && opts.image_shadows != 'off') {
     stop('image-shadows= should be on or off');
   }
+  if (opts.workers != null && !(opts.workers >= 0 && opts.workers <= 64)) {
+    stop('workers= should be from 0 to 64');
+  }
   grid = getRasterGrid(lyr.raster);
   demGrid = getRasterGrid(dem.layer.raster);
   if (rasterGridIsRotated(grid) || rasterGridIsRotated(demGrid)) {
@@ -103,13 +112,16 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume, signal
       terrain: terrain, nir: nir, pixelSize: pixelSize, demPixelSize: demPixelSize, path: path,
       options: {balancedThreshold: !!opts.balanced_threshold || coarseDem, imageShadows: opts.image_shadows,
         despeckle: !!opts.despeckle}
-    }, printer.update, signal);
+    }, printer.update, signal, opts.workers);
   } finally {
     resume();
     printer.end(!!(result && result.samples));
   }
   stopIfInterrupted(signal);
-  if (result.sun && result.sun.score >= MIN_SUN_FIT) {
+  if (result.workers > 1) {
+    verbose('Workers:', result.workers);
+  }
+  if (result.sun && isSunFitted(result.sun)) {
     verbose(formatSun(result.sun, path));
   }
   if (result.suns && result.suns.length > 1) {
@@ -163,16 +175,21 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume, signal
   return [out];
 };
 
-// Runs deshadowImage() in a worker, so that the GUI stays responsive, or in
-// this thread if the image is small or a worker can't be started (where
+// Runs deshadowImage() in a worker, so that the GUI stays responsive, with
+// helper workers fitting the sun's position (see deshadowImageWithHelpers()),
+// or in this thread if the image is small or workers can't be started (where
 // @signal can't stop it)
 // @task {image, terrain, nir, pixelSize, demPixelSize, path, options}: its
 //   arrays other than the image's samples can't be used afterwards
-// Returns deshadowImage()'s result, or null if @signal aborted
-async function runDeshadowImage(task, onProgress, signal) {
-  var image = task.image;
-  var pool = image.width * image.height >= MIN_WORKER_PIXELS ?
-    await startWorkerPool(DESHADOW_WORKER_SCRIPT, 1) : null;
+// @workers the number of helpers, or null for automatic
+// Returns deshadowImage()'s result, with the number of workers used, or null
+//   if @signal aborted
+async function runDeshadowImage(task, onProgress, signal, workers) {
+  var image = task.image, pixels = image.width * image.height;
+  var helpers = getDeshadowHelperCount(workers, pixels);
+  var pool = pixels >= MIN_WORKER_PIXELS || helpers > 0 ?
+    await startWorkerPool(DESHADOW_WORKER_SCRIPT, 1 + helpers) : null;
+  var ports = [], i, channel, result;
   if (signal && signal.aborted) {
     if (pool) pool.close();
     return null;
@@ -182,16 +199,32 @@ async function runDeshadowImage(task, onProgress, signal) {
       onProgress, task.options);
   }
   try {
+    for (i = 1; i <= helpers; i++) {
+      channel = new MessageChannel();
+      await pool.run(i, {helper: true, port: channel.port2});
+      ports.push(channel.port1);
+    }
     // the worker gets a copy of the samples, which stay with the source layer
-    return await Promise.race([
+    result = await Promise.race([
       pool.run(0, Object.assign({}, task, {
-        image: Object.assign({}, image, {samples: image.samples.slice()})
+        image: Object.assign({}, image, {samples: image.samples.slice()}),
+        helpers: ports
       }), onProgress),
       whenInterrupted(signal).then(function() { return null; })
     ]);
+    if (result) result.workers = 1 + helpers;
+    return result;
   } finally {
     pool.close();
   }
+}
+
+// @requested a number of helpers, or null for automatic
+function getDeshadowHelperCount(requested, pixels) {
+  if (typeof MessageChannel != 'function') return 0;
+  if (requested != null) return requested;
+  if (pixels < MIN_HELPER_PIXELS) return 0;
+  return Math.min(MAX_AUTO_HELPERS, getProcessorCount());
 }
 
 // Prints the progress line (see getProgressMeter()), timed from now; dots are
@@ -221,8 +254,12 @@ function getProgressPrinter(resume) {
   };
 }
 
+function isSunFitted(sun) {
+  return sun.score >= MIN_SUN_FIT || !!sun.confirmed;
+}
+
 function formatSun(sun, path) {
-  var match = 'match ' + sun.score.toFixed(2);
+  var match = 'match ' + sun.score.toFixed(2) + (sun.confirmed ? ', confirmed by its cast shadows' : '');
   if (!path) {
     return 'Sun position (fitted): azimuth ' + formatDegrees(sun.azimuth) +
       ', altitude ' + formatDegrees(sun.altitude) + ' (' + match + ')';
@@ -312,9 +349,9 @@ function getFailureMessage(result) {
   if (result.sun.score <= -1) {
     return 'The terrain is too flat to tell where the sun was; the image is unchanged';
   }
-  if (result.sun.score < MIN_SUN_FIT) {
-    return 'The image\'s light and shade don\'t match the terrain well enough to tell where the sun was' +
-      ' (as in a mosaic of images taken at many times); the image is unchanged';
+  if (!isSunFitted(result.sun)) {
+    return 'The image\'s light and shade don\'t match the terrain well enough to tell where the sun was;' +
+      ' the image is unchanged';
   }
   if (result.failure == 'altitude') {
     return 'The image\'s dark areas look like dark ground in valleys (e.g. forest), not shadows;' +
@@ -331,9 +368,10 @@ function getFailureMessage(result) {
 // The measurements behind a failure, for verbose
 function getFailureDetails(result) {
   if (!result.sun || result.sun.score <= -1) return null;
-  if (result.sun.score < MIN_SUN_FIT) {
+  if (!isSunFitted(result.sun)) {
     return 'Best match of the image\'s brightness with the lighting of the terrain: ' +
-      result.sun.score.toFixed(2) + ' (' + MIN_SUN_FIT + ' is needed)';
+      result.sun.score.toFixed(2) + ' (' + MIN_SUN_FIT + ' is needed, unless the cast shadows of the' +
+      ' best-matching sun are clearly in the image)';
   }
   if (result.failure == 'altitude') {
     return 'The best match is with the sun at the lowest altitude tried (' + MIN_ALTITUDE + '°)';
