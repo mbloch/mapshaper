@@ -9,7 +9,9 @@ import {
   getSchemeBreaks, setSchemeBreak, getBreakClassSwatches, getDefaultElevationPreset, getBreaksScale,
   chooseBlendedElevations, isBlendedScheme, getSchemeTab, getElevationFields, layerHasElevations,
   getElevationStopChips, getElevationClassLanes, setElevationChipColor, getBlendRampColors,
-  getSeaScheme, setSeaScheme, chooseSeaPreset, getSeaLabel, isLandTransparent, setLandTransparent
+  getSeaScheme, setSeaScheme, chooseSeaPreset, getSeaLabel, isLandTransparent, setLandTransparent,
+  getSchemeValues, getSchemeLightness, setSchemeLightness, maxLightness, getRasterPaletteScheme,
+  schemeMatchesLayer
 } from '../src/gui/gui-color-scheme-model';
 import { getRasterBandLabel, layerHasPaletteRaster } from '../src/gui/gui-raster-band-values';
 import api from '../mapshaper.js';
@@ -387,11 +389,74 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     assert.equal(getDefaultElevationPreset([sahara, sahara, amazon, pacific]), 'Desert');
   });
 
-  it('show the data and the stops next to it in the class breaks dialog', async function() {
+  it('show the land\'s data and the stops next to it in the class breaks dialog', async function() {
     var lyr = (await importDEM([-50, 300, 9000 * 0.99])).lyr;
+    var scheme = chooseSeaPreset(useElevations(lyr), 'Blue');
+    var info = getSchemeBreaks(scheme, lyr);
+    // from the stop below the land's min to the data's max, past the top stop
+    assert.deepEqual([info.min, info.max], [200, 8910]);
+    // the histograms: land above 0, sea at or below it
+    assert.deepEqual(getSchemeValues(scheme, lyr), [300, 8910]);
+    assert.deepEqual(getSchemeValues(getSeaScheme(scheme), lyr), [-50]);
+    // below the lowest stop, from sea level
+    lyr = (await importDEM([-50, 0.00002, 30])).lyr;
+    info = getSchemeBreaks(useElevations(lyr), lyr);
+    assert.deepEqual([info.min, info.max], [0, stops[0]]);
+  });
+
+  it('without data of its own, a ramp\'s dialog spans its stops', async function() {
+    var lyr = (await importDEM([-500, -20])).lyr;
     var info = getSchemeBreaks(useElevations(lyr), lyr);
-    // past the top stop, the data's max
-    assert.deepEqual([info.min, info.max], [-50, 8910]);
+    assert.deepEqual([info.min, info.max], [stops[0], stops[n - 1]]);
+  });
+
+  it('can be made lighter or darker, which the command gives as colors', async function() {
+    var o = await importDEM([-20, 300, 1500, 4500]);
+    var scheme = setSchemeLightness(chooseSeaPreset(useElevations(o.lyr), 'Blue'), -0.05);
+    var sea = setSchemeLightness(getSeaScheme(scheme), 0.05);
+    var colors = getSchemeColors(scheme);
+    var cmd;
+    scheme = setSeaScheme(scheme, sea);
+    assert.equal(getSchemeLightness(getSeaScheme(scheme)), 0.05);
+    assert.equal(getSchemeLightness(setSchemeLightness(scheme, 9)), maxLightness);
+    // the preset's own colors, darker; the tiles aren't pinned
+    assert.deepEqual(colors, internal.adjustRampLightness(desert, -0.05));
+    assert.deepEqual(getPinnedTiles(scheme), desert.map(function() { return false; }));
+    cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
+    assert.equal(cmd, "-classify field='band1' hypsometric=desert sea=blue colors=" + colors.join(',') +
+      ',sea:' + getSchemeColors(getSeaScheme(scheme)).join(','));
+    await runCommand(o.catalog, cmd);
+    assert.deepEqual(o.lyr.raster.view.recipe.palette.colors, colors);
+    // another preset has its own lightness
+    assert.equal(getSchemeLightness(choosePreset(scheme, 'Polar')), 0);
+  });
+
+  it('a lighter blend lightens every preset, and recoloring a stop keeps the colors', async function() {
+    var lyr = (await importDEM()).lyr;
+    var scheme = setSchemeLightness(chooseBlendedElevations(useElevations(lyr), [[-60, -5]]), 0.02);
+    var ramps = getBlendRampColors(scheme);
+    var cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: lyr});
+    var edited, reset;
+    assert(ramps.every(function(ramp) {
+      return ramp.colors.join() != internal.getHypsometricStops(ramp.name).map(function(o) { return o.color; }).join();
+    }));
+    ramps.forEach(function(ramp) {
+      assert(cmd.includes(ramp.name.toLowerCase() + ':' + ramp.colors.join(',')));
+    });
+    assert(getElevationStopChips(scheme, 0).every(function(chip) { return !chip.edited; }));
+    // a picked color goes in as picked, and the others stay as they were shown
+    edited = setElevationChipColor(scheme, ['Tropical'], i3000, '#ff0000');
+    assert.equal(getSchemeLightness(edited), 0);
+    assert.equal(getBlendRampColors(edited).find(byName('Tropical')).colors[i3000], '#ff0000');
+    assert.deepEqual(getBlendRampColors(edited).find(byName('Polar')).colors, ramps.find(byName('Polar')).colors);
+    // a reset gives the preset's color, which the lightness then adjusts
+    reset = setElevationChipColor(scheme, ['Tropical'], 0, null);
+    assert.deepEqual(getBlendRampColors(reset), ramps);
+    // one preset, likewise
+    edited = setTileColor(setSchemeLightness(useElevations(lyr), -0.05), 1, '#00ff00');
+    assert.deepEqual(getSchemeColors(edited), internal.adjustRampLightness(desert, -0.05).map(function(c, i) {
+      return i == 1 ? '#00ff00' : c;
+    }));
   });
 
   it('can be blended by climate, which -classify does, until another palette is chosen', async function() {
@@ -466,6 +531,42 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
   function byName(name) {
     return function(ramp) { return ramp.name == name; };
   }
+
+  it('a palette that the panel didn\'t make opens as it was, recolored ones as Custom', async function() {
+    var schemes = [
+      function(s) { return setTileColor(choosePreset(s, 'Atlas'), 1, '#ff0000'); },
+      function(s, lyr) { return setSchemeBreak(setSchemeContinuous(choosePreset(s, 'Atlas'), false), lyr, 2, 700); },
+      function(s, lyr) { return setSeaScheme(s, setSchemeBreak(setTileColor(getSeaScheme(chooseSeaPreset(s, 'Blue')), 0, '#000000'), lyr, 1, -6000)); },
+      function(s) { return setLandTransparent(chooseSeaPreset(s, 'Pale'), true); },
+      function(s) { return setElevationChipColor(chooseBlendedElevations(s, [[-60, -5]]), ['Tropical'], i3000, '#ff0000'); }
+    ];
+    for (var i = 0; i < schemes.length; i++) {
+      var o = await importDEM([-20, 100, 300, 700, 1500, 4500]);
+      var scheme = schemes[i](useElevations(o.lyr), o.lyr);
+      var cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
+      var opened;
+      await runCommand(o.catalog, cmd);
+      opened = getRasterPaletteScheme(o.lyr);
+      assert(opened, cmd);
+      assert.equal(formatSchemeCommand(opened, getAppliedColors(opened), {layer: o.lyr}), cmd);
+      assert(schemeMatchesLayer(opened, o.lyr));
+      if (i === 0) {
+        assert.equal(opened.preset, null);
+        assert.equal(opened.elevationPreset, 'Atlas');
+      }
+    }
+  });
+
+  it('a vector layer has no raster palette', function() {
+    var lyr = {geometry_type: 'polygon', shapes: [], data: new internal.DataTable(0)};
+    assert.equal(getRasterPaletteScheme(lyr), null);
+  });
+
+  it('a palette that colors the sea like the land can\'t be opened', async function() {
+    var o = await importDEM([-20, 100, 300]);
+    await runCommand(o.catalog, '-classify field=band1 hypsometric=atlas sea=land');
+    assert.equal(getRasterPaletteScheme(o.lyr), null);
+  });
 
   it('leave their colors as a custom ramp for another method', async function() {
     var lyr = (await importDEM()).lyr;

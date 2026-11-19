@@ -32,7 +32,7 @@ import {
   getSeaScheme, setSeaScheme, chooseSeaPreset, getSeaLabel, isLandTransparent, setLandTransparent,
   getLayerScheme, setLayerScheme, getRasterPaletteScheme, getCategoryName
 } from './gui-color-scheme-model';
-import { getRasterBandLabel, getRasterUnitsLabel, getRasterCategoricalPalette } from './gui-raster-band-values';
+import { getRasterBandLabel, getRasterUnitsLabel, getRasterLayerPaletteKey } from './gui-raster-band-values';
 
 // A popup beside the polygon style panel for coloring a layer's fills by a
 // data field, with -classify. On a data raster (see gui-raster-palette-tool.mjs)
@@ -57,12 +57,20 @@ var shuffleIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" s
 var longHueIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
   'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
   '<path d="M11.5 4.6A5 5 0 1 0 12 7"/><path d="M12 1.8v3h-3"/></svg>';
-var continuousIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none">' +
-  '<defs><linearGradient id="color-scheme-continuous-icon">' +
-  '<stop offset="0" stop-color="currentColor" stop-opacity="0"/>' +
-  '<stop offset="1" stop-color="currentColor"/></linearGradient></defs>' +
-  '<rect x="1.5" y="3.5" width="11" height="7" rx="1.5" fill="url(#color-scheme-continuous-icon)" ' +
-  'stroke="currentColor" stroke-width="1.2"/></svg>';
+var continuousIcons = 0;
+
+// Each panel (fills, raster palettes) has its own gradient id: a url(#id)
+// finds the first element with the id, which may be in a hidden panel, and a
+// hidden gradient isn't drawn.
+function getContinuousIcon() {
+  var id = 'color-scheme-continuous-icon-' + (++continuousIcons);
+  return '<svg width="14" height="14" viewBox="0 0 14 14" fill="none">' +
+    '<defs><linearGradient id="' + id + '">' +
+    '<stop offset="0" stop-color="currentColor" stop-opacity="0"/>' +
+    '<stop offset="1" stop-color="currentColor"/></linearGradient></defs>' +
+    '<rect x="1.5" y="3.5" width="11" height="7" rx="1.5" fill="url(#' + id + ')" ' +
+    'stroke="currentColor" stroke-width="1.2"/></svg>';
+}
 
 export function ColorSchemePanel(gui, opts) {
   var parent = gui.container.findChild('.mshp-main-map');
@@ -114,8 +122,9 @@ export function ColorSchemePanel(gui, opts) {
       fields = getNumericFields(lyr);
       scheme = layerHasElevations(lyr) ? getDefaultSchemeOfType('elevation', lyr, getLngLatSamples(lyr)) :
         getDefaultSchemeOfType(fields.length > 0 ? 'sequential' : 'categorical', lyr);
-      // categories colored by their file keep those colors until edited
-      if (canApply(scheme) && !getRasterCategoricalPalette(lyr)) apply();
+      // a raster's palette that the panel can't show (e.g. categories colored
+      // by their file) stays until the colors are edited
+      if (canApply(scheme) && !getRasterLayerPaletteKey(lyr)) apply();
     }
     render();
   };
@@ -275,7 +284,7 @@ export function ColorSchemePanel(gui, opts) {
     longHueBtn = addIconButton(vibranceRow, 'Go the long way around the color wheel', longHueIcon, function() {
       changeScheme(setSchemeLongHue(scheme, !scheme.longHue));
     }).addClass('long-hue-btn');
-    continuousBtn = addIconButton(vibranceRow, 'Continuous colors (unclassed)', continuousIcon, function() {
+    continuousBtn = addIconButton(vibranceRow, 'Continuous colors (unclassed)', getContinuousIcon(), function() {
       changeScheme(setSchemeContinuous(scheme, !scheme.continuous));
     }).addClass('continuous-btn');
     reverseBtn = addIconButton(vibranceRow, 'Reverse the colors', reverseIcon, function() {

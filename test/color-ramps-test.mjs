@@ -3,7 +3,7 @@ import {
 } from '../src/color/color-ramps';
 import {
   rgbToOklab, oklabToRgb, interpolateOklch, oklabToOklch, oklchToRgb,
-  oklabIsInGamut, getMaxChroma, getOklchInterpolator, getVibrantColor
+  oklabIsInGamut, getMaxChroma, getOklchInterpolator, getVibrantColor, adjustRampLightness
 } from '../src/color/oklab';
 import { parseColor } from '../src/color/color-utils';
 
@@ -198,6 +198,57 @@ describe('color-ramps.mjs and oklab.mjs', function () {
         var b = resolveRamp(reversed, 5, {vibrance: 0.02});
         assert.deepEqual(a, b.reverse());
       });
+    });
+  });
+
+  describe('adjustRampLightness()', function () {
+    var ramp = ['#2f6b3a', '#8fb36a', '#e8dcb0'];
+
+    function lightness(colors) {
+      return colors.map(function(c) { return toLch(c).l; });
+    }
+
+    it('an amount of 0 leaves the colors alone', function () {
+      assert.deepEqual(adjustRampLightness(ramp, 0), ramp);
+    });
+
+    it('moves every color by the same lightness, keeping hue and chroma', function () {
+      [0.05, -0.15].forEach(function(amount) {
+        var before = ramp.map(toLch);
+        var after = adjustRampLightness(ramp, amount).map(toLch);
+        after.forEach(function(lch, i) {
+          assert(Math.abs(lch.l - before[i].l - amount) < 0.003);
+          assert(hueDiff(lch.h, before[i].h) < 1);
+          // the gamut may have less room for chroma, but never more is added
+          assert(lch.c < before[i].c + 0.003);
+        });
+      });
+      // the lighter two keep their chroma; the gamut has less room for the
+      // darkest's near black
+      adjustRampLightness(ramp, -0.15).map(toLch).forEach(function(lch, i) {
+        var loss = toLch(ramp[i]).c - lch.c;
+        assert(i === 0 ? loss > 0.003 && loss < 0.01 : Math.abs(loss) < 0.003);
+      });
+    });
+
+    it('past white, moves colors toward it, the darkest by the whole amount', function () {
+      var before = lightness(ramp);
+      var after = lightness(adjustRampLightness(ramp, 0.2));
+      var steps = [after[1] - after[0], after[2] - after[1]];
+      // the lightest reaches white after shifting by 1 - before[2]
+      var ratio = (1 - before[0] - 0.2) / (before[2] - before[0]);
+      assert(Math.abs(after[0] - before[0] - 0.2) < 0.003);
+      assert(after[2] > 0.995);
+      // the steps between colors shrink evenly
+      assert(Math.abs(steps[0] / (before[1] - before[0]) - ratio) < 0.02);
+      assert(Math.abs(steps[1] / (before[2] - before[1]) - ratio) < 0.02);
+    });
+
+    it('a white color stays white, and a gray stays gray', function () {
+      var colors = adjustRampLightness(['#777777', '#ffffff'], 0.1);
+      assert.equal(colors[1], '#ffffff');
+      assert(toLch(colors[0]).c < 0.002);
+      assert(toLch(colors[0]).l > toLch('#777777').l + 0.09);
     });
   });
 

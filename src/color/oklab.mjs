@@ -104,6 +104,42 @@ function getVibrantChroma(lch, vibrance) {
   return Math.max(lch.c, Math.min(lch.c + vibrance, getMaxChroma(lch.l, lch.h)));
 }
 
+// The colors of a ramp made lighter (amount > 0) or darker (amount < 0), by
+// an amount of OKLCH lightness. Every color moves by the same amount, which
+// keeps the steps in lightness between them, until the lightest reaches white
+// (or the darkest, black). The rest of the amount moves each color toward
+// white (black) in proportion to its distance from it, so that the darkest
+// (lightest) color still moves the whole amount and the steps shrink evenly.
+// Hue stays the same; chroma is reduced only where the gamut has no room.
+export function adjustRampLightness(colors, amount) {
+  var rgbs = colors.map(parseColorOrStop);
+  var lchs = rgbs.map(function(rgb) { return oklabToOklch(rgbToOklab(rgb)); });
+  var ls = lchs.map(function(lch) { return lch.l; });
+  if (!amount || colors.length === 0) return rgbs.map(formatColor);
+  ls = amount > 0 ? lightenValues(ls, amount) : lightenValues(ls.map(flip), -amount).map(flip);
+  return lchs.map(function(lch, i) {
+    var rgb = oklchToRgb({l: ls[i], c: lch.c, h: lch.h});
+    rgb.a = rgbs[i].a;
+    return formatColor(rgb);
+  });
+
+  function flip(l) {
+    return 1 - l;
+  }
+}
+
+// lightness values (0-1) raised by amount, as adjustRampLightness() has it
+function lightenValues(ls, amount) {
+  var lo = Math.min.apply(null, ls), hi = Math.max.apply(null, ls);
+  var shift = clamp(Math.min(amount, 1 - hi), 0, 1);
+  var rest = amount - shift;
+  var t = rest > 0 && lo + shift < 1 ? Math.min(rest / (1 - lo - shift), 1) : 0;
+  return ls.map(function(l) {
+    l += shift;
+    return clamp(l + t * (1 - l), 0, 1);
+  });
+}
+
 // Returns a function that maps t in [0, 1] to a color string. Lightness,
 // chroma and hue are each interpolated on their own, so that equal steps in
 // t are equal steps in each of them; hue takes the shorter way around the

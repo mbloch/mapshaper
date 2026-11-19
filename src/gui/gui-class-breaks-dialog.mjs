@@ -5,7 +5,8 @@ import { getRasterUnitsLabel } from './gui-raster-band-values';
 import {
   getSchemeBreaks, setSchemeBreak, getSchemeValues, getBreaksScale, getHistogram, getRoundestNumber,
   getBreakClassSwatches, getBreakClassCounts, formatSchemeCount, isElevationScheme, isBlendedScheme,
-  getElevationStopChips, getElevationClassLanes, setElevationChipColor, getClimatePresetNames
+  getElevationStopChips, getElevationClassLanes, setElevationChipColor, getClimatePresetNames,
+  getSchemeLightness, setSchemeLightness, maxLightness
 } from './gui-color-scheme-model';
 
 // A popup beside the color scheme panel for editing a numeric scheme's class
@@ -18,7 +19,9 @@ import {
 // rule between two classes, whose tiles are gradients from one stop's color
 // to the next. A blend has a column of chips and tiles for each preset, and
 // presets that share a color share a chip, which recolors all of them (or
-// those checked under the table).
+// those checked under the table). A slider makes all of a ramp's colors
+// lighter or darker, and the histogram has only the land's values (or the
+// sea's).
 //
 // opts.getScheme(), opts.getLayer()  the scheme and layer being edited
 // opts.onChange(scheme)  a break was moved
@@ -27,6 +30,8 @@ import {
 //                        'Elevations and colors')
 // opts.reversed(scheme)  true to list the classes from high to low
 var numBins = 40;
+// slider positions on each side of the center
+var lightnessSteps = 50;
 
 export function ClassBreaksDialog(gui, opts) {
   var parent = gui.container.findChild('.mshp-main-map');
@@ -37,6 +42,7 @@ export function ClassBreaksDialog(gui, opts) {
   var scale = null;
   var range = null; // the scale's [min, max]
   var titleEl, chartEl, barsEl, linesEl, handlesEl, minLabel, maxLabel, logToggle, tableEl, noteEl, bodyEl;
+  var lightnessRow, lightnessInput;
   var handles = [], lines = [], pivotLine, inputs = [], rules = [], classRows = [], chipBoxes = [];
   var reversed = false; // the table's order, from opts.reversed()
   var drag = null;
@@ -73,6 +79,7 @@ export function ClassBreaksDialog(gui, opts) {
     bodyEl.classed('hidden', !info);
     if (!info) return;
     logToggle.node().checked = logScale;
+    renderLightness(scheme);
     // a drag keeps the scale it started with, since moving an end stop of
     // fixed elevations can change the range
     if (!drag) {
@@ -125,6 +132,22 @@ export function ClassBreaksDialog(gui, opts) {
     });
     El('span').appendTo(logRow).text('Log scale');
 
+    // fixed elevations only (see setSchemeLightness()); double-click to reset
+    lightnessRow = El('div').addClass('label-style-row color-scheme-slider-row class-breaks-lightness-row')
+      .appendTo(bodyEl);
+    El('span').addClass('color-scheme-slider-label').appendTo(lightnessRow).text('Lightness');
+    lightnessInput = El('input').attr('type', 'range').attr('aria-label', 'Lightness')
+      .attr('min', -lightnessSteps).attr('max', lightnessSteps).attr('step', 1)
+      .attr('title', 'Makes all the colors lighter or darker\n(double-click to reset)')
+      .appendTo(lightnessRow)
+      .on('input', function() {
+        setLightness(+this.value / lightnessSteps * maxLightness);
+      })
+      .on('dblclick', function() {
+        setLightness(0);
+      })
+      .on('change', function() { this.blur(); });
+
     tableEl = El('div').addClass('class-breaks-table').appendTo(bodyEl);
     chipBar = El('div').addClass('class-breaks-chip-bar hidden').appendTo(bodyEl);
     // the picker opens beside the dialog, level with its chip (see positionPicker()
@@ -147,6 +170,22 @@ export function ClassBreaksDialog(gui, opts) {
     });
   }
 
+  function setLightness(lightness) {
+    var scheme = opts.getScheme();
+    if (!scheme || !isElevationScheme(scheme) || getSchemeLightness(scheme) == lightness) return;
+    hidePicker();
+    opts.onChange(setSchemeLightness(scheme, lightness));
+  }
+
+  function renderLightness(scheme) {
+    var el = lightnessInput.node();
+    var val = Math.round(getSchemeLightness(scheme) / maxLightness * lightnessSteps);
+    lightnessRow.classed('hidden', !isElevationScheme(scheme));
+    if (+el.value != val) el.value = val;
+    // see showSliderFill() in gui-color-scheme-panel.mjs
+    el.style.setProperty('--fill', 'calc(6px + (100% - 12px) * ' + (val + lightnessSteps) / (2 * lightnessSteps) + ')');
+  }
+
   function renderHistogram(bins) {
     var max = Math.max.apply(null, bins);
     barsEl.empty();
@@ -166,10 +205,9 @@ export function ClassBreaksDialog(gui, opts) {
       handlesEl.empty();
       lines.forEach(function(line) { line.remove(); });
       handles = breaks.map(function(b, i) {
-        return El('div').addClass('class-breaks-handle').attr('role', 'slider').attr('tabindex', '0')
+        return El('div').addClass('class-breaks-handle')
           .appendTo(handlesEl)
-          .on('pointerdown', function(e) { startDrag(e, i); })
-          .on('keydown', function(e) { onHandleKey(e, i); });
+          .on('pointerdown', function(e) { startDrag(e, i); });
       });
       lines = breaks.map(function() {
         return El('div').addClass('class-breaks-line').appendTo(linesEl);
@@ -180,10 +218,7 @@ export function ClassBreaksDialog(gui, opts) {
       // fixed elevations can have stops outside the range (see getSchemeBreaks())
       var outside = b < range[0] || b > range[1];
       handles[i].css('left', left).classed('hidden', outside)
-        .classed('fixed', info.fixed[i])
-        .attr('aria-label', getBreakLabel(i))
-        .attr('aria-valuenow', String(b))
-        .attr('aria-disabled', info.fixed[i] ? 'true' : null);
+        .classed('fixed', info.fixed[i]);
       lines[i].css('left', left).classed('fixed', info.fixed[i]).classed('hidden', outside);
     });
     // a pivot inside a pivot class isn't a break, but marks where the class's edges can go
@@ -299,20 +334,14 @@ export function ClassBreaksDialog(gui, opts) {
       // after recoloring some of a shared chip's presets, the chip they now have
       var isSelected = !!selected && selected.i == i && (chip.names.length === 0 ||
         chip.names.some(function(name) { return selected.checked.indexOf(name) > -1; }));
-      El('div').addClass('class-breaks-chip').attr('role', 'button').attr('tabindex', '0')
-        .attr('aria-label', label).attr('data-tooltip', label + (chip.edited ? ' (edited)' : ''))
+      El('div').addClass('class-breaks-chip')
+        .attr('data-tooltip', label + (chip.edited ? ' (edited)' : ''))
         .classed('edited', chip.edited).classed('selected', isSelected)
         .css('grid-column', 'span ' + Math.max(chip.names.length, 1))
         .css('background-color', chip.color)
         .appendTo(box)
         .on('mouseenter', function(e) { placeChipTooltip(e.currentTarget); })
-        .on('click', function() { selectChip(i, chip); })
-        .on('keydown', function(e) {
-          if (e.key == 'Enter' || e.key == ' ') {
-            e.preventDefault();
-            selectChip(i, chip);
-          }
-        });
+        .on('click', function() { selectChip(i, chip); });
     });
   }
 
@@ -413,7 +442,6 @@ export function ClassBreaksDialog(gui, opts) {
     var box = handlesEl.node().getBoundingClientRect();
     if (e.button !== 0 || !info || info.fixed[i] || !(box.width > 0)) return;
     e.preventDefault();
-    handles[i].node().focus();
     drag = {i: i, box: box};
     handles[i].addClass('dragging');
     document.addEventListener('pointermove', onDragMove);
@@ -436,21 +464,6 @@ export function ClassBreaksDialog(gui, opts) {
     document.removeEventListener('pointerup', stopDrag);
     document.removeEventListener('pointercancel', stopDrag);
     update(); // the scale, for the range the drag left
-  }
-
-  // arrow keys move a break by a hundredth of the histogram's width (a
-  // tenth with Shift)
-  function onHandleKey(e, i) {
-    var step = e.shiftKey ? 0.1 : 0.01;
-    var pos, dir;
-    if (!info || info.fixed[i]) return;
-    if (e.key == 'ArrowLeft' || e.key == 'ArrowDown') dir = -1;
-    else if (e.key == 'ArrowRight' || e.key == 'ArrowUp') dir = 1;
-    else return;
-    e.preventDefault();
-    e.stopPropagation();
-    pos = scale.toPos(info.breaks[i]) + dir * step;
-    setBreak(i, getRoundestNumber(scale.toValue(pos - step / 4), scale.toValue(pos + step / 4)));
   }
 
   function formatNumber(val) {
