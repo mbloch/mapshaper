@@ -433,8 +433,31 @@ function getPresetRamp(name, meters) {
 //   key: changes with the weights, for caching what is drawn with them
 // A CRS without an inverse gets its field by projecting the climate data
 // forward (see getForwardClimateWeightField()).
-// Returns null if no cell is on land
+// Returns null if no cell is on land. A field depends only on the arguments
+// and is slow to make (mostly filling in the sea), so the last few are kept
+// and shared; e.g. each step of the GUI's lightness slider runs -classify
+// again. Callers must not modify them.
+var FIELD_CACHE_SIZE = 4;
+var fieldCache = [];
+
 export function getClimateWeightField(bbox, crs, cells) {
+  var key, entry, field;
+  try {
+    key = [bbox.join(','), crsToProj4(crs), cells || FIELD_CELLS].join('|');
+  } catch(e) {
+    key = null;
+  }
+  entry = key === null ? null : fieldCache.find(function(o) { return o.key == key; });
+  if (entry) return entry.field;
+  field = makeClimateWeightFieldOfBbox(bbox, crs, cells);
+  if (key !== null) {
+    fieldCache.unshift({key: key, field: field});
+    fieldCache.length = Math.min(fieldCache.length, FIELD_CACHE_SIZE);
+  }
+  return field;
+}
+
+function makeClimateWeightFieldOfBbox(bbox, crs, cells) {
   var n = cells || FIELD_CELLS;
   var w = bbox[2] - bbox[0], h = bbox[3] - bbox[1];
   var width = Math.max(2, Math.round(w >= h ? n : n * w / h));
@@ -573,7 +596,8 @@ function fillFieldGaps(cells, width, height, k) {
   var n = width * height;
   var vals = new Float64Array(n * k);
   var state = new Uint8Array(n); // 0: gap, 1: filled before this wave, 2: given
-  var gaps = [], wave, next, i, j, pass;
+  var sum = new Float64Array(k); // scratch for averageNeighbors()
+  var gaps = [], wave, next, filled, i, j, pass;
   for (i = 0; i < n; i++) {
     if (cells[i]) {
       state[i] = 2;
@@ -584,32 +608,34 @@ function fillFieldGaps(cells, width, height, k) {
   }
   wave = gaps;
   while (wave.length > 0) {
-    var filled = [];
+    filled = [];
     next = [];
-    wave.forEach(function(i) {
-      if (averageNeighbors(vals, state, i, width, height, k)) {
-        filled.push(i);
+    for (j = 0; j < wave.length; j++) {
+      if (averageNeighbors(vals, state, wave[j], width, height, k, sum)) {
+        filled.push(wave[j]);
       } else {
-        next.push(i);
+        next.push(wave[j]);
       }
-    });
+    }
     if (filled.length === 0) break;
-    filled.forEach(function(i) { state[i] = 1; });
+    for (j = 0; j < filled.length; j++) state[filled[j]] = 1;
     wave = next;
   }
   for (pass = 0; pass < FILL_SMOOTHING_PASSES; pass++) {
-    gaps.forEach(function(i) {
-      averageNeighbors(vals, state, i, width, height, k);
-    });
+    for (j = 0; j < gaps.length; j++) {
+      averageNeighbors(vals, state, gaps[j], width, height, k, sum);
+    }
   }
   return Array.from(vals);
 }
 
 // Sets cell i to the mean of its filled 8-neighbors (cells filled in the
-// current wave are still gaps); returns false if it has none
-function averageNeighbors(vals, state, i, width, height, k) {
+// current wave are still gaps); returns false if it has none.
+// @sum: scratch space for k values
+function averageNeighbors(vals, state, i, width, height, k, sum) {
   var x = i % width, y = (i - x) / width;
-  var sum = new Float64Array(k), count = 0, dx, dy, j, m;
+  var count = 0, dx, dy, j, m;
+  for (m = 0; m < k; m++) sum[m] = 0;
   for (dy = -1; dy <= 1; dy++) {
     for (dx = -1; dx <= 1; dx++) {
       if (dx === 0 && dy === 0 || x + dx < 0 || x + dx >= width || y + dy < 0 || y + dy >= height) continue;

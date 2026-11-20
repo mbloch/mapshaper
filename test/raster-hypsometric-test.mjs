@@ -245,6 +245,17 @@ describe('climate weight fields', function() {
     }
     assert(step <= 24, 'step of ' + step);
   });
+
+  it('are kept for the same bbox, CRS and size, and made again for others', function() {
+    var bbox = [-20, 30, 40, 60];
+    var field = internal.getClimateWeightField(bbox, internal.parseCrsString('wgs84'), 50);
+    var other = internal.getClimateWeightField([-20, 30, 40, 61], internal.parseCrsString('wgs84'), 50);
+    // another CRS object with the same definition
+    assert.equal(internal.getClimateWeightField(bbox.concat(), internal.parseCrsString('wgs84'), 50), field);
+    assert.notEqual(other, field);
+    assert.notEqual(internal.getClimateWeightField(bbox, internal.parseCrsString('wgs84'), 51), field);
+    assert.notEqual(internal.getClimateWeightField(bbox, internal.parseCrsString('+proj=merc +datum=WGS84'), 50), field);
+  });
 });
 
 describe('sea-colors=', function() {
