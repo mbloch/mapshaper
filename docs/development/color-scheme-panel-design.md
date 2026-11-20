@@ -598,9 +598,11 @@ Parsing and conversion are in `gui-color-scheme-import.mjs`.
   baked into the colors: vibrance, the long hue path, part of a preset's
   range. If the layer doesn't have the command's field, the palette is
   imported as one from another program.
-- Fixed elevations come back from their command (`hypsometric=`,
-  `colors=` and `breaks=` with their named lists, `classed`, `sea=`; also
-  the older `breaks=` with `outer-breaks=`), with a JSON file's `elevations` taking precedence,
+- Fixed elevations come back from their command (`land-colors=`,
+  `land-breaks=`, `land-classed`, `sea-colors=`, `sea-breaks=`,
+  `sea-classed`, or the older `hypsometric=`, `colors=` and `breaks=` with
+  their named lists, `classed`, `sea=`, as `getElevationOptions()` reads
+  them; also the still older `breaks=` with `outer-breaks=`), with a JSON file's `elevations` taking precedence,
   so that colors edited there are the ones imported. Stops in other
   `units` are converted to the band's. Colors and stops that are a
   preset's give the preset. They have to be one at each of the presets'

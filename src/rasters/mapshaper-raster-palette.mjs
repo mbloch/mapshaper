@@ -22,8 +22,9 @@ import { stop } from '../utils/mapshaper-logging';
 //                   // without values (see mapshaper-raster-sea-mask.mjs):
 //                   // 'transparent' leaves them out; the name of a
 //                   // bathymetric preset colors them by seaRamp
-//   seaRamp,        // {breaks, colors}: continuous colors at depths, in the
-//                   // band's units (see setRasterPaletteSea())
+//   seaRamp,        // {breaks, colors, classed}: colors at depths, in the
+//                   // band's units, continuous unless classed (see
+//                   // setRasterPaletteSea())
 //   seaSeeds,       // [[x, y, level], ...]: points in the inland seas, in the
 //                   // raster's coordinates, or null if its CRS is unknown
 //                   // (see mapshaper-inland-seas.mjs)
@@ -66,10 +67,15 @@ export function rasterPaletteIsCategorical(palette) {
 // Tables are cached by getRasterPaletteKey(), so redrawing a raster while
 // panning and zooming doesn't rebuild them.
 export function getRasterPaletteTable(palette) {
-  var key = getRasterPaletteKey(palette);
+  return getCachedTable(getRasterPaletteKey(palette), function() {
+    return buildRasterPaletteTable(palette);
+  });
+}
+
+function getCachedTable(key, build) {
   var entry = tableCache.find(function(o) { return o.key == key; });
   if (!entry) {
-    entry = {key: key, table: buildRasterPaletteTable(palette)};
+    entry = {key: key, table: build()};
     tableCache.unshift(entry);
     if (tableCache.length > MAX_CACHED_TABLES) tableCache.pop();
   }
@@ -78,9 +84,34 @@ export function getRasterPaletteTable(palette) {
 
 // The table for the sea of a palette with a bathymetric ramp, or null
 export function getRasterSeaTable(palette) {
-  if (!palette.seaRamp) return null;
-  return getRasterPaletteTable({type: 'sequential', continuous: true, interpolation: 'oklch',
-    breaks: palette.seaRamp.breaks, colors: palette.seaRamp.colors});
+  var ramp = palette.seaRamp;
+  if (!ramp) return null;
+  if (!ramp.classed) {
+    return getRasterPaletteTable({type: 'sequential', continuous: true, interpolation: 'oklch',
+      breaks: ramp.breaks, colors: ramp.colors});
+  }
+  return getCachedTable(JSON.stringify(['sea classes', ramp.breaks, ramp.colors]), function() {
+    return getSeaClassTable(ramp.colors, ramp.breaks);
+  });
+}
+
+// The sea's classes mirror the land's: each color runs from its depth down to
+// the next stop's, which it leaves out, so a value equal to a stop takes the
+// stop's color. The shallowest color also takes the values above its stop,
+// and the deepest those below its stop.
+// @stops: ascending, a color at each
+function getSeaClassTable(colors, stops) {
+  var table = getColorList(colors);
+  var n = colors.length;
+  if (stops.length != n) {
+    stop('A classed sea needs a color at each depth');
+  }
+  table.getIndex = function(val) {
+    var i = 0;
+    while (i < n - 1 && val > stops[i]) i++;
+    return i;
+  };
+  return table;
 }
 
 function buildRasterPaletteTable(palette) {

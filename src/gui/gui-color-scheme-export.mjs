@@ -148,11 +148,11 @@ function getElevationExportData(scheme, lyr) {
       o.colors = getSchemeColors(scheme);
     }
   }
-  o.sea = sea ? {
+  o.sea = sea ? Object.assign({
     palette: sea.preset || null,
     stops: getElevationSchemeStops(sea, lyr).map(tidy),
     colors: getSchemeColors(sea)
-  } : null;
+  }, isContinuousScheme(sea) ? {} : {classed: true}) : null;
   return o;
 }
 

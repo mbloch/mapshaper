@@ -49,7 +49,7 @@ import {
   setRasterPalette,
   validateRasterClassifyOptions
 } from '../rasters/mapshaper-raster-classify';
-import { setRasterPaletteSea, splitRampOptions } from '../rasters/mapshaper-raster-hypsometric';
+import { setRasterPaletteSea, getElevationOptions } from '../rasters/mapshaper-raster-hypsometric';
 import { listHasRampNames } from '../cli/mapshaper-option-parsing-utils';
 import { setRasterCategoryNames } from '../rasters/mapshaper-raster-categories';
 
@@ -66,8 +66,10 @@ cmd.classify = function(lyr, dataset, optsArg) {
   if (opts.category_names) {
     stop('category-names= works with raster layers');
   }
-  if (opts.hypsometric || opts.sea || opts.classed) {
-    stop((opts.hypsometric ? 'hypsometric=' : opts.sea ? 'sea=' : 'classed') + ' works with raster layers');
+  var rasterOpt = ['land_colors', 'land_breaks', 'land_classed', 'sea_colors', 'sea_breaks', 'sea_classed',
+    'hypsometric', 'sea', 'classed'].find(function(key) { return key in opts; });
+  if (rasterOpt) {
+    stop(rasterOpt.replace('_', '-') + (/classed/.test(rasterOpt) ? '' : '=') + ' works with raster layers');
   }
   if (listHasRampNames(opts.colors) || listHasRampNames(opts.breaks)) {
     stop('Named lists in colors= and breaks= (e.g. sea:...) work with raster layers');
@@ -299,13 +301,13 @@ function getClassification(data, optsArg) {
 function classifyRasterLayer(lyr, dataset, optsArg) {
   var raster = lyr.raster;
   var grid = getRasterGrid(raster);
-  var opts = splitRampOptions(optsArg);
+  var opts = getElevationOptions(optsArg);
   var crs = dataset ? getDatasetCRS(dataset) : null;
   var band, bandIndex, categorical, sample, o, palette;
   validateRasterClassifyOptions(raster, grid, opts);
   band = getRasterClassifyBand(grid, opts);
   bandIndex = getRasterGridBandIndex(grid, band);
-  if (opts.hypsometric) {
+  if (opts.land) {
     palette = setRasterPaletteSea(getRasterHypsometricPalette(raster, band, opts, crs), raster, opts, crs);
     noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
     setRasterPalette(raster, palette);

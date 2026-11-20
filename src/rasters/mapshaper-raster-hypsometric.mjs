@@ -8,11 +8,12 @@ import { projectRasterGridForward } from './mapshaper-raster-reprojection';
 import { getVerticalUnitMeters } from './mapshaper-vertical-units';
 import { getInlandSeaSeeds } from './mapshaper-inland-seas';
 import { getRasterGrid } from './mapshaper-raster-utils';
-import { splitRampLists } from '../cli/mapshaper-option-parsing-utils';
+import { splitRampLists, listHasRampNames } from '../cli/mapshaper-option-parsing-utils';
 
-// -classify hypsometric=: the hypsometric presets as raster palettes, at their
-// elevations (see hypsometric-schemes.mjs), and a blend of the climate
-// presets that varies across the map by climate (see hypsometric-climate.mjs).
+// -classify land-colors=: the hypsometric presets as raster palettes, at their
+// elevations (see hypsometric-schemes.mjs), a blend of the climate presets
+// that varies across the map by climate (see hypsometric-climate.mjs), or
+// custom colors at elevations of their own.
 //
 // A blended palette is an ordinary continuous palette (the ramp of the preset
 // with the most weight across the raster, for anything that draws it without
@@ -23,15 +24,17 @@ import { splitRampLists } from '../cli/mapshaper-option-parsing-utils';
 // }
 // The climate presets have the same elevations.
 //
-// colors= and breaks= change a preset's colors and elevations (every one, in
-// the band's units). Their lists can be named (see splitRampOptions()): a
-// blend's presets each have their own colors (colors=desert:...,polar:...),
-// and share their elevations; the sea's are colors=sea:... and breaks=sea:...
-// (see setRasterPaletteSea()). classed gives one preset classes, from each
-// elevation up to the next.
+// land-breaks= moves a preset's elevations (every one, in the band's units);
+// a blend's presets each have their own colors (land-colors=desert:...,polar:...),
+// and share their elevations. land-classed gives one preset classes, from
+// each elevation up to the next. sea-colors=, sea-breaks= and sea-classed do
+// the same for the sea (see setRasterPaletteSea()). The older options
+// (hypsometric=, sea=, classed, and lists named sea: in colors= and breaks=)
+// still work (see readOlderElevationOptions()).
 
 var BLEND_NAME = 'blended';
 var NONE_NAME = 'none';
+var CUSTOM_NAME = 'custom';
 // cells on the long side of a weight field; the climate grid has 1-degree
 // cells, so a world raster gets about that resolution
 var FIELD_CELLS = 360;
@@ -40,42 +43,35 @@ export function getHypsometricOptionNames() {
   return getHypsometricSchemeNames().map(function(name) { return name.toLowerCase(); }).concat([BLEND_NAME, NONE_NAME]);
 }
 
-// @name: a preset (any case), 'blended', or 'none', for a palette of only the
-//   sea (palette.land = 'transparent'), whose colors setRasterPaletteSea()
-//   gives
+// The land's palette, from options read by getElevationOptions(): a preset,
+// a blend, custom colors, or for a palette of only the sea ('none'), no
+// colors (palette.land = 'transparent'), which setRasterPaletteSea() gives.
+// palette.hypsometric is the preset, 'blended', 'custom' or 'none'.
 // @crs: the raster's CRS, for a blend
-// @opts: -classify's options, for a blend's colors and elevations
-export function getHypsometricPalette(raster, band, name, crs, opts) {
+export function getHypsometricPalette(raster, band, opts, crs) {
   var grid = getRasterGrid(raster);
-  var key = String(name).toLowerCase();
+  var key = opts.land;
+  var names = opts.names;
   var meters = getVerticalUnitMeters(grid.verticalUnits) || 1;
   var field, preset, ramps, main;
-  if (getHypsometricOptionNames().indexOf(key) == -1) {
-    stop('Unknown hypsometric= value:', name, '(expected ' + getHypsometricOptionNames().join(', ') + ')');
-  }
-  opts = opts || {};
-  if (opts.classed && (key == NONE_NAME || key == BLEND_NAME)) {
-    stop('classed works with one preset, not hypsometric=' + key);
-  }
   if (key == NONE_NAME) {
-    if (opts.colors || opts.breaks) {
-      stop('hypsometric=none colors only the sea; name its lists, e.g. colors=sea:...');
-    }
     return {band: band, type: 'sequential', continuous: true, interpolation: 'oklch', breaks: [], colors: [],
       nullColor: null, land: 'transparent', hypsometric: NONE_NAME};
   }
+  if (key == CUSTOM_NAME) {
+    main = customizeRamp(getCustomRamp(), opts.landColors, opts.landBreaks,
+      {name: 'the land', colors: names.landColors, breaks: names.landBreaks});
+    return Object.assign({band: band}, opts.landClassed ? getRampClasses(main) : main, {hypsometric: CUSTOM_NAME});
+  }
   if (key != BLEND_NAME) {
     preset = getPresetName(key);
-    main = customizeRamp(getPresetRamp(preset, meters), opts.colors, opts.breaks,
-      {name: 'hypsometric=' + key, colors: 'colors=', breaks: 'breaks='});
-    return Object.assign({band: band}, opts.classed ? getRampClasses(main) : main, {hypsometric: preset});
-  }
-  if (opts.colors) {
-    stop('hypsometric=blended takes colors for each preset, e.g. colors=desert:...,polar:...');
+    main = customizeRamp(getPresetRamp(preset, meters), opts.landColors, opts.landBreaks,
+      {name: names.land, colors: names.landColors, breaks: names.landBreaks});
+    return Object.assign({band: band}, opts.landClassed ? getRampClasses(main) : main, {hypsometric: preset});
   }
   field = crs ? getClimateWeightField(grid.bbox, crs) : null;
   if (!field) {
-    stop('hypsometric=blended needs a raster with a known projection, on land');
+    stop(names.land + ' needs a raster with a known projection, on land');
   }
   ramps = getBlendRamps(meters, opts);
   main = ramps.find(function(ramp) { return ramp.name == field.preset; });
@@ -87,16 +83,144 @@ export function getHypsometricPalette(raster, band, name, crs, opts) {
   });
 }
 
-// colors= and breaks= with named lists (see splitRampLists()), as a copy of
-// the options with the unnamed lists (the land's) as colors and breaks, and
-// the named ones as ramps: {colors: {name: list}, breaks: {name: list}}.
-// Names: sea (see setRasterPaletteSea()), a blend's presets (colors only,
-// since they share their elevations), and the preset of hypsometric=, which
-// is the same as no name.
-export function splitRampOptions(opts) {
+// -classify's elevation colors, from land-colors=, land-breaks=,
+// land-classed, sea-colors=, sea-breaks= and sea-classed, or the older
+// options (see readOlderElevationOptions()), as a copy of the options with:
+//   land          a land preset (in lower case), 'blended', 'custom' (colors
+//                 at land-breaks=), 'none' (only the sea is colored), or null
+//                 for colors given by colors= (or no colors)
+//   landColors    custom colors, or (older options) a preset's, recolored
+//   blendColors   {preset: colors} for a blend's recolored presets (lower case)
+//   landBreaks    every elevation, in the band's units
+//   landClassed
+//   sea           'transparent', 'land', a bathymetric preset (in lower case),
+//                 'custom', or null for the default (transparent with land
+//                 colors, otherwise land)
+//   seaColors, seaBreaks, seaClassed
+//   names         the options as given, for messages
+// The older options' colors= and breaks= are the land's lists of colors= and
+// breaks=, without the sea's or a blend's.
+export function getElevationOptions(opts) {
+  var older = ['hypsometric', 'sea', 'classed'].filter(function(key) { return key in opts; });
+  var newer = ['land_colors', 'land_breaks', 'land_classed', 'sea_colors', 'sea_breaks', 'sea_classed'].filter(function(key) {
+    return key in opts;
+  });
+  var named = listHasRampNames(opts.colors) || listHasRampNames(opts.breaks);
+  if (newer.length > 0 && (older.length > 0 || named)) {
+    stop((older.length > 0 ? older[0] + (older[0] == 'classed' ? '' : '=') : 'Named lists in colors= and breaks=') +
+      ' and ' + newer[0].replace('_', '-') + (/classed/.test(newer[0]) ? '' : '=') +
+      ' are two ways of giving elevation colors; use land-colors=, sea-colors= and their options');
+  }
+  return older.length > 0 || named ? readOlderElevationOptions(opts) : readElevationOptions(opts);
+}
+
+function readElevationOptions(opts) {
+  var out = Object.assign({}, opts, {land: null, sea: null, blendColors: null,
+    landColors: null, landBreaks: opts.land_breaks || null, landClassed: !!opts.land_classed,
+    seaColors: null, seaBreaks: opts.sea_breaks || null, seaClassed: !!opts.sea_classed,
+    names: {land: 'land-colors=', landColors: 'land-colors=', landBreaks: 'land-breaks=',
+      blendColors: 'land-colors=', sea: 'sea-colors=', seaColors: 'sea-colors=', seaBreaks: 'sea-breaks='}});
+  if (opts.land_colors && opts.colors) {
+    stop('land-colors= and colors= both give the land\'s colors; use one of them');
+  }
+  ['land', 'sea'].forEach(function(side) {
+    if (!opts[side + '_colors'] && (opts[side + '_breaks'] || opts[side + '_classed'])) {
+      stop(side + '-' + (opts[side + '_breaks'] ? 'breaks=' : 'classed') + ' works with ' + side + '-colors=');
+    }
+  });
+  if (opts.land_colors) {
+    readLandColors(opts.land_colors, out);
+  } else if (opts.sea_colors && !opts.colors) {
+    out.land = NONE_NAME;
+  }
+  if (opts.sea_colors) readSeaColors(opts.sea_colors, out);
+  return out;
+}
+
+// A preset, a blend's recolored presets (desert:...,polar:..., after
+// 'blended' or not), or custom colors, which need their elevations
+function readLandColors(list, out) {
+  var climate = getClimateSchemeNames().map(function(name) { return name.toLowerCase(); });
+  var presets = getLandPresetKeys();
+  var lists, key;
+  if (listHasRampNames(list)) {
+    lists = splitRampLists(list);
+    if (lists[''] && (lists[''].length > 1 || String(lists[''][0]).toLowerCase() != BLEND_NAME)) {
+      stop('land-colors= takes colors by preset for a blend (e.g. land-colors=desert:...,polar:...), without other colors');
+    }
+    delete lists[''];
+    Object.keys(lists).forEach(function(name) {
+      if (!climate.includes(name)) {
+        stop('Unknown name in land-colors=: ' + name + ' (expected ' + climate.join(', ') + ')');
+      }
+    });
+    out.land = BLEND_NAME;
+    out.names.land = 'land-colors=' + BLEND_NAME;
+    out.blendColors = lists;
+  } else if (list.length == 1) {
+    key = String(list[0]).toLowerCase();
+    if (!presets.includes(key)) {
+      stop(parseColor(key) ? 'land-colors= needs two or more colors, or the name of a preset' :
+        'Unknown land-colors= value: ' + list[0] + ' (expected ' + presets.join(', ') + ', or a list of colors)');
+    }
+    out.land = key;
+    out.names.land = 'land-colors=' + key;
+  } else {
+    if (!out.landBreaks) stop('land-colors= with a list of colors needs land-breaks=, an elevation for each color');
+    out.land = CUSTOM_NAME;
+    out.landColors = list;
+  }
+  if (out.landClassed && out.land == BLEND_NAME) {
+    stop('land-classed works with one preset, not a blend');
+  }
+}
+
+// transparent, land, a bathymetric preset, or custom colors, which need
+// their depths
+function readSeaColors(list, out) {
+  var names = getSeaOptionNames();
+  var key;
+  if (listHasRampNames(list)) {
+    stop('sea-colors= takes a preset or a list of colors, without names');
+  } else if (list.length == 1) {
+    key = String(list[0]).toLowerCase();
+    if (!names.includes(key)) {
+      stop(parseColor(key) ? 'sea-colors= needs two or more colors, or the name of a preset' :
+        'Unknown sea-colors= value: ' + list[0] + ' (expected ' + names.join(', ') + ', or a list of colors)');
+    }
+    out.sea = key;
+  } else {
+    if (!out.seaBreaks) stop('sea-colors= with a list of colors needs sea-breaks=, a depth for each color');
+    out.sea = CUSTOM_NAME;
+    out.seaColors = list;
+  }
+  if ((out.sea == 'transparent' || out.sea == 'land') && (out.seaBreaks || out.seaClassed)) {
+    stop((out.seaBreaks ? 'sea-breaks=' : 'sea-classed') + ' works with sea colors, not sea-colors=' + out.sea);
+  }
+}
+
+// The older options: hypsometric= (a land preset, blended, or none), colors=
+// and breaks= (with hypsometric=, the land's; and lists named by the
+// preset, a blend's presets or sea, see splitRampLists()), classed, and sea=
+// (with sea:... lists, which also work without a preset, custom colors).
+function readOlderElevationOptions(opts) {
   var key = opts.hypsometric ? String(opts.hypsometric).toLowerCase() : null;
   var climate = getClimateSchemeNames().map(function(name) { return name.toLowerCase(); });
-  var out = Object.assign({}, opts, {ramps: {colors: {}, breaks: {}}});
+  var out = Object.assign({}, opts, {land: key, sea: null, blendColors: null, landColors: null, landBreaks: null,
+    landClassed: !!opts.classed, seaColors: null, seaBreaks: null, seaClassed: false,
+    names: {land: 'hypsometric=' + key, landColors: 'colors=', landBreaks: 'breaks=',
+      blendColors: 'colors=', sea: 'sea=', seaColors: 'colors=sea:', seaBreaks: 'breaks=sea:'}});
+  var ramps = {colors: {}, breaks: {}};
+  var sea;
+  if (key && getHypsometricOptionNames().indexOf(key) == -1) {
+    stop('Unknown hypsometric= value:', opts.hypsometric, '(expected ' + getHypsometricOptionNames().join(', ') + ')');
+  }
+  if (opts.classed && !key) {
+    stop('classed works with hypsometric=; other colors are classes unless they are continuous');
+  }
+  if (opts.classed && (key == NONE_NAME || key == BLEND_NAME)) {
+    stop('classed works with one preset, not hypsometric=' + key);
+  }
   ['colors', 'breaks'].forEach(function(opt) {
     var lists = splitRampLists(opts[opt]);
     delete out[opt];
@@ -105,7 +229,7 @@ export function splitRampOptions(opts) {
         if (out[opt]) stop(opt + '= gives the list of hypsometric=' + key + ' twice, with and without its name');
         out[opt] = lists[name];
       } else if (name == 'sea' || opt == 'colors' && key == BLEND_NAME && climate.includes(name)) {
-        out.ramps[opt][name] = lists[name];
+        ramps[opt][name] = lists[name];
       } else if (climate.includes(name) && key == BLEND_NAME) {
         stop('The presets of hypsometric=blended share their elevations; give them as breaks= without a name');
       } else if (climate.includes(name)) {
@@ -116,15 +240,52 @@ export function splitRampOptions(opts) {
       }
     });
   });
+  if (key == NONE_NAME && (out.colors || out.breaks)) {
+    stop('hypsometric=none colors only the sea; name its lists, e.g. colors=sea:...');
+  }
+  if (key == BLEND_NAME && out.colors) {
+    stop('hypsometric=blended takes colors for each preset, e.g. colors=desert:...,polar:...');
+  }
+  if (key) {
+    out.landColors = out.colors || null;
+    out.landBreaks = out.breaks || null;
+    delete out.colors;
+    delete out.breaks;
+  }
+  if (key == BLEND_NAME) {
+    delete ramps.colors.sea;
+    out.blendColors = ramps.colors;
+  }
+  out.seaColors = ramps.colors.sea || null;
+  out.seaBreaks = ramps.breaks.sea || null;
+  sea = opts.sea ? String(opts.sea).toLowerCase() : null;
+  if (out.seaColors || out.seaBreaks || sea == CUSTOM_NAME) {
+    if ((!sea || sea == CUSTOM_NAME) && (!out.seaColors || !out.seaBreaks)) {
+      stop('A sea without a bathymetric preset (sea=pale, blue or gray) needs colors=sea:... and breaks=sea:..., a color at each depth');
+    }
+    if (sea == 'transparent' || sea == 'land') {
+      stop('colors=sea: and breaks=sea: work with a bathymetric sea= (pale, blue or gray), or without sea=');
+    }
+    sea = sea || CUSTOM_NAME;
+  }
+  if (sea && sea != CUSTOM_NAME && getSeaOptionNames().indexOf(sea) == -1) {
+    stop('Unsupported sea= value:', opts.sea, '(expected ' + getSeaOptionNames().join(', ') + ')');
+  }
+  out.sea = sea;
   return out;
+}
+
+function getLandPresetKeys() {
+  return getHypsometricSchemeNames().map(function(name) { return name.toLowerCase(); }).concat([BLEND_NAME]);
 }
 
 function getBlendRamps(meters, opts) {
   var names = getClimateSchemeNames();
+  var colors = opts.blendColors || {};
   return names.map(function(name) {
     var key = name.toLowerCase();
-    var ramp = customizeRamp(getPresetRamp(name, meters), opts.ramps.colors[key], opts.breaks,
-      {name: 'hypsometric=blended', colors: 'colors=' + key + ':', breaks: 'breaks=', fixed: true});
+    var ramp = customizeRamp(getPresetRamp(name, meters), colors[key], opts.landBreaks,
+      {name: opts.names.land, colors: opts.names.blendColors + key + ':', breaks: opts.names.landBreaks, fixed: true});
     return {name: name, breaks: ramp.breaks, colors: ramp.colors};
   });
 }
@@ -164,9 +325,9 @@ function customizeRamp(ramp, colors, breaks, labels) {
 
 // A ramp's colors as classes, from each stop up to the next: the first class
 // also takes the values below the first stop, and the last those above the
-// last stop
+// last stop. stops keeps the first stop, which isn't a break.
 function getRampClasses(ramp) {
-  var classes = Object.assign({}, ramp, {continuous: false, breaks: ramp.breaks.slice(1)});
+  var classes = Object.assign({}, ramp, {continuous: false, breaks: ramp.breaks.slice(1), stops: ramp.breaks.concat()});
   delete classes.interpolation;
   return classes;
 }
@@ -177,38 +338,32 @@ export function getSeaOptionNames() {
   }));
 }
 
-// -classify sea=: what a palette does with the sea of an elevation raster
-// (see mapshaper-raster-sea-mask.mjs). Hypsometric tints leave it out by
-// default.
+// -classify sea-colors=: what a palette does with the sea of an elevation
+// raster (see mapshaper-raster-sea-mask.mjs). Land colors (land-colors=)
+// leave it out by default.
 //   transparent  palette.sea = 'transparent': the sea is not drawn
 //   land         (no palette.sea) the sea takes the palette's colors
 //   a bathymetric preset (see bathymetric-schemes.mjs): palette.sea is its
 //                name, and palette.seaRamp = {breaks, colors} its depths, in
 //                the band's units, which color the sea continuously
-// colors=sea:... and breaks=sea:... (in the band's units) change a preset's
-// colors and depths, or without a preset, give them all; either way,
-// palette.sea is 'custom'. A palette of only the sea (hypsometric=none) takes
-// the sea's colors as its own, for anything that draws it without a sea.
-// palette.seaSeeds are points in the inland seas, in the raster's
-// coordinates (see getInlandSeaSeeds()), or null if its CRS is unknown.
-// @opts: options from splitRampOptions()
+//   custom colors, at the depths of sea-breaks=: palette.sea is 'custom'
+// sea-breaks= also moves a preset's depths, which makes it custom too.
+// sea-classed gives the sea classes (seaRamp.classed), which mirror the
+// land's: from each depth down to the next (see getRasterSeaTable()). A
+// palette of only the sea takes the sea's colors as its own, for anything
+// that draws it without a sea. palette.seaSeeds are points in the inland
+// seas, in the raster's coordinates (see getInlandSeaSeeds()), or null if
+// its CRS is unknown.
+// @opts: options from getElevationOptions()
 // @crs: the raster's CRS, or null
 export function setRasterPaletteSea(palette, raster, opts, crs) {
-  var colors = opts.ramps && opts.ramps.colors.sea;
-  var breaks = opts.ramps && opts.ramps.breaks.sea;
-  var custom = !!(colors || breaks);
-  var sea = String(opts.sea || (custom ? 'custom' : opts.hypsometric ? 'transparent' : 'land')).toLowerCase();
+  var names = opts.names;
+  var sea = opts.sea || (opts.land ? 'transparent' : 'land');
+  var custom = !!(opts.seaColors || opts.seaBreaks);
   var meters = getVerticalUnitMeters(getRasterGrid(raster).verticalUnits) || 1;
   var name, stops, ramp;
-  if (sea == 'custom') {
-    if (!colors || !breaks) {
-      stop('A sea without a bathymetric preset (sea=pale, blue or gray) needs colors=sea:... and breaks=sea:..., a color at each depth');
-    }
+  if (sea == CUSTOM_NAME) {
     ramp = {breaks: [], colors: []};
-  } else if (getSeaOptionNames().indexOf(sea) == -1) {
-    stop('Unsupported sea= value:', opts.sea, '(expected ' + getSeaOptionNames().join(', ') + ')');
-  } else if (custom && (sea == 'transparent' || sea == 'land')) {
-    stop('colors=sea: and breaks=sea: work with a bathymetric sea= (pale, blue or gray), or without sea=');
   } else if (sea == 'transparent') {
     palette.sea = sea;
   } else if (sea != 'land') {
@@ -221,24 +376,34 @@ export function setRasterPaletteSea(palette, raster, opts, crs) {
     };
   }
   if (ramp) {
-    ramp = custom ? customizeRamp(ramp, colors, breaks,
-      {name: name ? 'sea=' + sea : 'the sea', colors: 'colors=sea:', breaks: 'breaks=sea:', stop: 'depth'}) : ramp;
-    if (custom) palette.sea = 'custom';
+    ramp = custom ? customizeRamp(ramp, opts.seaColors, opts.seaBreaks,
+      {name: name ? names.sea + sea : 'the sea', colors: names.seaColors, breaks: names.seaBreaks, stop: 'depth'}) : ramp;
+    if (custom) palette.sea = CUSTOM_NAME;
     palette.seaRamp = {breaks: ramp.breaks, colors: ramp.colors};
+    if (opts.seaClassed) palette.seaRamp.classed = true;
   }
   if (palette.sea) {
     palette.seaSeeds = getInlandSeaSeeds(crs || null);
   }
   if (palette.land == 'transparent') {
-    if (!palette.seaRamp) stop('hypsometric=none needs colors for the sea: a bathymetric sea= or colors=sea:...');
-    palette.breaks = palette.seaRamp.breaks.concat();
+    if (!palette.seaRamp) stop('A palette of only the sea needs sea colors: sea-colors=pale, blue, gray, or a list of colors');
+    palette.breaks = palette.seaRamp.classed ? palette.seaRamp.breaks.slice(0, -1) : palette.seaRamp.breaks.concat();
     palette.colors = palette.seaRamp.colors.concat();
+    if (palette.seaRamp.classed) {
+      palette.continuous = false;
+      delete palette.interpolation;
+    }
   }
   return palette;
 }
 
 function getPresetName(key) {
   return getHypsometricSchemeNames().find(function(name) { return name.toLowerCase() == key; });
+}
+
+// Continuous colors without stops, for custom colors to fill in
+function getCustomRamp() {
+  return {type: 'sequential', continuous: true, interpolation: 'oklch', breaks: [], colors: [], nullColor: null};
 }
 
 // Continuous colors at the preset's elevations, converted to the band's

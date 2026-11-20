@@ -5,6 +5,7 @@ import { SizeField } from './gui-size-field';
 import { runGuiEditCommand } from './gui-edit-command';
 import { makeColorRow, makePanelToggle, makePanelActionButton, setPanelButtonDisabled } from './gui-panel-controls';
 import { ClassBreaksDialog } from './gui-class-breaks-dialog';
+import { getContinuousIcon } from './gui-color-scheme-icons';
 import { formatSchemeCPT, formatSchemeJSON, getSchemeExportFileName } from './gui-color-scheme-export';
 import { ColorSchemeImportDialog } from './gui-color-scheme-import-dialog';
 import { importColorPalette } from './gui-color-scheme-import';
@@ -25,7 +26,7 @@ import {
   getCenterTile, getSchemeNeutral, isContinuousScheme, setSchemeContinuous, getContinuousTileStops,
   getContinuousSegments, getAppliedScheme, setSchemeLayerType, formatSchemeCount, formatNoDataCount,
   hasSchemeRange, getDisplayRange, setSchemeRangeEnd, resetSchemeRange,
-  getRangeStripColors, isElevationScheme, canClassifyElevations, canUseFixedElevations, getElevationPresetNames, getClimatePresetNames,
+  getRangeStripColors, isElevationScheme, canUseFixedElevations, getElevationPresetNames, getClimatePresetNames,
   getElevationPresetColors,
   chooseBlendedElevations, isBlendedScheme, getBlendedPresetColors,
   getSchemeTab, getElevationFields, layerHasElevations, getBathymetricPresetNames,
@@ -57,21 +58,6 @@ var shuffleIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" s
 var longHueIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
   'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
   '<path d="M11.5 4.6A5 5 0 1 0 12 7"/><path d="M12 1.8v3h-3"/></svg>';
-var continuousIcons = 0;
-
-// Each panel (fills, raster palettes) has its own gradient id: a url(#id)
-// finds the first element with the id, which may be in a hidden panel, and a
-// hidden gradient isn't drawn.
-function getContinuousIcon() {
-  var id = 'color-scheme-continuous-icon-' + (++continuousIcons);
-  return '<svg width="14" height="14" viewBox="0 0 14 14" fill="none">' +
-    '<defs><linearGradient id="' + id + '">' +
-    '<stop offset="0" stop-color="currentColor" stop-opacity="0"/>' +
-    '<stop offset="1" stop-color="currentColor"/></linearGradient></defs>' +
-    '<rect x="1.5" y="3.5" width="11" height="7" rx="1.5" fill="url(#' + id + ')" ' +
-    'stroke="currentColor" stroke-width="1.2"/></svg>';
-}
-
 export function ColorSchemePanel(gui, opts) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel color-scheme-panel').appendTo(parent).hide();
@@ -352,10 +338,7 @@ export function ColorSchemePanel(gui, opts) {
     seaRow = El('div').addClass('label-style-row label-split-row sea').appendTo(controlsEl);
     var seaCell = El('div').addClass('label-split-cell color-scheme-palette-cell').appendTo(seaRow);
     var seaCustomizeCell = El('div').addClass('label-split-cell color-scheme-customize-cell').appendTo(seaRow);
-    var seaLabel = El('span').addClass('color-scheme-hint-label').appendTo(seaCell).text('Sea')
-      .attr('data-tooltip', 'Pixels at or below 0 that reach the edge of the map or a pixel without data;\n' +
-        'basins enclosed by land take land colors')
-      .on('mouseenter', function() { keepTooltipInWindow(seaLabel.node()); });
+    El('span').appendTo(seaCell).text('Sea');
     seaBtn = El('div').addClass('color-scheme-palette-btn').attr('role', 'button')
       .attr('aria-label', 'Sea palette').appendTo(seaCell).on('click', toggleSeaMenu);
     seaMenu = El('div').addClass('color-scheme-palette-menu').appendTo(seaCell).hide();
@@ -385,7 +368,7 @@ export function ColorSchemePanel(gui, opts) {
     seaRow.classed('hidden', !elevation);
     if (!elevation || !sea) seaBreaksDialog.close();
     if (!elevation) return;
-    renderStripButton(seaBtn, sea ? getSchemeColors(sea) : null, getSeaLabel(scheme), sea);
+    renderStripButton(seaBtn, sea ? getSchemeColors(sea) : null, getSeaLabel(scheme), sea && isContinuousScheme(sea) ? sea : null);
     setPanelButtonDisabled(seaCustomizeBtn, !sea);
     seaCustomizeBtn.classed('selected', seaBreaksDialog.isOpen());
     seaBreaksDialog.update();
@@ -808,7 +791,8 @@ export function ColorSchemePanel(gui, opts) {
     var vibrance = getSchemeVibrance(scheme);
     setSliderValue(vibranceInput, Math.round(vibrance * 1000));
     var elevation = isElevationScheme(scheme);
-    vibranceRow.classed('hidden', elevation && !canClassifyElevations(scheme));
+    // fixed elevations have the continuous colors button in the class breaks dialog
+    vibranceRow.classed('hidden', elevation);
     vibranceRow.classed('preset', !!scheme.preset || scheme.type == 'categorical' || elevation);
     vibranceRow.classed('ranged', hasSchemeRange(scheme));
     renderRange();
@@ -819,7 +803,7 @@ export function ColorSchemePanel(gui, opts) {
     longHueBtn.classed('hidden', scheme.type == 'diverging' || elevation)
       .classed('selected', !!scheme.longHue)
       .attr('aria-pressed', scheme.longHue ? 'true' : 'false');
-    continuousBtn.classed('hidden', scheme.type == 'categorical' || elevation && !canClassifyElevations(scheme))
+    continuousBtn.classed('hidden', scheme.type == 'categorical' || elevation)
       .classed('selected', isContinuousScheme(scheme))
       .attr('aria-pressed', isContinuousScheme(scheme) ? 'true' : 'false');
   }
@@ -1208,14 +1192,13 @@ export function ColorSchemePanel(gui, opts) {
         changeScheme(setLandTransparent(scheme, false));
       });
     }
-    El('div').addClass('color-scheme-palette-heading').appendTo(paletteMenu).text('Elevation');
+    El('div').addClass('color-scheme-palette-heading').appendTo(paletteMenu).text('Climate zones');
     var climate = getClimatePresetNames();
     var addPreset = function(name) {
       addPaletteItem(name, getElevationPresetColors(name), !transparent && scheme.preset == name, function() {
         changeScheme(choosePreset(scheme, name));
       });
     };
-    climate.forEach(addPreset);
     // blending needs to know where the raster is
     var points = getLngLatSamples(targetLayer);
     if (internal.getClimatePreset(points)) {
@@ -1223,6 +1206,8 @@ export function ColorSchemePanel(gui, opts) {
         changeScheme(chooseBlendedElevations(scheme, points));
       }).attr('title', 'The climate presets, blended by climate across the map');
     }
+    climate.forEach(addPreset);
+    El('div').addClass('color-scheme-palette-heading').appendTo(paletteMenu).text('Other');
     getElevationPresetNames().filter(function(name) { return !climate.includes(name); }).forEach(addPreset);
   }
 

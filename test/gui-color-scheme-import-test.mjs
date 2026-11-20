@@ -161,7 +161,7 @@ describe('gui-color-scheme-import.mjs', function () {
       assert.equal(result.scheme.preset, null);
       assert.deepEqual(Object.keys(result.scheme.blendColors), ['Tropical', 'Polar']);
       assert.equal(getBlendRampColors(result.scheme).find(function(o) { return o.name == 'Tropical'; }).colors[0], '#ff0000');
-      assert(/ colors=tropical:#ff0000,.*,polar:#ffffff(,#ffffff)+( |$)/.test(command(result.scheme)));
+      assert(/ land-colors=tropical:#ff0000,.*,polar:#ffffff(,#ffffff)+( |$)/.test(command(result.scheme)));
     });
 
     it('stops in other units are converted to the band\'s', function() {
@@ -173,14 +173,26 @@ describe('gui-color-scheme-import.mjs', function () {
       assert.deepEqual(result.scheme.stops, data.elevations.stops.map(function(val) { return +(val * 0.3048).toPrecision(6); }));
     });
 
-    it('a palette with other stops than the presets\' gives its colors', function() {
+    it('a palette with other stops than the presets\' keeps them, as custom elevations', function() {
       var scheme = choosePreset(getDefaultSchemeOfType('elevation', lyr, []), 'Desert');
       var data = JSON.parse(formatSchemeJSON(scheme, lyr));
+      var result;
       data.elevations.stops.push(9000, 9500);
       data.elevations.colors.push('#ffffff', '#ffffff');
-      var result = importColorPalette(JSON.stringify(data), scheme, lyr, points);
-      assert(/presets have \d+( or \d+)* stops/.test(result.note), result.note);
-      assert.notEqual(getSchemeTab(result.scheme), 'elevation');
+      result = importColorPalette(JSON.stringify(data), scheme, lyr, points);
+      assert.equal(result.note, null);
+      assert.equal(getSchemeTab(result.scheme), 'elevation');
+      assert.equal(result.scheme.elevationPreset, 'Desert');
+      assert.deepEqual(getSchemeColors(result.scheme), data.elevations.colors);
+    });
+
+    it('a blend\'s presets need a color at each of their shared stops', function() {
+      var scheme = chooseBlendedElevations(getDefaultSchemeOfType('elevation', lyr, []), points);
+      var data = JSON.parse(formatSchemeJSON(scheme, lyr));
+      var result;
+      data.elevations.stops.push(9000);
+      result = importColorPalette(JSON.stringify(data), scheme, lyr, points);
+      assert(/presets have \d+ stops/.test(result.note), result.note);
     });
   });
 

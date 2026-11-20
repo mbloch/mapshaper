@@ -34,7 +34,7 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**Hypsometric tints.** Color an elevation raster by climate-based palettes (desert, steppe, tropical, temperate, boreal, polar or blended), or atlas, lowland and highland palettes, continuously or in classes. → See the `hypsometric=` option of [`-classify`](/docs/reference.html#-classify).
+**Hypsometric tints.** Color an elevation raster by climate-based palettes (desert, steppe, tropical, temperate, boreal, polar or blended), or atlas, lowland and highland palettes, continuously or in classes. → See the `land-colors=` and `sea-colors=` options of [`-classify`](/docs/reference.html#-classify).
 
 </div>
 

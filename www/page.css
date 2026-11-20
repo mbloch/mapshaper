@@ -6244,6 +6244,16 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	margin: 0;
 }
 
+.class-breaks-log-row label:not(.hidden) {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.class-breaks-continuous-btn {
+	margin-left: auto;
+}
+
 .label-style-row.class-breaks-lightness-row {
 	margin-top: 4px;
 	font-size: 11px;
@@ -6371,7 +6381,7 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 
 .class-breaks-chip.selected {
 	outline: none;
-	box-shadow: 0 0 0 1px #fff, 0 0 0 3px var(--theme-col);
+	border-color: #000;
 }
 
 /* a recolored chip: a dot, like a pinned tile's */
@@ -6379,29 +6389,15 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	background-image: radial-gradient(circle at center, rgba(0,0,0,0.55) 1.5px, transparent 2px);
 }
 
-/* under the table: the chip being recolored, and which presets to recolor */
+/* under the table: buttons for the stop of the chip being recolored */
 .class-breaks-chip-bar {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 4px 8px;
+	gap: 4px;
 	margin-top: 6px;
 	font-size: 11px;
 	color: #555;
-}
-
-.class-breaks-chip-bar label {
-	display: flex;
-	align-items: center;
-	gap: 3px;
-}
-
-.class-breaks-chip-bar input {
-	margin: 0;
-}
-
-.class-breaks-chip-reset {
-	margin-left: auto;
 }
 
 /* the color picker opens to the left of the dialog (see selectChip()) */

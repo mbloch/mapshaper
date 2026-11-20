@@ -4,7 +4,7 @@ import {
   getDefaultSchemeOfType, getSchemeColors, getSchemeTiles, getSchemeValues, getNumericFields,
   getCategoryFields, getCategories, getCategoricalPresetColors, getContinuousTileStops,
   updateDivergingLayout, resetSchemeBreaks, setTileCount, setSchemeNullColor,
-  getElevationFields, getElevationPresetNames, getClimatePresetNames, getElevationPresetColors, getBathymetricPresetNames,
+  getElevationFields, getElevationPresetNames, getClimatePresetNames, getElevationPresetColors,
   setSchemeField, getElevationSchemeFromSpec, isElevationScheme, setSchemeMethod
 } from './gui-color-scheme-model';
 import { getRasterUnitMeters } from './gui-raster-band-values';
@@ -188,7 +188,8 @@ function parseElevations(o) {
     sea: !('sea' in o) ? undefined : o.sea && typeof o.sea == 'object' ? {
       preset: typeof o.sea.palette == 'string' ? o.sea.palette : null,
       stops: o.sea.stops ? parseStops(o.sea.stops, 'sea stops') : null,
-      colors: o.sea.colors ? parseColorArray(o.sea.colors, 'sea colors') : null
+      colors: o.sea.colors ? parseColorArray(o.sea.colors, 'sea colors') : null,
+      classed: o.sea.classed === true
     } : null
   };
 }
@@ -405,10 +406,11 @@ function parseClassifyCommand(str) {
   return cmd && cmd.name == 'classify' ? cmd.options : null;
 }
 
-// Fixed elevations are hypsometric= (see formatSchemeCommand()), or in older
-// commands, stops given as breaks= and outer-breaks=, without a method=
+// Fixed elevations are land-colors= or sea-colors= (see formatSchemeCommand()),
+// or hypsometric= in older commands, or in still older ones, stops given as
+// breaks= and outer-breaks=, without a method=
 function isElevationCommand(o) {
-  return !!o.hypsometric || !o.method && !!o.outer_breaks;
+  return !!(o.land_colors || o.sea_colors && !o.colors || o.hypsometric) || !o.method && !!o.outer_breaks;
 }
 
 // Fixed elevations, from the command, and from a JSON export's elevations
@@ -450,12 +452,10 @@ function importElevations(o, palette, lyr, points) {
   }
   scheme = getElevationSchemeFromSpec(base, spec, lyr);
   if (!scheme) {
-    return {scheme: null, note: 'The ' + (blended ? 'blended presets have ' +
-      getElevationPresetColors(getClimatePresetNames()[0]).length : 'elevation presets have ' +
-      getElevationPresetNames().map(function(name) { return getElevationPresetColors(name).length; })
-        .filter(function(n, i, arr) { return arr.indexOf(n) == i; }).join(' or ')) +
-      ' stops, and the sea ' + getElevationPresetColors(getBathymetricPresetNames()[0]).length +
-      ', with a color at each; the palette\'s don\'t match.'};
+    return {scheme: null, note: blended ? 'The blended presets have ' +
+      getElevationPresetColors(getClimatePresetNames()[0]).length +
+      ' stops, with a color at each; the palette\'s don\'t match.' :
+      'The palette needs a color at each of its stops, and at least two of them, on land and at sea.'};
   }
   return {scheme: scheme, note: null};
 }
@@ -466,39 +466,49 @@ function getPresetColorsByKey(key) {
 }
 
 // The fixed elevations of a command: {hypsometric, classed, colors, stops,
-// named, sea}. With hypsometric=, the land's colors and stops (every one) are
-// the unnamed lists of colors= and breaks= (or the preset's, by its name), a
-// blend's colors are by preset (named: {name: colors}), and the sea's are its
-// sea: lists (see splitRampLists()). An older command without hypsometric=
-// gives the stops as breaks= and outer-breaks=; its classes have no
-// continuous flag, and every stop but the first in breaks=.
+// named, sea}, as -classify reads them (see getElevationOptions()):
+// hypsometric is the land's preset, blended or none (null for custom
+// colors), and a blend's colors are by preset (named: {name: colors}). An
+// older command without land colors gives the stops as breaks= and
+// outer-breaks=; its classes have no continuous flag, and every stop but the
+// first in breaks=.
 function readElevationCommand(o) {
-  var hypsometric = o.hypsometric ? String(o.hypsometric).toLowerCase() : null;
-  var colors = internal.splitRampLists(o.colors) || {};
-  var breaks = internal.splitRampLists(o.breaks) || {};
-  var classed = hypsometric ? !!o.classed : !!o.outer_breaks && !o.continuous;
+  var eo = o.land_colors || o.sea_colors || o.hypsometric ? readElevationOptions(o) : null;
+  var breaks = o.breaks || null;
+  var classed = !!o.outer_breaks && !o.continuous;
   var stops = null;
-  if (hypsometric) {
-    stops = breaks[''] || breaks[hypsometric] || null;
-  } else if (breaks[''] && o.outer_breaks && o.outer_breaks.length == 2) {
-    stops = [o.outer_breaks[0]].concat(breaks[''], classed ? [] : [o.outer_breaks[1]]);
+  if (eo) {
+    return {
+      hypsometric: eo.land == 'custom' ? null : eo.land,
+      classed: eo.landClassed,
+      colors: eo.landColors,
+      stops: eo.landBreaks ? eo.landBreaks.map(Number) : null,
+      named: eo.blendColors || {},
+      sea: getCommandSea(eo)
+    };
   }
-  return {
-    hypsometric: hypsometric,
-    classed: classed,
-    colors: colors[''] || hypsometric && colors[hypsometric] || null,
-    stops: stops ? stops.map(Number) : null,
-    named: colors,
-    sea: getCommandSea(o, colors.sea, breaks.sea)
-  };
+  if (breaks && o.outer_breaks && o.outer_breaks.length == 2) {
+    stops = [o.outer_breaks[0]].concat(breaks, classed ? [] : [o.outer_breaks[1]]);
+  }
+  return {hypsometric: null, classed: classed, colors: null, stops: stops ? stops.map(Number) : null, named: {}, sea: null};
 }
 
-// A bathymetric sea=, with its colors and depths if they were changed
-function getCommandSea(o, colors, stops) {
-  var sea = o.sea ? String(o.sea).toLowerCase() : null;
+// A command's options that -classify would reject give no elevations
+function readElevationOptions(o) {
+  try {
+    return internal.getElevationOptions(o);
+  } catch(e) {
+    return {land: null, landClassed: false, landColors: null, landBreaks: null, blendColors: null, sea: null};
+  }
+}
+
+// A bathymetric sea, with its colors and depths if they were changed
+function getCommandSea(eo) {
+  var sea = eo.sea;
   var preset = sea && sea != 'transparent' && sea != 'land' && sea != 'custom' ? sea : null;
-  if (!preset && !colors) return null;
-  return {preset: preset, stops: stops ? stops.map(Number) : null, colors: colors ? colors.map(parseColorValue) : null};
+  if (!preset && !eo.seaColors) return null;
+  return {preset: preset, stops: eo.seaBreaks ? eo.seaBreaks.map(Number) : null,
+    colors: eo.seaColors ? eo.seaColors.map(parseColorValue) : null, classed: !!eo.seaClassed};
 }
 
 function getJsonSea(sea, units, lyr) {

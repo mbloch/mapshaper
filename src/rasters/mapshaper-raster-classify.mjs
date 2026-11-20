@@ -33,7 +33,7 @@ var VECTOR_ONLY_OPTIONS = ['save_as', 'values', 'index_field', 'key', 'key_style
   'key_width', 'key_font_size', 'key_tile_height', 'key_tic_length', 'key_label_suffix',
   'key_last_suffix'];
 
-// @opts: options from splitRampOptions()
+// @opts: options from getElevationOptions()
 export function validateRasterClassifyOptions(raster, grid, opts) {
   var name = VECTOR_ONLY_OPTIONS.find(function(key) { return key in opts; });
   if (!grid || !grid.samples) {
@@ -45,36 +45,37 @@ export function validateRasterClassifyOptions(raster, grid, opts) {
   if (opts.method == 'non-adjacent' || opts.method == 'blacki' || opts.method == 'indexed') {
     stop('The', opts.method, 'method does not work with raster layers');
   }
-  if (opts.classed && !opts.hypsometric) {
-    stop('classed works with hypsometric=; other colors are classes unless they are continuous');
-  }
-  if (opts.hypsometric) {
+  if (opts.land) {
     validateHypsometricOptions(opts);
   } else if (!opts.colors) {
-    stop('Classifying a raster requires colors=');
+    stop('Classifying a raster requires colors= (or land-colors= and sea-colors=, for elevations)');
   }
   if (rasterIsColorImage(raster, grid)) {
     stop('-classify colors data rasters, not RGB images. To adjust the colors of an image, use -tone');
   }
 }
 
-// hypsometric= gives the colors and their elevations, which only colors=,
-// breaks= (every elevation) and classed change
+// land-colors= gives the colors and their elevations, which only
+// land-breaks= (every elevation) and land-classed change
 function validateHypsometricOptions(opts) {
+  var older = opts.names.land.indexOf('hypsometric=') === 0;
   var name = ['outer_breaks', 'method', 'classes', 'pivot', 'continuous',
-    'stops', 'invert', 'categories'].find(function(key) {
+    'stops', 'invert', 'categories'].concat(older ? [] : ['breaks']).find(function(key) {
     return key in opts;
   });
   if (name) {
-    stop('hypsometric= sets the colors and breaks; it does not work with ' + name.replace(/_/g, '-') + '=' +
-      (name == 'outer_breaks' ? ' (breaks= gives every elevation)' : ''));
+    stop((older ? 'hypsometric= sets the colors and breaks; it does' :
+      'Elevation colors (land-colors= and sea-colors=) set the colors and breaks; they do') +
+      ' not work with ' + name.replace(/_/g, '-') +
+      (name == 'continuous' ? '' : '=') +
+      (name == 'outer_breaks' || name == 'breaks' ? ' (' + opts.names.landBreaks + ' gives every elevation)' : ''));
   }
 }
 
-// -classify hypsometric= (see mapshaper-raster-hypsometric.mjs)
+// -classify land-colors= (see mapshaper-raster-hypsometric.mjs)
 // @crs: the raster's CRS, or null
 export function getRasterHypsometricPalette(raster, band, opts, crs) {
-  var palette = getHypsometricPalette(raster, band, opts.hypsometric, crs, opts);
+  var palette = getHypsometricPalette(raster, band, opts, crs);
   if ('null_value' in opts) palette.nullColor = getPaletteColor(opts.null_value, 'null-value=');
   palette.command = getPaletteCommand(opts);
   return palette;

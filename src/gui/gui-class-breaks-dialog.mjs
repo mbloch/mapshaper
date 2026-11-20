@@ -6,8 +6,11 @@ import {
   getSchemeBreaks, setSchemeBreak, getSchemeValues, getBreaksScale, getHistogram, getRoundestNumber,
   getBreakClassSwatches, getBreakClassCounts, formatSchemeCount, isElevationScheme, isBlendedScheme,
   getElevationStopChips, getElevationClassLanes, setElevationChipColor, getClimatePresetNames,
-  getSchemeLightness, setSchemeLightness, maxLightness
+  getSchemeLightness, setSchemeLightness, maxLightness, fitElevationStops, canClassifyElevations,
+  setSchemeContinuous, isContinuousScheme, canDeleteElevationStop, deleteElevationStop,
+  canAddElevationStop, addElevationStop
 } from './gui-color-scheme-model';
+import { getContinuousIcon } from './gui-color-scheme-icons';
 
 // A popup beside the color scheme panel for editing a numeric scheme's class
 // breaks: a histogram of the field's values with a handle under it at each
@@ -18,10 +21,11 @@ import {
 // Fixed elevations also have their colors here: a chip at each stop, on the
 // rule between two classes, whose tiles are gradients from one stop's color
 // to the next. A blend has a column of chips and tiles for each preset, and
-// presets that share a color share a chip, which recolors all of them (or
-// those checked under the table). A slider makes all of a ramp's colors
-// lighter or darker, and the histogram has only the land's values (or the
-// sea's).
+// presets that share a color share a chip, which recolors all of them. Under
+// the table, the selected chip of a ramp has buttons for deleting its stop,
+// adding one above it and resetting its color; a blend's has only the reset. A slider
+// makes all of a ramp's colors lighter or darker, and the histogram has only
+// the land's values (or the sea's).
 //
 // opts.getScheme(), opts.getLayer()  the scheme and layer being edited
 // opts.onChange(scheme)  a break was moved
@@ -42,7 +46,7 @@ export function ClassBreaksDialog(gui, opts) {
   var scale = null;
   var range = null; // the scale's [min, max]
   var titleEl, chartEl, barsEl, linesEl, handlesEl, minLabel, maxLabel, logToggle, tableEl, noteEl, bodyEl;
-  var lightnessRow, lightnessInput;
+  var lightnessRow, lightnessInput, fitBtn, continuousBtn, logLabel;
   var handles = [], lines = [], pivotLine, inputs = [], rules = [], classRows = [], chipBoxes = [];
   var reversed = false; // the table's order, from opts.reversed()
   var drag = null;
@@ -68,7 +72,7 @@ export function ClassBreaksDialog(gui, opts) {
   this.update = update;
 
   function update() {
-    var scheme, lyr, values;
+    var scheme, lyr, values, elevation;
     if (!isOpen) return;
     scheme = opts.getScheme();
     lyr = opts.getLayer();
@@ -78,12 +82,15 @@ export function ClassBreaksDialog(gui, opts) {
     noteEl.classed('hidden', !!info);
     bodyEl.classed('hidden', !info);
     if (!info) return;
+    elevation = isElevationScheme(scheme);
     logToggle.node().checked = logScale;
+    logLabel.classed('hidden', elevation);
+    fitBtn.classed('hidden', !elevation);
     renderLightness(scheme);
     // a drag keeps the scale it started with, since moving an end stop of
     // fixed elevations can change the range
     if (!drag) {
-      scale = getBreaksScale(info.min, info.max, logScale);
+      scale = getBreaksScale(info.min, info.max, logScale && !elevation);
       range = [info.min, info.max];
     }
     values = getSchemeValues(scheme, lyr);
@@ -124,13 +131,35 @@ export function ClassBreaksDialog(gui, opts) {
     minLabel = El('span').appendTo(axis);
     maxLabel = El('span').appendTo(axis);
 
-    var logRow = El('label').addClass('label-style-row class-breaks-log-row').appendTo(bodyEl);
-    logToggle = El('input').attr('type', 'checkbox').appendTo(logRow).on('change', function() {
+    // a log scale for other breaks; fitting the stops and continuous colors
+    // for fixed elevations
+    var logRow = El('div').addClass('label-style-row class-breaks-log-row').appendTo(bodyEl);
+    logLabel = El('label').appendTo(logRow);
+    logToggle = El('input').attr('type', 'checkbox').appendTo(logLabel).on('change', function() {
       logScale = logToggle.node().checked;
       this.blur();
       update();
     });
-    El('span').appendTo(logRow).text('Log scale');
+    El('span').appendTo(logLabel).text('Log scale');
+    // see fitElevationStops()
+    fitBtn = El('button').addClass('class-breaks-fit-btn').attr('type', 'button').text('Fit to data')
+      .appendTo(logRow)
+      .on('click', function() {
+        var scheme = opts.getScheme();
+        var next = scheme && isElevationScheme(scheme) ? fitElevationStops(scheme, opts.getLayer()) : scheme;
+        this.blur();
+        if (next != scheme) opts.onChange(next);
+      });
+    // one preset's colors, or the sea's, can be classes (see canClassifyElevations())
+    continuousBtn = El('button').addClass('color-scheme-icon-btn class-breaks-continuous-btn')
+      .attr('type', 'button').attr('aria-label', 'Continuous colors (unclassed)')
+      .attr('data-tooltip', 'Continuous colors (unclassed)').html(getContinuousIcon())
+      .appendTo(logRow)
+      .on('click', function() {
+        var scheme = opts.getScheme();
+        this.blur();
+        if (scheme && canClassifyElevations(scheme)) opts.onChange(setSchemeContinuous(scheme, !isContinuousScheme(scheme)));
+      });
 
     // fixed elevations only (see setSchemeLightness()); double-click to reset
     lightnessRow = El('div').addClass('label-style-row color-scheme-slider-row class-breaks-lightness-row')
@@ -181,6 +210,8 @@ export function ClassBreaksDialog(gui, opts) {
     var el = lightnessInput.node();
     var val = Math.round(getSchemeLightness(scheme) / maxLightness * lightnessSteps);
     lightnessRow.classed('hidden', !isElevationScheme(scheme));
+    continuousBtn.classed('hidden', !canClassifyElevations(scheme))
+      .classed('selected', isContinuousScheme(scheme));
     if (+el.value != val) el.value = val;
     // see showSliderFill() in gui-color-scheme-panel.mjs
     el.style.setProperty('--fill', 'calc(6px + (100% - 12px) * ' + (val + lightnessSteps) / (2 * lightnessSteps) + ')');
@@ -327,21 +358,25 @@ export function ClassBreaksDialog(gui, opts) {
     el.style.setProperty('--tooltip-y', rect.bottom + 5 + 'px');
   }
 
+  // only a blend's chips have tooltips, which say whose colors they are
   function renderChips(box, chips, i) {
     box.empty();
     chips.forEach(function(chip) {
-      var label = (chip.names.length > 0 ? chip.names.join(', ') + ' at ' : 'Color at ') + formatElevation(info.breaks[i]);
+      var blended = chip.names.length > 0;
+      var label = (blended ? chip.names.join(', ') + ' at ' : 'Color at ') + formatElevation(info.breaks[i]) +
+        (chip.edited ? ' (edited)' : '');
       // after recoloring some of a shared chip's presets, the chip they now have
-      var isSelected = !!selected && selected.i == i && (chip.names.length === 0 ||
+      var isSelected = !!selected && selected.i == i && (!blended ||
         chip.names.some(function(name) { return selected.checked.indexOf(name) > -1; }));
-      El('div').addClass('class-breaks-chip')
-        .attr('data-tooltip', label + (chip.edited ? ' (edited)' : ''))
+      var el = El('div').addClass('class-breaks-chip')
+        .attr('aria-label', label)
+        .attr('data-tooltip', blended ? label : null)
         .classed('edited', chip.edited).classed('selected', isSelected)
         .css('grid-column', 'span ' + Math.max(chip.names.length, 1))
         .css('background-color', chip.color)
         .appendTo(box)
-        .on('mouseenter', function(e) { placeChipTooltip(e.currentTarget); })
         .on('click', function() { selectChip(i, chip); });
+      if (blended) el.on('mouseenter', function(e) { placeChipTooltip(e.currentTarget); });
     });
   }
 
@@ -361,41 +396,47 @@ export function ClassBreaksDialog(gui, opts) {
     if (!picker.visible()) picker.toggle();
   }
 
-  // Which presets of a shared chip to recolor, and a reset for an edited color
+  // Buttons for the selected stop of a ramp: deleting it, adding a stop above
+  // it, and resetting an edited color (a blend has only the reset)
   function renderChipBar(scheme) {
-    var chip;
+    var chip, lyr;
+    var blended = isBlendedScheme(scheme);
     chipBar.empty();
-    chipBar.classed('hidden', !selected);
+    chip = selected ? getElevationStopChips(scheme, selected.i).find(function(chip) {
+      return chip.names.length === 0 || chip.names.some(function(name) { return selected.checked.indexOf(name) > -1; });
+    }) : null;
+    chipBar.classed('hidden', !selected || blended && !(chip && chip.edited));
     if (!selected) return;
-    chip = getElevationStopChips(scheme, selected.i).find(function(chip) {
-      return chip.names.some(function(name) { return selected.names.indexOf(name) > -1; }) || chip.names.length === 0;
-    });
-    El('span').addClass('class-breaks-chip-bar-label').appendTo(chipBar)
-      .text(formatElevation(info.breaks[selected.i]) + (selected.names.length > 1 ? ':' : ''));
-    if (selected.names.length > 1) {
-      selected.names.forEach(function(name) {
-        var label = El('label').appendTo(chipBar);
-        El('input').attr('type', 'checkbox').appendTo(label)
-          .attr('checked', selected.checked.indexOf(name) > -1 ? true : null)
-          .on('change', function() {
-            var checked = this.checked;
-            selected.checked = selected.names.filter(function(n) {
-              return n == name ? checked : selected.checked.indexOf(n) > -1;
-            });
-          });
-        El('span').appendTo(label).text(name);
-      });
-    } else if (selected.names.length == 1) {
-      El('span').appendTo(chipBar).text(selected.names[0]);
+    lyr = opts.getLayer();
+    if (blended) {
+      if (chip && chip.edited) {
+        addChipButton('Reset', function(scheme, i, names) {
+          return setElevationChipColor(scheme, names, i, null);
+        });
+      }
+      return;
     }
+    if (canDeleteElevationStop(scheme)) {
+      addChipButton('Delete stop', function(scheme, i) {
+        return deleteElevationStop(scheme, opts.getLayer(), i);
+      });
+    }
+    addChipButton('Add stop', function(scheme, i) {
+      return addElevationStop(scheme, opts.getLayer(), i);
+    }).node().disabled = !canAddElevationStop(scheme, lyr, selected.i);
     if (chip && chip.edited) {
-      El('button').addClass('class-breaks-chip-reset').appendTo(chipBar).text('Reset')
+      addChipButton('Reset', function(scheme, i) {
+        return setElevationChipColor(scheme, [], i, null);
+      });
+    }
+
+    function addChipButton(text, edit) {
+      return El('button').appendTo(chipBar).text(text)
         .on('click', function() {
-          var scheme = opts.getScheme();
-          var names = selected.checked;
           var i = selected.i;
+          var names = selected.checked;
           hidePicker();
-          opts.onChange(setElevationChipColor(scheme, names, i, null));
+          opts.onChange(edit(opts.getScheme(), i, names));
         });
     }
   }

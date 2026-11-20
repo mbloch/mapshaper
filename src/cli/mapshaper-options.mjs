@@ -1127,16 +1127,34 @@ export function getOptionParser() {
       describe: '(oklch) more vivid midtones, 0-1 (default 0)',
       type: 'number'
     })
-    .option('hypsometric', {
-      describe: '[raster] elevation colors: desert, steppe, tropical, temperate, boreal, polar, blended (by climate), atlas, lowland, highland, or none (only the sea). colors= and breaks= (every elevation) change them; name a blend\'s presets, e.g. colors=desert:...,polar:...'
+    .option('land-colors', {
+      describe: '[raster] elevation colors: desert, steppe, tropical, temperate, boreal, polar, blended (by climate), atlas, lowland, highland, or a list of colors (with land-breaks=); recolor a blend\'s presets with land-colors=desert:...,polar:...',
+      type: 'colors'
     })
-    .option('classed', {
-      describe: '[raster] with hypsometric=: classes from each elevation up to the next, not continuous colors',
+    .option('land-breaks', {
+      describe: '[raster] the elevation of each land color, in the band\'s units',
+      type: 'numbers'
+    })
+    .option('land-classed', {
+      describe: '[raster] land colors in classes, from each elevation up to the next',
       type: 'flag'
     })
-    .option('sea', {
-      describe: '[raster] at or below 0 and open to the edge, or a known inland sea: transparent (default with hypsometric=), land, or pale, blue, gray (bathymetric tints; colors=sea:... and breaks=sea:... change them)'
+    .option('sea-colors', {
+      describe: '[raster] colors of the sea (at or below 0 and open to the edge, or a known inland sea): transparent (default with land-colors=), land, pale, blue, gray, or a list of colors (with sea-breaks=)',
+      type: 'colors'
     })
+    .option('sea-breaks', {
+      describe: '[raster] the depth of each sea color, deepest first, in the band\'s units',
+      type: 'numbers'
+    })
+    .option('sea-classed', {
+      describe: '[raster] sea colors in classes, from each depth down to the next',
+      type: 'flag'
+    })
+    // older options for elevation colors (see getElevationOptions())
+    .option('hypsometric', {})
+    .option('classed', {type: 'flag'})
+    .option('sea', {})
     .option('index-field', {
       describe: 'apply pre-calculated classes (0 ... n-1, -1)'
     })

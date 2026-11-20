@@ -482,7 +482,10 @@ tested.
    from one chip's color to the next (`getElevationStopChips()`,
    `getElevationClassLanes()`). A blend has a column of chips and tiles for
    each preset; neighboring presets with the same color share a chip, which
-   recolors all of them, or the ones left checked under the table. `-classify sea=`
+   recolors all of them. Under the table, the selected chip of a ramp has
+   Delete stop (`deleteElevationStop()`), Add stop (above it,
+   `addElevationStop()`) and Reset buttons; a blend's has only Reset, once
+   its color has been changed. `-classify sea=`
    leaves out the sea: with `sea=transparent` (the default with
    `hypsometric=`, and what the panel gives), pixels at or below 0 that
    connect, through other such pixels, to the grid's edge or to a pixel without a
@@ -527,6 +530,24 @@ tested.
    range ends at 0). The Land menu has Transparent (`scheme.landTransparent`);
    making both transparent brings back the other. Still to do: fit to
    data.
+
+   The options were then renamed, so that the land and the sea each have
+   the same three: `land-colors=` (a preset, `blended`, a blend's recolored
+   presets by name, or a list of colors, which needs `land-breaks=`),
+   `land-breaks=` and `land-classed`, and `sea-colors=` (`transparent`,
+   `land`, a preset, or a list of colors, which needs `sea-breaks=`),
+   `sea-breaks=` and `sea-classed`. `sea-colors=` without `land-colors=`
+   (or `colors=`) colors only the sea. `getElevationOptions()` reads either
+   these or the older options above (`hypsometric=`, `sea=`, `classed`, and
+   the named lists, which still work, for scripts and saved sessions) into
+   one form, which `-classify` and the panel's import both use; the panel
+   writes only the newer ones. Custom land colors give `palette.hypsometric
+   = 'custom'`, and classed land keeps all of its stops as `palette.stops`,
+   since its breaks leave out the first. The classed sea
+   (`seaRamp.classed`) mirrors the classed land: each class runs from a
+   stop down to the next deeper one, so a value at a stop takes the stop's
+   color (`getSeaClassTable()`); the class breaks dialog counts and draws
+   the sea's classes the same way.
 7. Later: a command that renders a raster's display into RGB pixels (colored
    GeoTIFFs, `-tone` on palette rasters), GeoTIFF `ColorMap` import as a default categorical palette (NLCD
    and other palette TIFFs), category labels from raster attribute tables,
