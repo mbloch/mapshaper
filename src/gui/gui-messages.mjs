@@ -178,7 +178,7 @@ export function MessageControl(gui) {
     }
     El('div').addClass('message-body').text(bodyText).appendTo(item);
     El('span').addClass('message-time').text(formatTime(entry.time)).appendTo(item);
-    var dismiss = El('span').addClass('message-dismiss').attr('title', 'Dismiss').text('\u00d7').appendTo(item);
+    var dismiss = El('span').addClass('message-dismiss').attr('aria-label', 'Dismiss').text('\u00d7').appendTo(item);
     var entryId = entry.id;
     dismiss.on('click', function(e) {
       // Prevent the click from also triggering any panel-level handlers.

@@ -1781,11 +1781,6 @@ img.eye-btn {
 	color: #666;
 }
 
-/* hints at a tooltip that counts the features with null geometry */
-.layer-item .layer-contents.has-nulls span {
-	border-bottom: 1px dotted #999;
-}
-
 .layer-item .layer-name {
 	display: inline-block;
 	max-width: 100%;
@@ -6385,10 +6380,6 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 }
 
 /* a recolored chip: a dot, like a pinned tile's */
-.class-breaks-chip.edited {
-	background-image: radial-gradient(circle at center, rgba(0,0,0,0.55) 1.5px, transparent 2px);
-}
-
 /* under the table: buttons for the stop of the chip being recolored */
 .class-breaks-chip-bar {
 	display: flex;

@@ -205,7 +205,7 @@ export function ColorSchemePanel(gui, opts) {
         breaksDialog.open();
       }
       renderMethodRow();
-    }).addClass('color-scheme-customize-btn').attr('title', 'Edit the class breaks');
+    }).addClass('color-scheme-customize-btn');
     breaksDialog = new ClassBreaksDialog(gui, {
       reversed: isElevationScheme,
       getScheme: function() { return scheme; },
@@ -296,8 +296,7 @@ export function ColorSchemePanel(gui, opts) {
     // a raster's palette is all of its style; a polygon layer's style panel
     // has its own Clear style button
     clearRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(controlsEl);
-    makePanelActionButton(clearRow, 'Clear style', clearRasterStyle)
-      .attr('title', 'Remove the palette and the opacity (-style clear)');
+    makePanelActionButton(clearRow, 'Clear style', clearRasterStyle);
     // import on the left; on the right, a file for each export format, so
     // that there is no format to choose first
     var exportRow = El('div').addClass('label-style-row color-scheme-export-row').appendTo(controlsEl);
@@ -310,17 +309,15 @@ export function ColorSchemePanel(gui, opts) {
         importDialog.open();
       }
       renderImportButton();
-    }).attr('title', 'Use a palette from a GMT (.cpt), JSON or legend file, or a list of colors');
+    });
     importDialog = new ColorSchemeImportDialog(gui, {
       onImport: importPalette,
       onClose: renderImportButton
     });
     El('span').addClass('color-scheme-export-label').appendTo(exportRow).text('Export');
     exportBtns = [
-      makePanelActionButton(exportRow, 'GMT', function() { exportScheme('cpt'); })
-        .attr('title', 'Save the classes and colors as a GMT color palette table (.cpt)'),
+      makePanelActionButton(exportRow, 'GMT', function() { exportScheme('cpt'); }),
       makePanelActionButton(exportRow, 'JSON', function() { exportScheme('json'); })
-        .attr('title', 'Save the classes and colors as JSON, with a Mapbox GL / MapLibre style expression')
     ];
     document.addEventListener('mousedown', function(e) {
       if (paletteMenu.visible() && !paletteMenu.node().contains(e.target) &&
@@ -352,7 +349,7 @@ export function ColorSchemePanel(gui, opts) {
         seaBreaksDialog.open();
       }
       render();
-    }).addClass('color-scheme-customize-btn').attr('title', 'Edit the depths and colors of the sea');
+    }).addClass('color-scheme-customize-btn');
     seaBreaksDialog = new ClassBreaksDialog(gui, {
       title: 'Sea depths',
       reversed: function() { return true; },
@@ -630,8 +627,7 @@ export function ColorSchemePanel(gui, opts) {
     methodLabel.text(numeric ? 'Breaks' : 'Method');
     methodSelect.attr('aria-label', numeric ? 'Class breaks' : 'Classification method');
     customizeCell.classed('hidden', !numeric);
-    customizeBtn.classed('selected', breaksDialog.isOpen())
-      .attr('title', elevation ? 'Edit the elevations and colors' : 'Edit the class breaks');
+    customizeBtn.classed('selected', breaksDialog.isOpen());
     setPanelButtonDisabled(customizeBtn, elevation && isLandTransparent(scheme));
     if (elevation && isLandTransparent(scheme)) breaksDialog.close();
   }
@@ -1185,7 +1181,7 @@ export function ColorSchemePanel(gui, opts) {
     var transparent = isLandTransparent(scheme);
     addPaletteItem('Transparent', null, transparent, function() {
       changeScheme(setLandTransparent(scheme, true));
-    }).attr('title', 'Color only the sea');
+    });
     if (!scheme.preset) {
       addPaletteItem(isBlendedScheme(scheme) ? 'Custom blend' : 'Custom',
           isBlendedScheme(scheme) ? getBlendedPresetColors(scheme) : getSchemeColors(scheme), !transparent, function() {
@@ -1204,7 +1200,7 @@ export function ColorSchemePanel(gui, opts) {
     if (internal.getClimatePreset(points)) {
       addPaletteItem('Blended', getBlendedPresetColors(), !transparent && scheme.preset == 'Blended', function() {
         changeScheme(chooseBlendedElevations(scheme, points));
-      }).attr('title', 'The climate presets, blended by climate across the map');
+      });
     }
     climate.forEach(addPreset);
     El('div').addClass('color-scheme-palette-heading').appendTo(paletteMenu).text('Other');

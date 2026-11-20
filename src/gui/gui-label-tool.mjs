@@ -470,7 +470,7 @@ export function LabelTool(gui) {
     var paddingCell = El('div').addClass('label-split-cell label-spacing-row label-padding-row').appendTo(backgroundRow);
     El('span').appendTo(paddingCell).text('Padding');
     paddingInput = El('input').attr('type', 'text').addClass('label-measure-input')
-      .attr('title', 'Space around the text, as in CSS: 4, or 2 6 for top and bottom, then sides')
+      .attr('aria-label', 'Padding')
       .appendTo(paddingCell)
       .on('change', function() {
         applyLabelPadding(paddingInput.node().value.trim());

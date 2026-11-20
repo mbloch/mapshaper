@@ -1059,7 +1059,7 @@ export function LayerControl(gui) {
     if (pick) model.selectLayer(pick.layer, pick.dataset);
   }
 
-  // Returns {text, title}; title is a tooltip, or null
+  // Returns {text, title}; title adds the count of null shapes, or is null
   function describeLyr(lyr, dataset) {
     if (internal.isFrameLayer(lyr, dataset.arcs)) {
       return {text: internal.formatFrameSizeForDisplay(
@@ -1081,12 +1081,7 @@ export function LayerControl(gui) {
   }
 
   function renderContents(lyr, dataset) {
-    var o = describeLyr(lyr, dataset);
-    if (!o.title) {
-      return '<div class="layer-contents">' + o.text + '</div>';
-    }
-    return '<div class="layer-contents has-nulls"><span title="' + o.title + '">' +
-      o.text + '</span></div>';
+    return '<div class="layer-contents">' + describeLyr(lyr, dataset).text + '</div>';
   }
 
   function renderLayerInfo(info) {

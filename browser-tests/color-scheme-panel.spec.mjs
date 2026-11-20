@@ -282,7 +282,7 @@ test('non-adjacent colors need no field', async function({page}) {
     expect(colors).toContain(await toCssColor(page, fill));
   }
   await expect(page.locator('.layer-style-panel .layer-scheme-strip'))
-    .toHaveAttribute('title', 'Neighbors colored differently');
+    .toHaveAttribute('aria-label', 'Neighbors colored differently');
 
   await closeSchemePanel(page);
   var classify = (await getSessionCommands(page)).filter(function(cmd) {

@@ -374,7 +374,7 @@ export function InteractionMode(gui) {
   // Names the layer the tools above the divider act on.
   function renderLayerHeading(lyr) {
     var name = formatLayerNameForDisplay(lyr.name);
-    var heading = El('div').addClass('nav-menu-heading').attr('title', name).text(name).appendTo(menu);
+    var heading = El('div').addClass('nav-menu-heading').text(name).appendTo(menu);
     // A click on the heading would reach the button, which picks a tool.
     heading.on('click', function(e) {
       e.stopPropagation();

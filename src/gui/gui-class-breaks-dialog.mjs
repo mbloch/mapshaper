@@ -167,7 +167,6 @@ export function ClassBreaksDialog(gui, opts) {
     El('span').addClass('color-scheme-slider-label').appendTo(lightnessRow).text('Lightness');
     lightnessInput = El('input').attr('type', 'range').attr('aria-label', 'Lightness')
       .attr('min', -lightnessSteps).attr('max', lightnessSteps).attr('step', 1)
-      .attr('title', 'Makes all the colors lighter or darker\n(double-click to reset)')
       .appendTo(lightnessRow)
       .on('input', function() {
         setLightness(+this.value / lightnessSteps * maxLightness);
@@ -371,7 +370,7 @@ export function ClassBreaksDialog(gui, opts) {
       var el = El('div').addClass('class-breaks-chip')
         .attr('aria-label', label)
         .attr('data-tooltip', blended ? label : null)
-        .classed('edited', chip.edited).classed('selected', isSelected)
+        .classed('selected', isSelected)
         .css('grid-column', 'span ' + Math.max(chip.names.length, 1))
         .css('background-color', chip.color)
         .appendTo(box)

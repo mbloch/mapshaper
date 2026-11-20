@@ -20,7 +20,7 @@ var DEBOUNCE_MS = 250;
 //   getToken: returns the Mapbox access token
 export function PlaceSearch(gui, parent, getToken) {
   var wrapper = El('div').addClass('place-search').hide();
-  var btn = El('div').addClass('place-search-btn').attr('title', 'Search for a place')
+  var btn = El('div').addClass('place-search-btn').attr('aria-label', 'Search for a place')
     .html(SEARCH_ICON).appendTo(wrapper);
   var input = El('input').addClass('place-search-input')
     .attr('type', 'text')

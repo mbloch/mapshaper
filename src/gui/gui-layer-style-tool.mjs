@@ -377,7 +377,7 @@ export function LayerStyleTool(gui) {
     schemeStrip.on('click', openColorSchemePanel);
     El('div').addClass('layer-scheme-colors').appendTo(schemeStrip);
     El('div').addClass('layer-scheme-remove').attr('role', 'button')
-      .attr('aria-label', 'Remove color scheme').attr('title', 'Remove color scheme')
+      .attr('aria-label', 'Remove color scheme')
       .text('×').appendTo(schemeStrip)
       .on('click', function(e) {
         e.stopPropagation();
@@ -431,7 +431,7 @@ export function LayerStyleTool(gui) {
     if (scheme) {
       schemeStrip.findChild('.layer-scheme-colors')
         .css('background-image', getSchemeStripBackground(scheme));
-      schemeStrip.attr('title', scheme.method == 'non-adjacent' ?
+      schemeStrip.attr('aria-label', scheme.method == 'non-adjacent' ?
         'Neighbors colored differently' : 'Colored by ' + scheme.field);
       fillControl.picker.hide();
     }

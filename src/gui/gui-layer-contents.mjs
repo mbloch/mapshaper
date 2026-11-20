@@ -61,7 +61,7 @@ export function isNullShape(shp) {
 // @shapes: the layer's shapes
 // @records: data records, or null for a layer without attribute data
 // @fields: names of the layer's data fields
-// Returns {text, nulls, title}; title is the tooltip, or null if there are no nulls.
+// Returns {text, nulls, title}; title is the text with the count of nulls, or null if there are none.
 export function describeFeatureContents(geometryType, shapes, records, fields) {
   var nulls = shapes.length - countNonNull(shapes);
   var text = geometryType == 'point' ?
