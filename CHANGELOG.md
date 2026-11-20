@@ -1,3 +1,7 @@
+v0.8.6
+* Improvements to the hypsometric/bathymetric tint UI.
+* Improvements to -deshadow accuracy, and a new -deshadow despeckle option for removing tiny shadows that the DEM does not model accurately.
+
 v0.8.5
 * Improvements to -buffer and -deshadow
 
