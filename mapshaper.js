@@ -6463,6 +6463,42 @@
     return Math.max(lch.c, Math.min(lch.c + vibrance, getMaxChroma(lch.l, lch.h)));
   }
 
+  // The colors of a ramp made lighter (amount > 0) or darker (amount < 0), by
+  // an amount of OKLCH lightness. Every color moves by the same amount, which
+  // keeps the steps in lightness between them, until the lightest reaches white
+  // (or the darkest, black). The rest of the amount moves each color toward
+  // white (black) in proportion to its distance from it, so that the darkest
+  // (lightest) color still moves the whole amount and the steps shrink evenly.
+  // Hue stays the same; chroma is reduced only where the gamut has no room.
+  function adjustRampLightness(colors, amount) {
+    var rgbs = colors.map(parseColorOrStop);
+    var lchs = rgbs.map(function(rgb) { return oklabToOklch(rgbToOklab(rgb)); });
+    var ls = lchs.map(function(lch) { return lch.l; });
+    if (!amount || colors.length === 0) return rgbs.map(formatColor);
+    ls = amount > 0 ? lightenValues(ls, amount) : lightenValues(ls.map(flip), -amount).map(flip);
+    return lchs.map(function(lch, i) {
+      var rgb = oklchToRgb({l: ls[i], c: lch.c, h: lch.h});
+      rgb.a = rgbs[i].a;
+      return formatColor(rgb);
+    });
+
+    function flip(l) {
+      return 1 - l;
+    }
+  }
+
+  // lightness values (0-1) raised by amount, as adjustRampLightness() has it
+  function lightenValues(ls, amount) {
+    var lo = Math.min.apply(null, ls), hi = Math.max.apply(null, ls);
+    var shift = clamp$3(Math.min(amount, 1 - hi), 0, 1);
+    var rest = amount - shift;
+    var t = rest > 0 && lo + shift < 1 ? Math.min(rest / (1 - lo - shift), 1) : 0;
+    return ls.map(function(l) {
+      l += shift;
+      return clamp$3(l + t * (1 - l), 0, 1);
+    });
+  }
+
   // Returns a function that maps t in [0, 1] to a color string. Lightness,
   // chroma and hue are each interpolated on their own, so that equal steps in
   // t are equal steps in each of them; hue takes the shorter way around the
@@ -6707,6 +6743,7 @@
   var Oklab = /*#__PURE__*/Object.freeze({
     __proto__: null,
     MAX_VIBRANCE_CHROMA: MAX_VIBRANCE_CHROMA,
+    adjustRampLightness: adjustRampLightness,
     getMaxChroma: getMaxChroma,
     getOklchInterpolator: getOklchInterpolator,
     getVibranceChroma: getVibranceChroma,
@@ -7005,8 +7042,9 @@
   //                   // without values (see mapshaper-raster-sea-mask.mjs):
   //                   // 'transparent' leaves them out; the name of a
   //                   // bathymetric preset colors them by seaRamp
-  //   seaRamp,        // {breaks, colors}: continuous colors at depths, in the
-  //                   // band's units (see setRasterPaletteSea())
+  //   seaRamp,        // {breaks, colors, classed}: colors at depths, in the
+  //                   // band's units, continuous unless classed (see
+  //                   // setRasterPaletteSea())
   //   seaSeeds,       // [[x, y, level], ...]: points in the inland seas, in the
   //                   // raster's coordinates, or null if its CRS is unknown
   //                   // (see mapshaper-inland-seas.mjs)
@@ -7049,10 +7087,15 @@
   // Tables are cached by getRasterPaletteKey(), so redrawing a raster while
   // panning and zooming doesn't rebuild them.
   function getRasterPaletteTable(palette) {
-    var key = getRasterPaletteKey(palette);
+    return getCachedTable(getRasterPaletteKey(palette), function() {
+      return buildRasterPaletteTable(palette);
+    });
+  }
+
+  function getCachedTable(key, build) {
     var entry = tableCache.find(function(o) { return o.key == key; });
     if (!entry) {
-      entry = {key: key, table: buildRasterPaletteTable(palette)};
+      entry = {key: key, table: build()};
       tableCache.unshift(entry);
       if (tableCache.length > MAX_CACHED_TABLES) tableCache.pop();
     }
@@ -7061,9 +7104,34 @@
 
   // The table for the sea of a palette with a bathymetric ramp, or null
   function getRasterSeaTable(palette) {
-    if (!palette.seaRamp) return null;
-    return getRasterPaletteTable({type: 'sequential', continuous: true, interpolation: 'oklch',
-      breaks: palette.seaRamp.breaks, colors: palette.seaRamp.colors});
+    var ramp = palette.seaRamp;
+    if (!ramp) return null;
+    if (!ramp.classed) {
+      return getRasterPaletteTable({type: 'sequential', continuous: true, interpolation: 'oklch',
+        breaks: ramp.breaks, colors: ramp.colors});
+    }
+    return getCachedTable(JSON.stringify(['sea classes', ramp.breaks, ramp.colors]), function() {
+      return getSeaClassTable(ramp.colors, ramp.breaks);
+    });
+  }
+
+  // The sea's classes mirror the land's: each color runs from its depth down to
+  // the next stop's, which it leaves out, so a value equal to a stop takes the
+  // stop's color. The shallowest color also takes the values above its stop,
+  // and the deepest those below its stop.
+  // @stops: ascending, a color at each
+  function getSeaClassTable(colors, stops) {
+    var table = getColorList(colors);
+    var n = colors.length;
+    if (stops.length != n) {
+      stop$1('A classed sea needs a color at each depth');
+    }
+    table.getIndex = function(val) {
+      var i = 0;
+      while (i < n - 1 && val > stops[i]) i++;
+      return i;
+    };
+    return table;
   }
 
   function buildRasterPaletteTable(palette) {
@@ -54891,16 +54959,34 @@ ${css.join('\n')}
         describe: '(oklch) more vivid midtones, 0-1 (default 0)',
         type: 'number'
       })
-      .option('hypsometric', {
-        describe: '[raster] elevation colors: desert, steppe, tropical, temperate, boreal, polar, blended (by climate), atlas, lowland, highland, or none (only the sea). colors= and breaks= (every elevation) change them; name a blend\'s presets, e.g. colors=desert:...,polar:...'
+      .option('land-colors', {
+        describe: '[raster] elevation colors: desert, steppe, tropical, temperate, boreal, polar, blended (by climate), atlas, lowland, highland, or a list of colors (with land-breaks=); recolor a blend\'s presets with land-colors=desert:...,polar:...',
+        type: 'colors'
       })
-      .option('classed', {
-        describe: '[raster] with hypsometric=: classes from each elevation up to the next, not continuous colors',
+      .option('land-breaks', {
+        describe: '[raster] the elevation of each land color, in the band\'s units',
+        type: 'numbers'
+      })
+      .option('land-classed', {
+        describe: '[raster] land colors in classes, from each elevation up to the next',
         type: 'flag'
       })
-      .option('sea', {
-        describe: '[raster] at or below 0 and open to the edge, or a known inland sea: transparent (default with hypsometric=), land, or pale, blue, gray (bathymetric tints; colors=sea:... and breaks=sea:... change them)'
+      .option('sea-colors', {
+        describe: '[raster] colors of the sea (at or below 0 and open to the edge, or a known inland sea): transparent (default with land-colors=), land, pale, blue, gray, or a list of colors (with sea-breaks=)',
+        type: 'colors'
       })
+      .option('sea-breaks', {
+        describe: '[raster] the depth of each sea color, deepest first, in the band\'s units',
+        type: 'numbers'
+      })
+      .option('sea-classed', {
+        describe: '[raster] sea colors in classes, from each depth down to the next',
+        type: 'flag'
+      })
+      // older options for elevation colors (see getElevationOptions())
+      .option('hypsometric', {})
+      .option('classed', {type: 'flag'})
+      .option('sea', {})
       .option('index-field', {
         describe: 'apply pre-calculated classes (0 ... n-1, -1)'
       })
@@ -56436,6 +56522,12 @@ ${css.join('\n')}
         describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color, above 1 adds color; one value, or shadows,highlights (default is 0,1)',
         type: 'numbers'
       })
+      .option('shadow-color', {
+        describe: 'color of shadows, in place of the hillshade\'s (shows with chroma below 1)'
+      })
+      .option('highlight-color', {
+        describe: 'color of highlights, in place of the hillshade\'s (shows with chroma below 1)'
+      })
       .option('base-color', {
         describe: 'color of flat ground in an opaque hillshade not made by -hillshade (default is its most common color)'
       })
@@ -56501,6 +56593,10 @@ ${css.join('\n')}
       .option('date', {
         // describe: 'date of the imagery (e.g. 2023-06-15), to fit the sun along its path that day; default is the dates of imagery from -fetch naip (up to three months apart)'
       })
+      .option('despeckle', {
+        describe: 'also brighten small dark spots that the elevation data can\'t explain, e.g. the shadows of low ledges (for terrain without trees or water)',
+        type: 'flag'
+      })
       .option('verbose', {
         describe: 'print technical details about the correction',
         type: 'flag'
@@ -56511,6 +56607,10 @@ ${css.join('\n')}
       })
       .option('image-shadows', {
         // describe: 'on: use the shadows found in the image even if they are much larger than the DEM\'s; off: use the DEM\'s shadows'
+      })
+      .option('workers', {
+        // describe: 'number of worker threads that fit the sun's position (default depends on image size and CPU; 0 is off)',
+        type: 'integer'
       })
       .option('name', nameOpt)
       .option('target', targetOpt)
@@ -62688,17 +62788,16 @@ ${css.join('\n')}
   // physical map, a least-squares fit by depth, with the trenches below 6000 m
   // (few pixels, lightened by his shading) extended in the same direction.
   // Blue and Gray have the same lightness steps, stronger and with more or
-  // less chroma (in OKLCH).
+  // less chroma (in OKLCH). The stops are those of a 12-stop fit that OKLCH
+  // interpolation reproduces within 1.4 dE (OKLab x 100) above 10000 m; the
+  // trenches below take the deepest color.
   var bathymetricSchemes = {
-    Pale: [[-11e3, '#85b6d8'], [-8e3, '#8cbedf'], [-6e3, '#93c5e5'], [-5e3, '#97cae9'], [-4e3, '#9aceed'],
-      [-3e3, '#a5d5f0'], [-2e3, '#b7e0f6'], [-1e3, '#cbeafa'], [-500, '#d6effb'], [-200, '#d9f0f9'],
-      [-50, '#dff4fb'], [0, '#e2f5fb']],
-    Blue: [[-11e3, '#176591'], [-8e3, '#2774a0'], [-6e3, '#3582ae'], [-5e3, '#3d8cb7'], [-4e3, '#4594be'],
-      [-3e3, '#52a3cd'], [-2e3, '#73bbdf'], [-1e3, '#9bd0eb'], [-500, '#b1dbef'], [-200, '#b6deed'],
-      [-50, '#c2e6f2'], [0, '#c8e8f2']],
-    Gray: [[-11e3, '#79848c'], [-8e3, '#848f97'], [-6e3, '#8e9aa2'], [-5e3, '#95a1a9'], [-4e3, '#9ba7af'],
-      [-3e3, '#a7b2b9'], [-2e3, '#bbc4ca'], [-1e3, '#ced6da'], [-500, '#d9dfe2'], [-200, '#dbe1e3'],
-      [-50, '#e2e8e9'], [0, '#e5eaeb']]
+    Pale: [[-1e4, '#87b9da'], [-5e3, '#97cae9'], [-3e3, '#a5d5f0'], [-200, '#d9f0f9'],
+      [0, '#e2f5fb']],
+    Blue: [[-1e4, '#1d6a96'], [-5e3, '#3d8cb7'], [-3e3, '#52a3cd'], [-200, '#b6deed'],
+      [0, '#c8e8f2']],
+    Gray: [[-1e4, '#7d8890'], [-5e3, '#95a1a9'], [-3e3, '#a7b2b9'], [-200, '#dbe1e3'],
+      [0, '#e5eaeb']]
   };
 
   function getBathymetricSchemeNames() {
@@ -64636,9 +64735,10 @@ ${css.join('\n')}
     getInlandSeas: getInlandSeas
   });
 
-  // -classify hypsometric=: the hypsometric presets as raster palettes, at their
-  // elevations (see hypsometric-schemes.mjs), and a blend of the climate
-  // presets that varies across the map by climate (see hypsometric-climate.mjs).
+  // -classify land-colors=: the hypsometric presets as raster palettes, at their
+  // elevations (see hypsometric-schemes.mjs), a blend of the climate presets
+  // that varies across the map by climate (see hypsometric-climate.mjs), or
+  // custom colors at elevations of their own.
   //
   // A blended palette is an ordinary continuous palette (the ramp of the preset
   // with the most weight across the raster, for anything that draws it without
@@ -64649,15 +64749,17 @@ ${css.join('\n')}
   // }
   // The climate presets have the same elevations.
   //
-  // colors= and breaks= change a preset's colors and elevations (every one, in
-  // the band's units). Their lists can be named (see splitRampOptions()): a
-  // blend's presets each have their own colors (colors=desert:...,polar:...),
-  // and share their elevations; the sea's are colors=sea:... and breaks=sea:...
-  // (see setRasterPaletteSea()). classed gives one preset classes, from each
-  // elevation up to the next.
+  // land-breaks= moves a preset's elevations (every one, in the band's units);
+  // a blend's presets each have their own colors (land-colors=desert:...,polar:...),
+  // and share their elevations. land-classed gives one preset classes, from
+  // each elevation up to the next. sea-colors=, sea-breaks= and sea-classed do
+  // the same for the sea (see setRasterPaletteSea()). The older options
+  // (hypsometric=, sea=, classed, and lists named sea: in colors= and breaks=)
+  // still work (see readOlderElevationOptions()).
 
   var BLEND_NAME = 'blended';
   var NONE_NAME = 'none';
+  var CUSTOM_NAME = 'custom';
   // cells on the long side of a weight field; the climate grid has 1-degree
   // cells, so a world raster gets about that resolution
   var FIELD_CELLS = 360;
@@ -64666,42 +64768,35 @@ ${css.join('\n')}
     return getHypsometricSchemeNames().map(function(name) { return name.toLowerCase(); }).concat([BLEND_NAME, NONE_NAME]);
   }
 
-  // @name: a preset (any case), 'blended', or 'none', for a palette of only the
-  //   sea (palette.land = 'transparent'), whose colors setRasterPaletteSea()
-  //   gives
+  // The land's palette, from options read by getElevationOptions(): a preset,
+  // a blend, custom colors, or for a palette of only the sea ('none'), no
+  // colors (palette.land = 'transparent'), which setRasterPaletteSea() gives.
+  // palette.hypsometric is the preset, 'blended', 'custom' or 'none'.
   // @crs: the raster's CRS, for a blend
-  // @opts: -classify's options, for a blend's colors and elevations
-  function getHypsometricPalette(raster, band, name, crs, opts) {
+  function getHypsometricPalette(raster, band, opts, crs) {
     var grid = getRasterGrid(raster);
-    var key = String(name).toLowerCase();
+    var key = opts.land;
+    var names = opts.names;
     var meters = getVerticalUnitMeters(grid.verticalUnits) || 1;
     var field, preset, ramps, main;
-    if (getHypsometricOptionNames().indexOf(key) == -1) {
-      stop$1('Unknown hypsometric= value:', name, '(expected ' + getHypsometricOptionNames().join(', ') + ')');
-    }
-    opts = opts || {};
-    if (opts.classed && (key == NONE_NAME || key == BLEND_NAME)) {
-      stop$1('classed works with one preset, not hypsometric=' + key);
-    }
     if (key == NONE_NAME) {
-      if (opts.colors || opts.breaks) {
-        stop$1('hypsometric=none colors only the sea; name its lists, e.g. colors=sea:...');
-      }
       return {band: band, type: 'sequential', continuous: true, interpolation: 'oklch', breaks: [], colors: [],
         nullColor: null, land: 'transparent', hypsometric: NONE_NAME};
     }
+    if (key == CUSTOM_NAME) {
+      main = customizeRamp(getCustomRamp(), opts.landColors, opts.landBreaks,
+        {name: 'the land', colors: names.landColors, breaks: names.landBreaks});
+      return Object.assign({band: band}, opts.landClassed ? getRampClasses(main) : main, {hypsometric: CUSTOM_NAME});
+    }
     if (key != BLEND_NAME) {
       preset = getPresetName(key);
-      main = customizeRamp(getPresetRamp(preset, meters), opts.colors, opts.breaks,
-        {name: 'hypsometric=' + key, colors: 'colors=', breaks: 'breaks='});
-      return Object.assign({band: band}, opts.classed ? getRampClasses(main) : main, {hypsometric: preset});
-    }
-    if (opts.colors) {
-      stop$1('hypsometric=blended takes colors for each preset, e.g. colors=desert:...,polar:...');
+      main = customizeRamp(getPresetRamp(preset, meters), opts.landColors, opts.landBreaks,
+        {name: names.land, colors: names.landColors, breaks: names.landBreaks});
+      return Object.assign({band: band}, opts.landClassed ? getRampClasses(main) : main, {hypsometric: preset});
     }
     field = crs ? getClimateWeightField(grid.bbox, crs) : null;
     if (!field) {
-      stop$1('hypsometric=blended needs a raster with a known projection, on land');
+      stop$1(names.land + ' needs a raster with a known projection, on land');
     }
     ramps = getBlendRamps(meters, opts);
     main = ramps.find(function(ramp) { return ramp.name == field.preset; });
@@ -64713,16 +64808,144 @@ ${css.join('\n')}
     });
   }
 
-  // colors= and breaks= with named lists (see splitRampLists()), as a copy of
-  // the options with the unnamed lists (the land's) as colors and breaks, and
-  // the named ones as ramps: {colors: {name: list}, breaks: {name: list}}.
-  // Names: sea (see setRasterPaletteSea()), a blend's presets (colors only,
-  // since they share their elevations), and the preset of hypsometric=, which
-  // is the same as no name.
-  function splitRampOptions(opts) {
+  // -classify's elevation colors, from land-colors=, land-breaks=,
+  // land-classed, sea-colors=, sea-breaks= and sea-classed, or the older
+  // options (see readOlderElevationOptions()), as a copy of the options with:
+  //   land          a land preset (in lower case), 'blended', 'custom' (colors
+  //                 at land-breaks=), 'none' (only the sea is colored), or null
+  //                 for colors given by colors= (or no colors)
+  //   landColors    custom colors, or (older options) a preset's, recolored
+  //   blendColors   {preset: colors} for a blend's recolored presets (lower case)
+  //   landBreaks    every elevation, in the band's units
+  //   landClassed
+  //   sea           'transparent', 'land', a bathymetric preset (in lower case),
+  //                 'custom', or null for the default (transparent with land
+  //                 colors, otherwise land)
+  //   seaColors, seaBreaks, seaClassed
+  //   names         the options as given, for messages
+  // The older options' colors= and breaks= are the land's lists of colors= and
+  // breaks=, without the sea's or a blend's.
+  function getElevationOptions(opts) {
+    var older = ['hypsometric', 'sea', 'classed'].filter(function(key) { return key in opts; });
+    var newer = ['land_colors', 'land_breaks', 'land_classed', 'sea_colors', 'sea_breaks', 'sea_classed'].filter(function(key) {
+      return key in opts;
+    });
+    var named = listHasRampNames(opts.colors) || listHasRampNames(opts.breaks);
+    if (newer.length > 0 && (older.length > 0 || named)) {
+      stop$1((older.length > 0 ? older[0] + (older[0] == 'classed' ? '' : '=') : 'Named lists in colors= and breaks=') +
+        ' and ' + newer[0].replace('_', '-') + (/classed/.test(newer[0]) ? '' : '=') +
+        ' are two ways of giving elevation colors; use land-colors=, sea-colors= and their options');
+    }
+    return older.length > 0 || named ? readOlderElevationOptions(opts) : readElevationOptions(opts);
+  }
+
+  function readElevationOptions(opts) {
+    var out = Object.assign({}, opts, {land: null, sea: null, blendColors: null,
+      landColors: null, landBreaks: opts.land_breaks || null, landClassed: !!opts.land_classed,
+      seaColors: null, seaBreaks: opts.sea_breaks || null, seaClassed: !!opts.sea_classed,
+      names: {land: 'land-colors=', landColors: 'land-colors=', landBreaks: 'land-breaks=',
+        blendColors: 'land-colors=', sea: 'sea-colors=', seaColors: 'sea-colors=', seaBreaks: 'sea-breaks='}});
+    if (opts.land_colors && opts.colors) {
+      stop$1('land-colors= and colors= both give the land\'s colors; use one of them');
+    }
+    ['land', 'sea'].forEach(function(side) {
+      if (!opts[side + '_colors'] && (opts[side + '_breaks'] || opts[side + '_classed'])) {
+        stop$1(side + '-' + (opts[side + '_breaks'] ? 'breaks=' : 'classed') + ' works with ' + side + '-colors=');
+      }
+    });
+    if (opts.land_colors) {
+      readLandColors(opts.land_colors, out);
+    } else if (opts.sea_colors && !opts.colors) {
+      out.land = NONE_NAME;
+    }
+    if (opts.sea_colors) readSeaColors(opts.sea_colors, out);
+    return out;
+  }
+
+  // A preset, a blend's recolored presets (desert:...,polar:..., after
+  // 'blended' or not), or custom colors, which need their elevations
+  function readLandColors(list, out) {
+    var climate = getClimateSchemeNames().map(function(name) { return name.toLowerCase(); });
+    var presets = getLandPresetKeys();
+    var lists, key;
+    if (listHasRampNames(list)) {
+      lists = splitRampLists(list);
+      if (lists[''] && (lists[''].length > 1 || String(lists[''][0]).toLowerCase() != BLEND_NAME)) {
+        stop$1('land-colors= takes colors by preset for a blend (e.g. land-colors=desert:...,polar:...), without other colors');
+      }
+      delete lists[''];
+      Object.keys(lists).forEach(function(name) {
+        if (!climate.includes(name)) {
+          stop$1('Unknown name in land-colors=: ' + name + ' (expected ' + climate.join(', ') + ')');
+        }
+      });
+      out.land = BLEND_NAME;
+      out.names.land = 'land-colors=' + BLEND_NAME;
+      out.blendColors = lists;
+    } else if (list.length == 1) {
+      key = String(list[0]).toLowerCase();
+      if (!presets.includes(key)) {
+        stop$1(parseColor(key) ? 'land-colors= needs two or more colors, or the name of a preset' :
+          'Unknown land-colors= value: ' + list[0] + ' (expected ' + presets.join(', ') + ', or a list of colors)');
+      }
+      out.land = key;
+      out.names.land = 'land-colors=' + key;
+    } else {
+      if (!out.landBreaks) stop$1('land-colors= with a list of colors needs land-breaks=, an elevation for each color');
+      out.land = CUSTOM_NAME;
+      out.landColors = list;
+    }
+    if (out.landClassed && out.land == BLEND_NAME) {
+      stop$1('land-classed works with one preset, not a blend');
+    }
+  }
+
+  // transparent, land, a bathymetric preset, or custom colors, which need
+  // their depths
+  function readSeaColors(list, out) {
+    var names = getSeaOptionNames();
+    var key;
+    if (listHasRampNames(list)) {
+      stop$1('sea-colors= takes a preset or a list of colors, without names');
+    } else if (list.length == 1) {
+      key = String(list[0]).toLowerCase();
+      if (!names.includes(key)) {
+        stop$1(parseColor(key) ? 'sea-colors= needs two or more colors, or the name of a preset' :
+          'Unknown sea-colors= value: ' + list[0] + ' (expected ' + names.join(', ') + ', or a list of colors)');
+      }
+      out.sea = key;
+    } else {
+      if (!out.seaBreaks) stop$1('sea-colors= with a list of colors needs sea-breaks=, a depth for each color');
+      out.sea = CUSTOM_NAME;
+      out.seaColors = list;
+    }
+    if ((out.sea == 'transparent' || out.sea == 'land') && (out.seaBreaks || out.seaClassed)) {
+      stop$1((out.seaBreaks ? 'sea-breaks=' : 'sea-classed') + ' works with sea colors, not sea-colors=' + out.sea);
+    }
+  }
+
+  // The older options: hypsometric= (a land preset, blended, or none), colors=
+  // and breaks= (with hypsometric=, the land's; and lists named by the
+  // preset, a blend's presets or sea, see splitRampLists()), classed, and sea=
+  // (with sea:... lists, which also work without a preset, custom colors).
+  function readOlderElevationOptions(opts) {
     var key = opts.hypsometric ? String(opts.hypsometric).toLowerCase() : null;
     var climate = getClimateSchemeNames().map(function(name) { return name.toLowerCase(); });
-    var out = Object.assign({}, opts, {ramps: {colors: {}, breaks: {}}});
+    var out = Object.assign({}, opts, {land: key, sea: null, blendColors: null, landColors: null, landBreaks: null,
+      landClassed: !!opts.classed, seaColors: null, seaBreaks: null, seaClassed: false,
+      names: {land: 'hypsometric=' + key, landColors: 'colors=', landBreaks: 'breaks=',
+        blendColors: 'colors=', sea: 'sea=', seaColors: 'colors=sea:', seaBreaks: 'breaks=sea:'}});
+    var ramps = {colors: {}, breaks: {}};
+    var sea;
+    if (key && getHypsometricOptionNames().indexOf(key) == -1) {
+      stop$1('Unknown hypsometric= value:', opts.hypsometric, '(expected ' + getHypsometricOptionNames().join(', ') + ')');
+    }
+    if (opts.classed && !key) {
+      stop$1('classed works with hypsometric=; other colors are classes unless they are continuous');
+    }
+    if (opts.classed && (key == NONE_NAME || key == BLEND_NAME)) {
+      stop$1('classed works with one preset, not hypsometric=' + key);
+    }
     ['colors', 'breaks'].forEach(function(opt) {
       var lists = splitRampLists(opts[opt]);
       delete out[opt];
@@ -64731,7 +64954,7 @@ ${css.join('\n')}
           if (out[opt]) stop$1(opt + '= gives the list of hypsometric=' + key + ' twice, with and without its name');
           out[opt] = lists[name];
         } else if (name == 'sea' || opt == 'colors' && key == BLEND_NAME && climate.includes(name)) {
-          out.ramps[opt][name] = lists[name];
+          ramps[opt][name] = lists[name];
         } else if (climate.includes(name) && key == BLEND_NAME) {
           stop$1('The presets of hypsometric=blended share their elevations; give them as breaks= without a name');
         } else if (climate.includes(name)) {
@@ -64742,15 +64965,52 @@ ${css.join('\n')}
         }
       });
     });
+    if (key == NONE_NAME && (out.colors || out.breaks)) {
+      stop$1('hypsometric=none colors only the sea; name its lists, e.g. colors=sea:...');
+    }
+    if (key == BLEND_NAME && out.colors) {
+      stop$1('hypsometric=blended takes colors for each preset, e.g. colors=desert:...,polar:...');
+    }
+    if (key) {
+      out.landColors = out.colors || null;
+      out.landBreaks = out.breaks || null;
+      delete out.colors;
+      delete out.breaks;
+    }
+    if (key == BLEND_NAME) {
+      delete ramps.colors.sea;
+      out.blendColors = ramps.colors;
+    }
+    out.seaColors = ramps.colors.sea || null;
+    out.seaBreaks = ramps.breaks.sea || null;
+    sea = opts.sea ? String(opts.sea).toLowerCase() : null;
+    if (out.seaColors || out.seaBreaks || sea == CUSTOM_NAME) {
+      if ((!sea || sea == CUSTOM_NAME) && (!out.seaColors || !out.seaBreaks)) {
+        stop$1('A sea without a bathymetric preset (sea=pale, blue or gray) needs colors=sea:... and breaks=sea:..., a color at each depth');
+      }
+      if (sea == 'transparent' || sea == 'land') {
+        stop$1('colors=sea: and breaks=sea: work with a bathymetric sea= (pale, blue or gray), or without sea=');
+      }
+      sea = sea || CUSTOM_NAME;
+    }
+    if (sea && sea != CUSTOM_NAME && getSeaOptionNames().indexOf(sea) == -1) {
+      stop$1('Unsupported sea= value:', opts.sea, '(expected ' + getSeaOptionNames().join(', ') + ')');
+    }
+    out.sea = sea;
     return out;
+  }
+
+  function getLandPresetKeys() {
+    return getHypsometricSchemeNames().map(function(name) { return name.toLowerCase(); }).concat([BLEND_NAME]);
   }
 
   function getBlendRamps(meters, opts) {
     var names = getClimateSchemeNames();
+    var colors = opts.blendColors || {};
     return names.map(function(name) {
       var key = name.toLowerCase();
-      var ramp = customizeRamp(getPresetRamp(name, meters), opts.ramps.colors[key], opts.breaks,
-        {name: 'hypsometric=blended', colors: 'colors=' + key + ':', breaks: 'breaks=', fixed: true});
+      var ramp = customizeRamp(getPresetRamp(name, meters), colors[key], opts.landBreaks,
+        {name: opts.names.land, colors: opts.names.blendColors + key + ':', breaks: opts.names.landBreaks, fixed: true});
       return {name: name, breaks: ramp.breaks, colors: ramp.colors};
     });
   }
@@ -64790,9 +65050,9 @@ ${css.join('\n')}
 
   // A ramp's colors as classes, from each stop up to the next: the first class
   // also takes the values below the first stop, and the last those above the
-  // last stop
+  // last stop. stops keeps the first stop, which isn't a break.
   function getRampClasses(ramp) {
-    var classes = Object.assign({}, ramp, {continuous: false, breaks: ramp.breaks.slice(1)});
+    var classes = Object.assign({}, ramp, {continuous: false, breaks: ramp.breaks.slice(1), stops: ramp.breaks.concat()});
     delete classes.interpolation;
     return classes;
   }
@@ -64803,38 +65063,32 @@ ${css.join('\n')}
     }));
   }
 
-  // -classify sea=: what a palette does with the sea of an elevation raster
-  // (see mapshaper-raster-sea-mask.mjs). Hypsometric tints leave it out by
-  // default.
+  // -classify sea-colors=: what a palette does with the sea of an elevation
+  // raster (see mapshaper-raster-sea-mask.mjs). Land colors (land-colors=)
+  // leave it out by default.
   //   transparent  palette.sea = 'transparent': the sea is not drawn
   //   land         (no palette.sea) the sea takes the palette's colors
   //   a bathymetric preset (see bathymetric-schemes.mjs): palette.sea is its
   //                name, and palette.seaRamp = {breaks, colors} its depths, in
   //                the band's units, which color the sea continuously
-  // colors=sea:... and breaks=sea:... (in the band's units) change a preset's
-  // colors and depths, or without a preset, give them all; either way,
-  // palette.sea is 'custom'. A palette of only the sea (hypsometric=none) takes
-  // the sea's colors as its own, for anything that draws it without a sea.
-  // palette.seaSeeds are points in the inland seas, in the raster's
-  // coordinates (see getInlandSeaSeeds()), or null if its CRS is unknown.
-  // @opts: options from splitRampOptions()
+  //   custom colors, at the depths of sea-breaks=: palette.sea is 'custom'
+  // sea-breaks= also moves a preset's depths, which makes it custom too.
+  // sea-classed gives the sea classes (seaRamp.classed), which mirror the
+  // land's: from each depth down to the next (see getRasterSeaTable()). A
+  // palette of only the sea takes the sea's colors as its own, for anything
+  // that draws it without a sea. palette.seaSeeds are points in the inland
+  // seas, in the raster's coordinates (see getInlandSeaSeeds()), or null if
+  // its CRS is unknown.
+  // @opts: options from getElevationOptions()
   // @crs: the raster's CRS, or null
   function setRasterPaletteSea(palette, raster, opts, crs) {
-    var colors = opts.ramps && opts.ramps.colors.sea;
-    var breaks = opts.ramps && opts.ramps.breaks.sea;
-    var custom = !!(colors || breaks);
-    var sea = String(opts.sea || (custom ? 'custom' : opts.hypsometric ? 'transparent' : 'land')).toLowerCase();
+    var names = opts.names;
+    var sea = opts.sea || (opts.land ? 'transparent' : 'land');
+    var custom = !!(opts.seaColors || opts.seaBreaks);
     var meters = getVerticalUnitMeters(getRasterGrid(raster).verticalUnits) || 1;
     var name, stops, ramp;
-    if (sea == 'custom') {
-      if (!colors || !breaks) {
-        stop$1('A sea without a bathymetric preset (sea=pale, blue or gray) needs colors=sea:... and breaks=sea:..., a color at each depth');
-      }
+    if (sea == CUSTOM_NAME) {
       ramp = {breaks: [], colors: []};
-    } else if (getSeaOptionNames().indexOf(sea) == -1) {
-      stop$1('Unsupported sea= value:', opts.sea, '(expected ' + getSeaOptionNames().join(', ') + ')');
-    } else if (custom && (sea == 'transparent' || sea == 'land')) {
-      stop$1('colors=sea: and breaks=sea: work with a bathymetric sea= (pale, blue or gray), or without sea=');
     } else if (sea == 'transparent') {
       palette.sea = sea;
     } else if (sea != 'land') {
@@ -64847,24 +65101,34 @@ ${css.join('\n')}
       };
     }
     if (ramp) {
-      ramp = custom ? customizeRamp(ramp, colors, breaks,
-        {name: name ? 'sea=' + sea : 'the sea', colors: 'colors=sea:', breaks: 'breaks=sea:', stop: 'depth'}) : ramp;
-      if (custom) palette.sea = 'custom';
+      ramp = custom ? customizeRamp(ramp, opts.seaColors, opts.seaBreaks,
+        {name: name ? names.sea + sea : 'the sea', colors: names.seaColors, breaks: names.seaBreaks, stop: 'depth'}) : ramp;
+      if (custom) palette.sea = CUSTOM_NAME;
       palette.seaRamp = {breaks: ramp.breaks, colors: ramp.colors};
+      if (opts.seaClassed) palette.seaRamp.classed = true;
     }
     if (palette.sea) {
       palette.seaSeeds = getInlandSeaSeeds(crs || null);
     }
     if (palette.land == 'transparent') {
-      if (!palette.seaRamp) stop$1('hypsometric=none needs colors for the sea: a bathymetric sea= or colors=sea:...');
-      palette.breaks = palette.seaRamp.breaks.concat();
+      if (!palette.seaRamp) stop$1('A palette of only the sea needs sea colors: sea-colors=pale, blue, gray, or a list of colors');
+      palette.breaks = palette.seaRamp.classed ? palette.seaRamp.breaks.slice(0, -1) : palette.seaRamp.breaks.concat();
       palette.colors = palette.seaRamp.colors.concat();
+      if (palette.seaRamp.classed) {
+        palette.continuous = false;
+        delete palette.interpolation;
+      }
     }
     return palette;
   }
 
   function getPresetName(key) {
     return getHypsometricSchemeNames().find(function(name) { return name.toLowerCase() == key; });
+  }
+
+  // Continuous colors without stops, for custom colors to fill in
+  function getCustomRamp() {
+    return {type: 'sequential', continuous: true, interpolation: 'oklch', breaks: [], colors: [], nullColor: null};
   }
 
   // Continuous colors at the preset's elevations, converted to the band's
@@ -64894,8 +65158,31 @@ ${css.join('\n')}
   //   key: changes with the weights, for caching what is drawn with them
   // A CRS without an inverse gets its field by projecting the climate data
   // forward (see getForwardClimateWeightField()).
-  // Returns null if no cell is on land
+  // Returns null if no cell is on land. A field depends only on the arguments
+  // and is slow to make (mostly filling in the sea), so the last few are kept
+  // and shared; e.g. each step of the GUI's lightness slider runs -classify
+  // again. Callers must not modify them.
+  var FIELD_CACHE_SIZE = 4;
+  var fieldCache = [];
+
   function getClimateWeightField(bbox, crs, cells) {
+    var key, entry, field;
+    try {
+      key = [bbox.join(','), crsToProj4(crs), cells || FIELD_CELLS].join('|');
+    } catch(e) {
+      key = null;
+    }
+    entry = key === null ? null : fieldCache.find(function(o) { return o.key == key; });
+    if (entry) return entry.field;
+    field = makeClimateWeightFieldOfBbox(bbox, crs, cells);
+    if (key !== null) {
+      fieldCache.unshift({key: key, field: field});
+      fieldCache.length = Math.min(fieldCache.length, FIELD_CACHE_SIZE);
+    }
+    return field;
+  }
+
+  function makeClimateWeightFieldOfBbox(bbox, crs, cells) {
     var n = cells || FIELD_CELLS;
     var w = bbox[2] - bbox[0], h = bbox[3] - bbox[1];
     var width = Math.max(2, Math.round(w >= h ? n : n * w / h));
@@ -65034,7 +65321,8 @@ ${css.join('\n')}
     var n = width * height;
     var vals = new Float64Array(n * k);
     var state = new Uint8Array(n); // 0: gap, 1: filled before this wave, 2: given
-    var gaps = [], wave, next, i, j, pass;
+    var sum = new Float64Array(k); // scratch for averageNeighbors()
+    var gaps = [], wave, next, filled, i, j, pass;
     for (i = 0; i < n; i++) {
       if (cells[i]) {
         state[i] = 2;
@@ -65045,32 +65333,34 @@ ${css.join('\n')}
     }
     wave = gaps;
     while (wave.length > 0) {
-      var filled = [];
+      filled = [];
       next = [];
-      wave.forEach(function(i) {
-        if (averageNeighbors(vals, state, i, width, height, k)) {
-          filled.push(i);
+      for (j = 0; j < wave.length; j++) {
+        if (averageNeighbors(vals, state, wave[j], width, height, k, sum)) {
+          filled.push(wave[j]);
         } else {
-          next.push(i);
+          next.push(wave[j]);
         }
-      });
+      }
       if (filled.length === 0) break;
-      filled.forEach(function(i) { state[i] = 1; });
+      for (j = 0; j < filled.length; j++) state[filled[j]] = 1;
       wave = next;
     }
     for (pass = 0; pass < FILL_SMOOTHING_PASSES; pass++) {
-      gaps.forEach(function(i) {
-        averageNeighbors(vals, state, i, width, height, k);
-      });
+      for (j = 0; j < gaps.length; j++) {
+        averageNeighbors(vals, state, gaps[j], width, height, k, sum);
+      }
     }
     return Array.from(vals);
   }
 
   // Sets cell i to the mean of its filled 8-neighbors (cells filled in the
-  // current wave are still gaps); returns false if it has none
-  function averageNeighbors(vals, state, i, width, height, k) {
+  // current wave are still gaps); returns false if it has none.
+  // @sum: scratch space for k values
+  function averageNeighbors(vals, state, i, width, height, k, sum) {
     var x = i % width, y = (i - x) / width;
-    var sum = new Float64Array(k), count = 0, dx, dy, j, m;
+    var count = 0, dx, dy, j, m;
+    for (m = 0; m < k; m++) sum[m] = 0;
     for (dy = -1; dy <= 1; dy++) {
       for (dx = -1; dx <= 1; dx++) {
         if (dx === 0 && dy === 0 || x + dx < 0 || x + dx >= width || y + dy < 0 || y + dy >= height) continue;
@@ -65129,12 +65419,12 @@ ${css.join('\n')}
   var RasterHypsometric = /*#__PURE__*/Object.freeze({
     __proto__: null,
     getClimateWeightField: getClimateWeightField,
+    getElevationOptions: getElevationOptions,
     getForwardClimateWeightField: getForwardClimateWeightField,
     getHypsometricOptionNames: getHypsometricOptionNames,
     getHypsometricPalette: getHypsometricPalette,
     getSeaOptionNames: getSeaOptionNames,
     setRasterPaletteSea: setRasterPaletteSea,
-    splitRampOptions: splitRampOptions,
     updateRasterPaletteGeography: updateRasterPaletteGeography
   });
 
@@ -65163,7 +65453,7 @@ ${css.join('\n')}
     'key_width', 'key_font_size', 'key_tile_height', 'key_tic_length', 'key_label_suffix',
     'key_last_suffix'];
 
-  // @opts: options from splitRampOptions()
+  // @opts: options from getElevationOptions()
   function validateRasterClassifyOptions(raster, grid, opts) {
     var name = VECTOR_ONLY_OPTIONS.find(function(key) { return key in opts; });
     if (!grid || !grid.samples) {
@@ -65175,36 +65465,37 @@ ${css.join('\n')}
     if (opts.method == 'non-adjacent' || opts.method == 'blacki' || opts.method == 'indexed') {
       stop$1('The', opts.method, 'method does not work with raster layers');
     }
-    if (opts.classed && !opts.hypsometric) {
-      stop$1('classed works with hypsometric=; other colors are classes unless they are continuous');
-    }
-    if (opts.hypsometric) {
+    if (opts.land) {
       validateHypsometricOptions(opts);
     } else if (!opts.colors) {
-      stop$1('Classifying a raster requires colors=');
+      stop$1('Classifying a raster requires colors= (or land-colors= and sea-colors=, for elevations)');
     }
     if (rasterIsColorImage(raster, grid)) {
       stop$1('-classify colors data rasters, not RGB images. To adjust the colors of an image, use -tone');
     }
   }
 
-  // hypsometric= gives the colors and their elevations, which only colors=,
-  // breaks= (every elevation) and classed change
+  // land-colors= gives the colors and their elevations, which only
+  // land-breaks= (every elevation) and land-classed change
   function validateHypsometricOptions(opts) {
+    var older = opts.names.land.indexOf('hypsometric=') === 0;
     var name = ['outer_breaks', 'method', 'classes', 'pivot', 'continuous',
-      'stops', 'invert', 'categories'].find(function(key) {
+      'stops', 'invert', 'categories'].concat(older ? [] : ['breaks']).find(function(key) {
       return key in opts;
     });
     if (name) {
-      stop$1('hypsometric= sets the colors and breaks; it does not work with ' + name.replace(/_/g, '-') + '=' +
-        (name == 'outer_breaks' ? ' (breaks= gives every elevation)' : ''));
+      stop$1((older ? 'hypsometric= sets the colors and breaks; it does' :
+        'Elevation colors (land-colors= and sea-colors=) set the colors and breaks; they do') +
+        ' not work with ' + name.replace(/_/g, '-') +
+        (name == 'continuous' ? '' : '=') +
+        (name == 'outer_breaks' || name == 'breaks' ? ' (' + opts.names.landBreaks + ' gives every elevation)' : ''));
     }
   }
 
-  // -classify hypsometric= (see mapshaper-raster-hypsometric.mjs)
+  // -classify land-colors= (see mapshaper-raster-hypsometric.mjs)
   // @crs: the raster's CRS, or null
   function getRasterHypsometricPalette(raster, band, opts, crs) {
-    var palette = getHypsometricPalette(raster, band, opts.hypsometric, crs, opts);
+    var palette = getHypsometricPalette(raster, band, opts, crs);
     if ('null_value' in opts) palette.nullColor = getPaletteColor(opts.null_value, 'null-value=');
     palette.command = getPaletteCommand(opts);
     return palette;
@@ -77077,6 +77368,15 @@ ${css.join('\n')}
       if (simplifyIntervalFn) {
         verts = presimplifyPathVerts(verts, simplifyIntervalFn(dist));
       }
+      // A closed two-sided line ring too narrow to enclose a hole has the same
+      // buffer as its filled interior, so grow it outward like a polygon ring.
+      // Its inner offset would cross the whole ring and run just inside the far
+      // side's outer offset, where the opposite windings leave sliver holes.
+      if (!oneSidedBuffer && !opts.band_method && !pathIsOpen(verts) &&
+          verts.length > 3 && !ringCanEncloseHole(pathSideVerts, dist)) {
+        if (ringSignedArea(verts) > 0) verts = verts.slice().reverse();
+        return buildCleanOutlineRings(startRingAtEdgeMidpoint(verts), dist);
+      }
       // Closed two-sided line rings: open with a sub-tolerance gap at the first
       // vertex so the open-path outline builder applies (round caps close the
       // seam). Gap size is in the same coordinate units as verts.
@@ -77233,11 +77533,20 @@ ${css.join('\n')}
     // recorded fan-apart bend vertex. A single segment has no bend (so its buffer
     // is the exact, gap-free stadium); the two patches' caps at the shared vertex
     // cover the sliver wedge the pinched bridge failed to fill.
+    // Adjacent bends share a segment, which gets one patch (keyed by its first
+    // vertex index).
     function addFanApartGapPatches(out, sideVerts, bends, dist, parentCCW) {
+      var patched = {};
       for (var b = 0; b < bends.length; b++) {
         var k = bends[b];
-        if (k - 1 >= 0) pushPatch(out, [sideVerts[k - 1], sideVerts[k]], dist, parentCCW);
-        if (k + 1 < sideVerts.length) pushPatch(out, [sideVerts[k], sideVerts[k + 1]], dist, parentCCW);
+        if (k - 1 >= 0 && !patched[k - 1]) {
+          patched[k - 1] = true;
+          pushPatch(out, [sideVerts[k - 1], sideVerts[k]], dist, parentCCW);
+        }
+        if (k + 1 < sideVerts.length && !patched[k]) {
+          patched[k] = true;
+          pushPatch(out, [sideVerts[k], sideVerts[k + 1]], dist, parentCCW);
+        }
       }
     }
 
@@ -77330,9 +77639,12 @@ ${css.join('\n')}
           builder.addBufferVertex([x1, y1], segId);
           builder.addBufferVertex(p1, segId);
         } else if (joinAngle > roundJoinSegAngle * 1.5) {
-          // Large convex bend: arc vertices on the offset circle replace the
-          // previous segment end (p2Prev) and current segment start (p1).
+          // Large convex bend: the previous segment end (p2Prev) starts the arc,
+          // and the last arc vertex replaces the current segment start (p1).
+          // Omitting p2Prev would let the chord from the incoming edge to the
+          // first arc vertex cut the corner by up to ~2% of dist.
           joinPoints = makeInscribedRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
+          builder.addBufferVertex(p2Prev, segId);
           builder.addBufferVertices(joinPoints, segId);
           p1 = joinPoints.pop(); // track outgoing segment start (already added)
         } else if (joinAngle > -1e-10 && joinAngle < 1e-10) {
@@ -77791,6 +78103,27 @@ ${css.join('\n')}
       return verts[0][0] !== verts[n-1][0] || verts[0][1] !== verts[n-1][1];
     }
 
+    // False if a closed ring's bounding box is too narrow to hold a disk of
+    // radius dist, so no point inside the ring can lie farther than dist from it.
+    // In Mercator a geodesic disk of radius dist spans at least 2 * dist times
+    // the smallest scale factor of the ring's latitude band, in both x and y.
+    function ringCanEncloseHole(verts, dist) {
+      var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+      for (var i = 0; i < verts.length; i++) {
+        var p = verts[i];
+        if (p[0] < xmin) xmin = p[0];
+        if (p[0] > xmax) xmax = p[0];
+        if (p[1] < ymin) ymin = p[1];
+        if (p[1] > ymax) ymax = p[1];
+      }
+      var minSpan = 2 * dist;
+      if (useMercator) {
+        var minAbsY = ymin < 0 && ymax > 0 ? 0 : Math.min(Math.abs(ymin), Math.abs(ymax));
+        minSpan *= Math.cosh(minAbsY / R$3); // Mercator scale factor at that latitude
+      }
+      return xmax - xmin >= minSpan && ymax - ymin >= minSpan;
+    }
+
     // Open a closed ring at its first vertex: nudge the corner into two points
     // straddling it along the incoming and outgoing edges (sub-tolerance gap).
     function openClosedRingWithMicroGap(verts) {
@@ -77940,6 +78273,7 @@ ${css.join('\n')}
           joinAngle = getJoinAngle(bearingPrev, bearing);
           if (joinAngle > roundJoinSegAngle * 1.5) {
             joinPoints = makeInscribedRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
+            add(p2Prev, segId);
             for (i = 0; i < joinPoints.length; i++) add(joinPoints[i], segId);
             p1 = joinPoints[joinPoints.length - 1];
           } else if (joinAngle > -1e-10 && joinAngle < 1e-10) {
@@ -78076,6 +78410,15 @@ ${css.join('\n')}
         yy[i] = verts[i][1];
       }
       DouglasPeucker.calcArcData(kk, xx, yy);
+      var closed = verts[0][0] === verts[n-1][0] && verts[0][1] === verts[n-1][1];
+      if (closed) {
+        // calcArcData lowers the threshold of a ring's farthest vertex from the
+        // start to that of its highest child, so small islands collapse when
+        // simplifying for display. Here the pinned end vertices below would keep
+        // the collapsed ring as a sliver at the start vertex (defeating the
+        // fallback), so restore the true distance: the island keeps its extent.
+        restoreRingApexThreshold(kk, xx, yy);
+      }
       // Retain the second vertex from each end, so the bearings of the end
       // segments are preserved exactly: cap geometry at path endpoints
       // (flat caps especially) depends on them.
@@ -78084,8 +78427,23 @@ ${css.join('\n')}
       for (i = 0; i < n; i++) {
         if (kk[i] >= interval) verts2.push(verts[i]);
       }
-      var closed = verts[0][0] === verts[n-1][0] && verts[0][1] === verts[n-1][1];
       return verts2.length >= (closed ? 4 : 2) ? verts2 : verts;
+    }
+
+    // Same vertex choice as calcArcData's first split of a closed ring (whose
+    // chord degenerates to the start point).
+    function restoreRingApexThreshold(kk, xx, yy) {
+      var n = kk.length, maxDistSq = 0, maxIdx = 0, dx, dy, distSq;
+      for (var i = 1; i < n - 1; i++) {
+        dx = xx[i] - xx[0];
+        dy = yy[i] - yy[0];
+        distSq = dx * dx + dy * dy;
+        if (distSq >= maxDistSq) {
+          maxDistSq = distSq;
+          maxIdx = i;
+        }
+      }
+      if (maxIdx > 0) kk[maxIdx] = Math.max(kk[maxIdx], Math.sqrt(maxDistSq));
     }
 
     // Traverse a path with the (possibly projecting) path iterator,
@@ -78121,35 +78479,40 @@ ${css.join('\n')}
     }
 
     // Round join: an equal-angle-step polygonal approximation of the arc between
-    // the incoming and outgoing offset edges, replacing the incoming edge's end
-    // (p2Prev) and the outgoing edge's start (p1).
+    // the incoming and outgoing offset edges. Returns the vertices after the
+    // incoming edge's end (p2Prev), which the caller emits first; the last vertex
+    // replaces the outgoing edge's start (p1). Both p2Prev and the last vertex
+    // lie on the offset circle, so the straight edges attach at the true distance:
+    // moving either radially outward would carry the attached edge outward too, and
+    // since it also seeds the elbow joins of the segments that follow, the bias
+    // would propagate into a collar of offset-vs-source overshoot along the whole
+    // outline -- which the fill-gaps mask cannot tell from a real gap fill (its
+    // coast test tolerance is itself calibrated to the join sagitta).
     //
     // Inscribed (default): vertices at the true offset distance, stepping from the
     // incoming perpendicular round to the outgoing one. Because its chords cut the
     // corner, the join lies INSIDE the true circular offset, falling short of it by
     // up to one sagitta (~0.5% of dist at the default 8 segments/quadrant).
     //
-    // Circumscribed (circumscribe_joins): the same vertices, moved out to
-    // circumscribedJoinDist so the chords span the offset circle instead of cutting
-    // inside it. The LAST vertex stays at the true distance because the outgoing
-    // straight edge attaches there: moving it radially outward would carry that edge
-    // outward too, and since it also seeds the elbow joins of the segments that
-    // follow, the bias propagates into a collar of offset-vs-source overshoot along
-    // the whole outline -- which the fill-gaps mask cannot tell from a real gap fill
-    // (its coast test tolerance is itself calibrated to the join sagitta). Leaving
-    // that one vertex on the circle costs some accuracy: the final chord still dips
-    // inside by about half a sagitta, so a gap tip whose closure happens to fall on
-    // that chord is still short by ~0.25% of dist. Raise quad-segs to shrink it.
+    // Circumscribed (circumscribe_joins): vertices at the half-step angles, moved
+    // out to circumscribedJoinDist, so that every edge from p2Prev to the last
+    // vertex is tangent to the offset circle and the join never dips inside it.
+    // This costs one more vertex than the inscribed join.
     function makeInscribedRoundJoin(cx, cy, startBearing, arcAngle, dist) {
       var pointCount = Math.max(1, Math.round(arcAngle / roundJoinSegAngle));
       var stepAngle = arcAngle / pointCount;
       var points = [];
-      var i;
-      var outerDist = circumscribeJoins ?
-        circumscribedJoinDist(dist, stepAngle) : dist;
+      var i, outerDist;
+      if (circumscribeJoins) {
+        outerDist = circumscribedJoinDist(dist, stepAngle);
+        for (i = 0; i < pointCount; i++) {
+          points.push(getOffsetPoint(cx, cy, startBearing + stepAngle * (i + 0.5), outerDist));
+        }
+        points.push(getOffsetPoint(cx, cy, startBearing + arcAngle, dist));
+        return points;
+      }
       for (i = 1; i <= pointCount; i++) {
-        points.push(getOffsetPoint(cx, cy, startBearing + stepAngle * i,
-          i == pointCount ? dist : outerDist));
+        points.push(getOffsetPoint(cx, cy, startBearing + stepAngle * i, dist));
       }
       return points;
     }
@@ -78180,9 +78543,15 @@ ${css.join('\n')}
       return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     }
 
+    // Extends the offset edges a->b and c->d along their own directions. Geodesic
+    // offset edges in Mercator are rotated relative to their source segments
+    // (increasingly so at high latitudes), so extending along the source bearings
+    // (the fallback for zero-length edges) can place the elbow far from both tips.
     function elbowJoin(a, b, c, d, bearing1, bearing2, cx, cy, dist) {
       var k = 2 ** 13;
       var len = getJoinExtensionDistance(cx, cy, b, c, dist) * k;
+      if (a[0] != b[0] || a[1] != b[1]) bearing1 = bearingDegrees2D(a[0], a[1], b[0], b[1]);
+      if (c[0] != d[0] || c[1] != d[1]) bearing2 = bearingDegrees2D(c[0], c[1], d[0], d[1]);
       var b2 = getPlanarSegmentEndpoint(b[0], b[1], bearing1, len);
       var c2 = getPlanarSegmentEndpoint(c[0], c[1], bearing2 + 180, len);
       return bufferSegmentIntersection(a, b2, c2, d);
@@ -83319,8 +83688,8 @@ ${css.join('\n')}
     //   - circumscribe_joins: the round joins are otherwise inscribed in the true
     //     circular offset and fall a join sagitta short of it (~0.5% of r at the
     //     default 8 segments/quadrant). See makeInscribedRoundJoin: the correction
-    //     costs no vertices, in contrast to raising quad-segs, whose cost is linear
-    //     in vertices through every stage below (dilate, union, erode, mask).
+    //     costs one vertex per join, in contrast to raising quad-segs, whose cost is
+    //     linear in vertices through every stage below (dilate, union, erode, mask).
     //   - tolerance 0: the default pre-simplification budget is 1% of the radius,
     //     several times a hairline gap's width, so it smooths away the very tips
     //     being bridged (and undoes the join correction with them). Skipping it
@@ -89198,8 +89567,10 @@ ${css.join('\n')}
     if (opts.category_names) {
       stop$1('category-names= works with raster layers');
     }
-    if (opts.hypsometric || opts.sea || opts.classed) {
-      stop$1((opts.hypsometric ? 'hypsometric=' : opts.sea ? 'sea=' : 'classed') + ' works with raster layers');
+    var rasterOpt = ['land_colors', 'land_breaks', 'land_classed', 'sea_colors', 'sea_breaks', 'sea_classed',
+      'hypsometric', 'sea', 'classed'].find(function(key) { return key in opts; });
+    if (rasterOpt) {
+      stop$1(rasterOpt.replace('_', '-') + (/classed/.test(rasterOpt) ? '' : '=') + ' works with raster layers');
     }
     if (listHasRampNames(opts.colors) || listHasRampNames(opts.breaks)) {
       stop$1('Named lists in colors= and breaks= (e.g. sea:...) work with raster layers');
@@ -89431,13 +89802,13 @@ ${css.join('\n')}
   function classifyRasterLayer(lyr, dataset, optsArg) {
     var raster = lyr.raster;
     var grid = getRasterGrid(raster);
-    var opts = splitRampOptions(optsArg);
+    var opts = getElevationOptions(optsArg);
     var crs = dataset ? getDatasetCRS(dataset) : null;
     var band, bandIndex, categorical, sample, o, palette;
     validateRasterClassifyOptions(raster, grid, opts);
     band = getRasterClassifyBand(grid, opts);
     bandIndex = getRasterGridBandIndex(grid, band);
-    if (opts.hypsometric) {
+    if (opts.land) {
       palette = setRasterPaletteSea(getRasterHypsometricPalette(raster, band, opts, crs), raster, opts, crs);
       noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
       setRasterPalette(raster, palette);
@@ -92883,8 +93254,61 @@ ${css.join('\n')}
   // with {result} or {error}, after any number of {progress} messages.
 
 
+  // Answers the requests that arrive on @port (a MessagePort, e.g. from a task)
+  // with {id, result} or {id, error}; @handler receives each request and
+  // returns its result
+  function serveMessagePort(port, handler) {
+    var p = wrapMessagePort(port);
+    p.listen(function(msg) {
+      var result;
+      try {
+        result = handler(msg.request);
+      } catch (e) {
+        p.post({id: msg.id, error: e && e.message || String(e)});
+        return;
+      }
+      p.post({id: msg.id, result: result}, getTransferList(result));
+    });
+  }
+
+  // Sends requests to serveMessagePort() on the other end of @port
+  // Returns {request, close}: request() returns a promise of the result; typed
+  // arrays in requests are copied, not transferred
+  function getMessagePortClient(port) {
+    var p = wrapMessagePort(port), pending = {}, nextId = 0;
+    p.listen(function(msg) {
+      var o = pending[msg.id];
+      delete pending[msg.id];
+      if (!o) return;
+      if ('error' in msg) o.reject(new Error(msg.error));
+      else o.resolve(msg.result);
+    });
+    return {
+      request: function(request) {
+        var id = nextId++;
+        return new Promise(function(resolve, reject) {
+          pending[id] = {resolve: resolve, reject: reject};
+          p.post({id: id, request: request});
+        });
+      },
+      close: function() { port.close(); }
+    };
+  }
+
+  function wrapMessagePort(port) {
+    return {
+      post: function(msg, transfer) { port.postMessage(msg, transfer || []); },
+      listen: function(fn) {
+        // a Node MessagePort is an EventEmitter that passes the message itself
+        if (typeof port.on == 'function') port.on('message', fn);
+        else port.onmessage = function(e) { fn(e.data); };
+      }
+    };
+  }
+
   // Buffers of the typed arrays in @obj and its plain objects and arrays, for
-  // transferring rather than copying them
+  // transferring rather than copying them, and the MessagePorts in them, which
+  // can only be transferred
   function getTransferList(obj) {
     var buffers = [];
     collectBuffers(obj, buffers);
@@ -92893,6 +93317,10 @@ ${css.join('\n')}
 
   function collectBuffers(obj, buffers) {
     if (!obj || typeof obj != 'object') return;
+    if (typeof MessagePort != 'undefined' && obj instanceof MessagePort) {
+      buffers.push(obj);
+      return;
+    }
     if (ArrayBuffer.isView(obj)) {
       if (obj.buffer instanceof ArrayBuffer && buffers.indexOf(obj.buffer) == -1) {
         buffers.push(obj.buffer);
@@ -101417,17 +101845,13 @@ ${css.join('\n')}
       stop$1('-blend does not support rotated rasters');
     }
     settings = getBlendSettings(opts);
-    shading = getShadingAmounts(source.layer.raster, readBaseColor(opts.base_color));
+    shading = getShadingAmounts(source.layer.raster, readColorOption(opts.base_color, 'base-color'));
     amounts = resampleShadingAmounts(shading, grid);
     if (amounts == shading.amounts) amounts = amounts.slice();
     scaleShadingAmounts(amounts, settings.strength[0], settings.strength[1]);
     image = getImagePixels(lyr.raster);
-    samples = blendShadingPixels(image.samples, image.bands, amounts, {
-      shadow: shading.shadow,
-      highlight: shading.highlight,
-      shadowChroma: settings.chroma[0],
-      highlightChroma: settings.chroma[1]
-    });
+    samples = blendShadingPixels(image.samples, image.bands, amounts,
+      getBlendOptions(shading, settings));
     out = {
       raster_type: 'grid',
       raster: getColoredRaster(lyr.raster, grid, {samples: samples, bands: image.bands},
@@ -101460,18 +101884,13 @@ ${css.join('\n')}
       stop$1('-blend does not support rotated rasters');
     }
     settings = getBlendSettings(opts);
-    shading = getShadingAmounts(source.layer.raster, readBaseColor(opts.base_color));
+    shading = getShadingAmounts(source.layer.raster, readColorOption(opts.base_color, 'base-color'));
     drawing = getDrawingGrid(catalog, layers, getRasterGrid(source.layer.raster));
     grid = drawing.grid;
     amounts = resampleShadingAmounts(shading, grid);
     scaleShadingAmounts(amounts, settings.strength[0], settings.strength[1]);
     pixels = await drawLayersOnGrid(layers, grid, drawing.scale);
-    blendOpts = {
-      shadow: shading.shadow,
-      highlight: shading.highlight,
-      shadowChroma: settings.chroma[0],
-      highlightChroma: settings.chroma[1]
-    };
+    blendOpts = getBlendOptions(shading, settings);
     samples = blendShadingPixels(pixels, 4, amounts, blendOpts);
     if (opts.overlay) {
       samples = getShadingOverlayPixels(pixels, samples, amounts, blendOpts);
@@ -101532,19 +101951,38 @@ ${css.join('\n')}
   }
 
   function getBlendSettings(opts) {
-    return {
+    var settings = {
       strength: readShadowHighlightPair(opts.strength, DEFAULT_STRENGTH, 'strength'),
       chroma: readShadowHighlightPair(opts.chroma, DEFAULT_CHROMA, 'chroma'),
       base_color: opts.base_color || null
     };
+    // recorded only if set, so that a blend's settings name the colors it was
+    // given rather than the hillshade's
+    if (opts.shadow_color) settings.shadow_color = opts.shadow_color;
+    if (opts.highlight_color) settings.highlight_color = opts.highlight_color;
+    return settings;
   }
 
-  function readBaseColor(str) {
+  // blendShadingPixels() options. shadow-color= and highlight-color= replace
+  // the hillshade's colors in the stacking, after its amounts have been read
+  // with its own (which tell a transparent hillshade's shadows from its
+  // highlights)
+  function getBlendOptions(shading, settings) {
+    return {
+      shadow: readColorOption(settings.shadow_color, 'shadow-color') || shading.shadow,
+      highlight: readColorOption(settings.highlight_color, 'highlight-color') || shading.highlight,
+      shadowChroma: settings.chroma[0],
+      highlightChroma: settings.chroma[1]
+    };
+  }
+
+  // Returns {r, g, b}, or null if @str is empty
+  function readColorOption(str, name) {
     var color;
     if (!str) return null;
     color = parseColor(str);
-    if (!color) stop$1('Unsupported base-color=', str);
-    return color;
+    if (!color) stop$1('Unsupported ' + name + '=', str);
+    return {r: color.r, g: color.g, b: color.b};
   }
 
   // One value for both shadows and highlights, or shadow,highlight
@@ -101580,9 +102018,11 @@ ${css.join('\n')}
   // C-correction): shadows are a special case, where I is 0.
   //
   // 1. The sun's position is fitted by correlating I with the image's linear
-  //    luma within tiles. (Across the whole image, albedo varies with the
-  //    terrain, e.g. from forested valleys to snowy peaks.) With the image's
-  //    date (or range of dates), only positions on the sun's path are tried.
+  //    luma within tiles (across the whole image, albedo varies with the
+  //    terrain, e.g. from forested valleys to snowy peaks), and by how
+  //    consistently the image is darker just inside the edges of the DEM's
+  //    cast shadows than just outside them. With the image's date (or range
+  //    of dates), only positions on the sun's path are tried.
   //    A mosaic of images taken at different times gets the sun position of
   //    each region that matches its lighting better than the image's.
   // 2. c is fitted to each band and class of ground (by color, after a first
@@ -101591,9 +102031,13 @@ ${css.join('\n')}
   //    darken forest less than rock or snow (sunlit forest is partly shadowed
   //    by its own trees), so forest has a larger c.
 
-  // Tiles that the sun's position is fitted in (cells at the fit level), and
-  // the fewest cells a tile is scored with
-  var FIT_TILE = 4000;
+
+  // The sun's position is fitted in tiles: the fit level's region is divided
+  // into about FIT_TILES tiles (at least MIN_FIT_TILE cells on a side) whatever
+  // its size, so that the regions of a mosaic have enough tiles to be fitted on
+  // their own (see MIN_CANDIDATE_TILES). Tiles are scored with at least MIN_TILE_CELLS
+  // cells.
+  var FIT_TILES = 240;
   var MIN_FIT_TILE = 16;
   var MIN_TILE_CELLS = 50;
   // lowest sun altitude fitted, in degrees
@@ -101602,31 +102046,75 @@ ${css.join('\n')}
   // weaker fits (e.g. of composites of imagery taken at many times) give
   // little or no correction, or a harmful one
   var MIN_SUN_FIT = 0.3;
-  // declinations searched in a range of dates, at most this far apart (degrees)
+  // A weaker fit is still used if its sun's cast shadows are clearly in the
+  // image, as with a high sun, whose shadows are a small part of the image,
+  // over ground cover that varies more than the shading of the slopes. On cells
+  // facing the sun (see EDGE_FACING), the median log brightness of cells in the
+  // cast shadows, minus the mean of sunlit cells within CONFIRM_RADIUS meters,
+  // must be at most CONFIRM_CONTRAST, over at least MIN_CONFIRM_AREA square
+  // meters, and at least CONFIRM_MARGIN below that of the shadows of suns at
+  // the same altitude 90 degrees to either side and opposite (where dark ground
+  // on steep slopes would look like shadow). Composites of imagery taken at many
+  // times lack such dark shadows.
+  var CONFIRM_RADIUS = 50;
+  var CONFIRM_CONTRAST = -0.7;
+  var CONFIRM_MARGIN = 0.4;
+  var MIN_CONFIRM_AREA = 2000;
+  var MIN_CONFIRM_LIT = 0.05;
+  // declinations searched in a range of dates, at most this far apart (degrees),
+  // and the first step of the search along the sun's path after its grid
+  // (degrees of hour angle)
   var DECLINATION_STEP = 2;
+  var PATH_SEARCH_STEP = 3.75;
   // The sun is fitted on up to this many cells, no larger than MAX_FIT_CELL
   // meters (with a first search on coarser cells)
   var FIT_CELLS = 120000;
   var MAX_FIT_CELL = 60;
   var COARSE_FIT_CELLS = 25000;
   var MAX_COARSE_FIT_CELL = 120;
-  // Mosaics: the image is divided into up to MAX_BLOCKS x MAX_BLOCKS blocks of
-  // at least BLOCK_TILES tiles, and a block's sun position is used if it
-  // matches the block better than the image's does by REGION_GAIN; each tile
-  // gets the sun that matches it and its neighbors best, if by LABEL_MARGIN
-  // better than the image's, and areas of fewer than MIN_REGION_TILES tiles get
-  // the sun of the tiles around them. Each sun is fitted again on its tiles,
-  // and the tiles labeled again, up to MAX_REFITS times. Positions within
-  // SAME_SUN degrees are merged.
-  var MAX_BLOCKS = 4;
-  var BLOCK_TILES = 15;
-  var REGION_GAIN = 0.04;
+  // Mosaics: each position of the image fit's grid is scored in each tile (see
+  // scoreTiles()), so that the best position of any group of tiles is known
+  // without fitting it, wherever the image's own sun is. The candidate regions
+  // are blocks (CANDIDATE_BLOCKS on a side), columns and rows
+  // (CANDIDATE_STRIPS), of at least MIN_REGION_TILES tiles and with at least
+  // MIN_CANDIDATE_TILES tiles in all; a region's best position is a candidate
+  // if it is at least CANDIDATE_SPACING degrees from the image's sun and
+  // matches the region better by CANDIDATE_Z standard errors, by scoreSun()
+  // (see getPairedZ()) or by its shadow edges (see getEdgeZ()). The
+  // MAX_CANDIDATES strongest are fitted on their regions. Each tile gets the
+  // sun that matches it and its neighbors best, if by LABEL_MARGIN better than
+  // the image's, and areas of fewer than MIN_REGION_TILES tiles get the sun of
+  // the tiles around them. Each sun is fitted again on its tiles (to
+  // REFIT_PRECISION degrees), and the tiles labeled again, up to MAX_REFITS
+  // times or until no more than SETTLED_LABELS of the tiles change; then each
+  // area's sun is fitted on it. Positions within SAME_SUN degrees are merged, and an area keeps its
+  // sun only if the evidence in the area supports it over each neighboring
+  // area's sun (see getAreaSupport()).
+  var CANDIDATE_BLOCKS = [2, 4];
+  var CANDIDATE_STRIPS = [2, 3, 4, 6];
+  var MIN_CANDIDATE_TILES = 60;
+  var CANDIDATE_SPACING = 10;
+  var CANDIDATE_Z = 2;
+  var MAX_CANDIDATES = 6;
+  var REGION_Z = 5;
+  var MIN_PAIRED_TILES = 4;
   var LABEL_MARGIN = 0.03;
   var MIN_REGION_TILES = 9;
   var SAME_SUN = 5;
-  var MAX_REFITS = 5;
-  // shadows cast from this far outside a block are included (meters)
-  var BLOCK_MARGIN = 2000;
+  var MAX_REFITS = 3;
+  var REFIT_PRECISION = 1;
+  var SETTLED_LABELS = 0.05;
+  // Shadow edges are compared with at least this many observations (see
+  // EDGE_PAIR_REDUNDANCY); evidence of one kind contradicts a sun by
+  // CONFLICT_Z standard errors
+  var MIN_EDGE_OBSERVATIONS = 10;
+  var CONFLICT_Z = 2;
+  // the first and later steps (degrees, or degrees of hour angle along the
+  // sun's path) of the searches fitting suns on regions
+  var REGION_SEARCH_STEP = 5;
+  var REFIT_SEARCH_STEP = 2;
+  // shadows cast from this far outside a region are included (meters)
+  var REGION_MARGIN = 2000;
   // c is fitted in tiles this size (meters, and at least MIN_C_TILE pixels),
   // where the band and I correlate at least MIN_C_FIT, with I varying at least
   // MIN_C_SPREAD (standard deviation) over at least MIN_C_PIXELS pixels
@@ -101739,26 +102227,38 @@ ${css.join('\n')}
   var CLASS_ROUNDS = 3;
   var SHADOW_CLASSES = 8;
   var LUMA_WEIGHTS = [0.2126, 0.7152, 0.0722];
-  var ALTITUDE_TOLERANCE = 0.02;
-  var MIN_ALTITUDE_SPAN = 10; // degrees
-  var EDGE_STEP = 2; // cells
+  // see facesSun()
   var EDGE_FACING = 0.3;
-  var MIN_EDGE_CELLS = 30;
-  // see getEdgeAltitude()
-  var EDGE_ALTITUDE_RANGE = [MIN_ALTITUDE, 70];
-  var EDGE_Z = 3;
-  var EDGE_ALTITUDE_STEP = 2;
-  // A free fit's altitude is measured from the edges of cast shadows on up to
-  // EDGE_FIT_CELLS cells, as near the DEM's resolution as that allows, where
-  // shadows have many more edges than at the fit level (whose scores tend to
-  // favor low suns where albedo varies with the terrain, e.g. forest on slopes
-  // facing away from the sun). The shadowed cells compared are EDGE_DISTANCE
-  // meters before the edges (and at least EDGE_STEP cells), to clear the edges'
-  // blur and any misregistration of the image and the DEM. Measuring takes
-  // about EDGE_FIT_CASTS casts of the cells.
-  var EDGE_FIT_CELLS = 4e6;
-  var EDGE_DISTANCE = 15;
-  var EDGE_FIT_CASTS = 40;
+  // The image's sun is fitted by the sum of scoreSun(), which follows the
+  // shading of slopes, and scoreShadowEdges(), which follows the edges of cast
+  // shadows: the shading alone can match the wrong sun better where ground
+  // cover varies with the slopes, and a high sun's shadows are too small a part
+  // of the image to count in it (or to show at the fit level). Shadow edges are
+  // scored on the terrain grid, and in the first search of a free fit (or the
+  // first search along the sun's path) on up to COARSE_EDGE_CELLS cells, no
+  // larger than MAX_COARSE_EDGE_CELL meters (where small shadows still show). A
+  // shadowed cell facing the sun is paired with each sunlit cell facing the sun
+  // EDGE_PAIR_STEP cells (or a DEM pixel) away in 8 directions; of the pairs,
+  // EDGE_PAIR_REDUNDANCY nearby ones count as one observation, and the share in
+  // which the shadowed cell is darker is taken at its lower confidence bound
+  // (EDGE_SCORE_Z standard errors), so that a few tiny shadows that happen to
+  // match don't outscore many edges. Slopes are measured over FACING_SPAN
+  // meters (at least EDGE_PAIR_STEP cells).
+  var COARSE_EDGE_CELLS = 4e6;
+  var MAX_COARSE_EDGE_CELL = 2.5;
+  var EDGE_PAIR_STEP = 2;
+  var EDGE_PAIR_REDUNDANCY = 16;
+  var EDGE_SCORE_Z = 2;
+  var FACING_SPAN = 6;
+  // The free fit's first search refines the GRID_STARTS best positions of its
+  // 10 degree grid that are at least GRID_START_SPACING degrees apart, as
+  // scoreShadowEdges() can peak between grid positions more narrowly than a
+  // wrong sun's score elsewhere
+  var GRID_STARTS = 3;
+  var GRID_START_SPACING = 20;
+  // the smallest step (degrees) of those searches, before the final search
+  // with the full-resolution edge level
+  var COARSE_SEARCH_STEP = 1.25;
   var LOG_EPSILON = 0.005;
   // the sun's position is fitted by correlating log(I + FIT_DIFFUSE) with log
   // brightness (plus LOG_EPSILON)
@@ -101767,6 +102267,11 @@ ${css.join('\n')}
   // smoothes cliffs into slopes lit at a lower angle)
   var LIT_CAP_QUANTILE = 0.98;
   var LIT_FLOOR = 0.25;
+  // meters from the edges of masked shadows within which sunlit ground is lit at
+  // least as much as its luma shows (see raiseEdgeLighting()): an image and a
+  // DEM can be misregistered by a few pixels, which leaves the DEM's slopes
+  // facing away from the sun on sunlit ground next to the shadows
+  var EDGE_LIGHTING = 40;
   // Brightened pixels (by at least BOOSTED_GAIN) are kept within the colors of
   // sunlit ground (lit at least LIT_SHARE of flat ground) of similar luma (in
   // bins of COLOR_LUMA_STEP, log scale, with the bins next to them), within
@@ -101786,6 +102291,11 @@ ${css.join('\n')}
   var COLOR_COVERAGE = 0.95;
   var MIN_COLOR_SAMPLES = 100;
   var EDGE_RADIUS = 1.8;
+  // see addSmallShadows()
+  var SMALL_SHADOW_REF = 6; // DEM cells
+  var SMALL_SHADOW_CELLS = 48;
+  var SMALL_SHADOW_NEIGHBORS = 4;
+  var NEAR_SHADOW_ALTITUDE = 6; // degrees
   var BLOCK_SIZE = 18;
   var CHROMA_RADIUS = 1.8;
   var CONTRAST_RADIUS = 3.6;
@@ -101960,7 +102470,8 @@ ${css.join('\n')}
   }
 
   // Fits the sun position whose lighting of the terrain (I, see above) best
-  // matches the image's brightness
+  // matches the image's brightness, and whose cast shadows' edges best match
+  // the image's (see COARSE_EDGE_CELLS)
   // @brightness one value per cell, linear in the light reaching the ground; NaN
   //   to ignore a cell
   // @region {x0, y0, x1, y1}: the cells that have brightness values
@@ -101968,184 +102479,131 @@ ${css.join('\n')}
   // @path optional {latitude, declination} or {latitude, declinations: [min,
   //   max]} (degrees): the sun is searched along its path on the image's date
   //   (or dates), instead of at all positions (@start is ignored)
-  // Returns {azimuth, altitude, score} (radians; score is a correlation, -1 to
-  //   1); with @path, also {hour, declination} in degrees
-  function fitSunPosition(Z, brightness, w, h, cellW, cellH, region, start, path) {
-    var level = getFitLevel(Z, brightness, w, h, cellW, cellH, region, FIT_CELLS, MAX_FIT_CELL);
-    if (path) return fitSunPath(level, path);
-    return fitFreeSun(level, start ? null :
-      getFitLevel(Z, brightness, w, h, cellW, cellH, region, COARSE_FIT_CELLS, MAX_COARSE_FIT_CELL), start);
+  // @demPixelSize optional ground size of the DEM's own pixels, in meters
+  // Returns {azimuth, altitude, score, shadowScore} (radians; score is
+  //   scoreSun()'s correlation, -1 to 1, and shadowScore scoreShadowEdges()'s,
+  //   0 to 1); with @path, also {hour, declination} in degrees
+  function fitSunPosition(Z, brightness, w, h, cellW, cellH, region, start, path, demPixelSize) {
+    var levels = getFitLevels(Z, brightness, w, h, cellW, cellH, region, !start, demPixelSize);
+    return path ? fitSunPath(levels, path) : fitFreeSun(levels, start);
   }
 
-  // @coarse level searched every 10 degrees, if there's no @start
-  function fitFreeSun(level, coarse, start) {
+  // The levels that the image's sun is fitted on: {fit, coarse, edges,
+  // coarseEdges}, where fit (see FIT_CELLS) and coarse (the first search of a
+  // free fit, if @free) are scored by scoreSun(), and edges and coarseEdges by
+  // scoreShadowEdges() (see COARSE_EDGE_CELLS)
+  // @Z, @B elevations and linear brightness of the terrain grid's cells
+  function getFitLevels(Z, B, w, h, cellW, cellH, region, free, demPixelSize) {
+    var fit = getFitLevel(Z, B, w, h, cellW, cellH, region, FIT_CELLS, MAX_FIT_CELL);
+    var edges = getFitLevel(Z, B, w, h, cellW, cellH, region, Infinity, Infinity);
+    var coarseEdges = getFitLevel(Z, B, w, h, cellW, cellH, region, COARSE_EDGE_CELLS, MAX_COARSE_EDGE_CELL);
+    [edges, coarseEdges].forEach(function(lev) {
+      var cell = Math.sqrt(lev.cellW * lev.cellH);
+      lev.pairStep = Math.max(EDGE_PAIR_STEP, Math.round((demPixelSize || 0) / cell));
+      lev.slopeStep = Math.max(lev.pairStep, Math.round(FACING_SPAN / cell / 2));
+    });
+    return {
+      fit: fit,
+      coarse: free ? getFitLevel(fit.Z, fit.B, fit.w, fit.h, fit.cellW, fit.cellH, fit.region, COARSE_FIT_CELLS,
+        MAX_COARSE_FIT_CELL) : null,
+      edges: edges,
+      coarseEdges: coarseEdges
+    };
+  }
+
+  function setLevelsContext(levels, work, latitude) {
+    Object.keys(levels).forEach(function(k) {
+      if (!levels[k]) return;
+      levels[k].work = work;
+      levels[k].latitude = latitude;
+    });
+  }
+
+  // The score of a sun position (radians) that fits are compared by: scoreSun()
+  // plus scoreShadowEdges() if @levels has edge levels, on the levels of the
+  // first search unless @fine
+  // Returns {total, score, shadowScore}; total is -1 if the sun can't be there
+  //   or no tile can be scored
+  function scorePosition(levels, azimuth, altitude, fine) {
+    var r = scoreSun(!fine && levels.coarse || levels.fit, azimuth, altitude);
+    var edges = fine ? levels.edges : levels.coarseEdges || levels.edges;
+    var e = r > -1 && edges ? scoreShadowEdges(edges, azimuth, altitude) : 0;
+    return {total: r > -1 ? r + e : -1, score: r, shadowScore: e};
+  }
+
+  // @levels see getFitLevels(): with just {fit}, positions are scored by
+  //   scoreSun() alone; the coarse levels are searched every 10 degrees, if
+  //   there's no @start (see fitImageSun())
+  function fitFreeSun(levels, start) {
     var deg = Math.PI / 180;
-    var best = {score: -2};
-    var az, alt, s, moved, cand, i, sc;
-    if (start) {
-      best = {azimuth: start.azimuth / deg, altitude: start.altitude / deg};
-    } else {
-      for (az = 0; az < 360; az += 10) {
-        for (alt = MIN_ALTITUDE; alt <= 80; alt += 10) {
-          sc = scoreSun(coarse, az * deg, alt * deg);
-          if (sc > best.score) best = {azimuth: az, altitude: alt, score: sc};
-        }
-      }
-      if (best.score <= -1) return {azimuth: 0, altitude: 0, score: -1};
+    if (!start) return runFitSteps(fitImageSun(levels), levels);
+    return searchFineSun(levels, {azimuth: start.azimuth / deg, altitude: start.altitude / deg}, 5);
+  }
+
+  // fitFreeSun() without a start, as a generator of its batches of independent
+  // work (see runFitTask())
+  // @grid optional array receiving the grid's positions ({azimuth, altitude}
+  //   in degrees), with their scores in each tile (see scoreTiles())
+  function* fitImageSun(levels, grid) {
+    var positions = [], starts = [], scored, az, alt;
+    for (az = 0; az < 360; az += 10) {
+      for (alt = MIN_ALTITUDE; alt <= 80; alt += 10) positions.push({azimuth: az, altitude: alt});
     }
-    best.score = scoreSun(level, best.azimuth * deg, best.altitude * deg);
-    // pattern search, from a step of half the grid spacing
-    for (s = 5; s >= 0.5; ) {
+    scored = (yield {type: 'score', items: positions, common: {tiles: !!grid}}).map(function(sc, i) {
+      var p = Object.assign({}, positions[i], sc);
+      if (grid) grid.push(p);
+      return p;
+    });
+    scored.sort(function(a, b) { return b.total - a.total; });
+    if (scored[0].total <= -1) return {azimuth: 0, altitude: 0, score: -1, shadowScore: 0};
+    scored.forEach(function(p) {
+      if (starts.length < GRID_STARTS && p.total > -1 && starts.every(function(q) {
+        return getSunAngle(p, q) >= GRID_START_SPACING;
+      })) starts.push(p);
+    });
+    return searchFineSun(levels, (yield {type: 'search', items: starts}).reduce(function(a, b) {
+      return b.total > a.total ? b : a;
+    }), COARSE_SEARCH_STEP);
+  }
+
+  // The sun found by searchSun() with the fine levels from @best ({azimuth,
+  // altitude} in degrees), with steps from @from degrees
+  function searchFineSun(levels, best, from) {
+    var deg = Math.PI / 180;
+    best = Object.assign({}, best, scorePosition(levels, best.azimuth * deg, best.altitude * deg, true));
+    best = searchSun(levels, best, true, from, 0.5);
+    return {azimuth: best.azimuth * deg, altitude: best.altitude * deg, score: best.score,
+      shadowScore: best.shadowScore};
+  }
+
+  // Pattern search for the highest scorePosition() from @best ({azimuth,
+  // altitude} in degrees, with its total), with steps from @from down to @to
+  // degrees
+  function searchSun(levels, best, fine, from, to) {
+    var deg = Math.PI / 180, s, moved, cand, i, az, alt, sc;
+    for (s = from; s >= to; ) {
       moved = false;
       cand = [[s, 0], [-s, 0], [0, s], [0, -s]];
       for (i = 0; i < 4; i++) {
         az = best.azimuth + cand[i][0];
         alt = Math.max(MIN_ALTITUDE, Math.min(MAX_ALTITUDE, best.altitude + cand[i][1]));
-        sc = scoreSun(level, az * deg, alt * deg);
-        if (sc > best.score) {
-          best = {azimuth: (az + 360) % 360, altitude: alt, score: sc};
+        sc = scorePosition(levels, az * deg, alt * deg, fine);
+        if (sc.total > best.total) {
+          best = Object.assign({azimuth: (az + 360) % 360, altitude: alt}, sc);
           moved = true;
         }
       }
       if (!moved) s /= 2;
     }
-    return {azimuth: best.azimuth * deg, altitude: best.altitude * deg, score: best.score};
+    return best;
   }
 
-  // Brightness tells the sun's azimuth better than its altitude: where albedo
-  // varies with the shape of the terrain (e.g. pale rock on steep slopes and
-  // dark forest in valleys), scores can vary little over a wide range of
-  // altitudes. If altitudes within ALTITUDE_TOLERANCE of @sun's score span more
-  // than MIN_ALTITUDE_SPAN degrees, the altitude among them is the one whose
-  // cast shadows' edges are the most distinct (see getShadowEdgeContrast()).
-  function refineAltitude(level, sun) {
-    var deg = Math.PI / 180, lo = Infinity, hi = -Infinity, alt, best = null, H, c;
-    for (alt = MIN_ALTITUDE; alt <= MAX_ALTITUDE; alt += 2) {
-      if (scoreSun(level, sun.azimuth, alt * deg) >= sun.score - ALTITUDE_TOLERANCE) {
-        lo = Math.min(lo, alt);
-        hi = Math.max(hi, alt);
-      }
-    }
-    if (!(hi - lo > MIN_ALTITUDE_SPAN)) return sun;
-    H = getHorizonAngles(level, sun.azimuth, lo, hi);
-    for (alt = lo; alt <= hi; alt++) {
-      c = getShadowEdgeContrast(level, H, sun.azimuth, alt);
-      if (c.count >= MIN_EDGE_CELLS && c.contrast > 0 && (!best || c.contrast > best.contrast)) {
-        best = {altitude: alt, contrast: c.contrast};
-      }
-    }
-    if (!best) return sun;
-    return {azimuth: sun.azimuth, altitude: best.altitude * deg,
-      score: scoreSun(level, sun.azimuth, best.altitude * deg)};
-  }
-
-  // @sun's altitude from the edges of cast shadows on @edges (see
-  // EDGE_FIT_CELLS and getEdgeAltitude()), with the azimuth fitted again at
-  // that altitude, as the edges are compared in the direction of the azimuth;
-  // or if the edges don't tell the altitude, refined by refineAltitude()
-  function fitEdgeAltitude(level, edges, sun) {
-    var deg = Math.PI / 180, az = sun.azimuth, fit = null, alt, next, k;
-    for (k = 0; k < 2; k++) {
-      alt = getEdgeAltitude(edges, az);
-      if (alt === null) break;
-      next = fitAzimuth(level, az, alt * deg);
-      if (!(next.score > -1)) break;
-      fit = next;
-      if (Math.abs(fit.azimuth - az) < SAME_SUN * deg / 2) break;
-      az = fit.azimuth;
-    }
-    return fit || refineAltitude(level, sun);
-  }
-
-  // The level that shadow edges are measured on (see EDGE_FIT_CELLS)
-  // @brightness one value per terrain cell (see getFitLevel())
-  function getEdgeLevel(terrain, brightness, region) {
-    var level = getFitLevel(terrain.Z, brightness, terrain.width, terrain.height, terrain.cellWidth,
-      terrain.cellHeight, region, EDGE_FIT_CELLS, Infinity);
-    level.edgeStep = Math.max(EDGE_STEP, Math.round(EDGE_DISTANCE / Math.sqrt(level.cellW * level.cellH)));
-    return level;
-  }
-
-  // The highest altitude (whole degrees from @lo to @hi) at which each cell is
-  // shadowed by terrain in the direction @azimuth (@hi if higher), or 0
-  function getHorizonAngles(level, azimuth, lo, hi) {
-    var deg = Math.PI / 180, H = new Uint8Array(level.w * level.h), alt, P, i;
-    for (alt = Math.min(MAX_ALTITUDE, hi); alt >= lo; alt--) {
-      P = castTerrainShadow(level.Z, level.w, level.h, level.cellW, level.cellH,
-        {azimuth: azimuth, altitude: alt * deg}, level.region);
-      if (level.work) level.work.fit(getRegionCells(level.region));
-      for (i = 0; i < P.length; i++) if (P[i] && H[i] === 0) H[i] = alt;
-    }
-    return H;
-  }
-
-  // How much brighter (mean log brightness) sunlit cells just beyond the edges
-  // of cast shadows are than the shadowed cells EDGE_STEP cells (or the level's
-  // edgeStep) before them (toward the sun), with the sun at @altitude. Only
-  // cells facing the sun are compared, so that the edges are of cast shadows,
-  // which are sharp, and not of slopes facing away from the sun, which darken
-  // gradually.
-  // @H horizon angles (see getHorizonAngles())
-  // Returns {contrast, count}
-  function getShadowEdgeContrast(level, H, azimuth, altitude) {
-    var r = level.region, w = level.w, LB = getLevelLogBrightness(level), nrm = getLevelNormals(level);
-    var a = altitude * Math.PI / 180, sx = Math.sin(azimuth) * Math.cos(a), sy = Math.cos(azimuth) * Math.cos(a);
-    var step = level.edgeStep || EDGE_STEP;
-    var sz = Math.sin(a), dx = -Math.sin(azimuth) * step, dy = Math.cos(azimuth) * step;
-    var sum = 0, sum2 = 0, n = 0, x, y, i, j, px, py, d;
-    function facing(i) {
-      return nrm.x[i] * sx + nrm.y[i] * sy + nrm.z[i] * sz > EDGE_FACING;
-    }
-    for (y = r.y0; y < r.y1; y++) {
-      for (x = r.x0; x < r.x1; x++) {
-        i = y * w + x;
-        if (H[i] < altitude || LB[i] !== LB[i] || !facing(i)) continue;
-        px = Math.round(x + dx);
-        py = Math.round(y + dy);
-        if (px < r.x0 || py < r.y0 || px >= r.x1 || py >= r.y1) continue;
-        j = py * w + px;
-        if (H[j] >= altitude || LB[j] !== LB[j] || !facing(j)) continue;
-        d = LB[j] - LB[i];
-        sum += d;
-        sum2 += d * d;
-        n++;
-      }
-    }
-    return {contrast: n > 0 ? sum / n : 0, count: n,
-      variance: n > 1 ? Math.max(0, sum2 / n - (sum / n) * (sum / n)) * n / (n - 1) : 0};
-  }
-
-  // The altitude (degrees) at which the edges of cast shadows are the most
-  // distinct, if their contrast there exceeds the contrast MIN_ALTITUDE_SPAN
-  // degrees higher and lower (with at least MIN_EDGE_CELLS cells each) by
-  // EDGE_Z standard errors; otherwise null
-  function getEdgeAltitude(level, azimuth) {
-    var lo = EDGE_ALTITUDE_RANGE[0], hi = EDGE_ALTITUDE_RANGE[1];
-    var cache = [], best = -1, alt, c, z, k, other;
-    // searched every EDGE_ALTITUDE_STEP degrees, then refined
-    function stats(alt) {
-      if (cache[alt] === undefined) {
-        var s = getShadowEdgeContrast(level, getHorizonAngles(level, azimuth, alt, alt), azimuth, alt);
-        cache[alt] = s.count >= MIN_EDGE_CELLS ? s : null;
-      }
-      return cache[alt];
-    }
-    function test(alt) {
-      var s = alt >= lo && alt <= hi ? stats(alt) : null;
-      if (s && s.contrast > 0 && (best < 0 || s.contrast > cache[best].contrast)) best = alt;
-    }
-    for (alt = lo; alt <= hi; alt += EDGE_ALTITUDE_STEP) test(alt);
-    if (best < 0) return null;
-    for (alt = best - EDGE_ALTITUDE_STEP + 1; alt < best + EDGE_ALTITUDE_STEP; alt++) test(alt);
-    c = cache[best];
-    z = Infinity;
-    for (k of [best - MIN_ALTITUDE_SPAN, best + MIN_ALTITUDE_SPAN]) {
-      other = k >= lo && k <= hi ? stats(k) : null;
-      if (!other) return null;
-      z = Math.min(z, (c.contrast - other.contrast) /
-        Math.sqrt(c.variance / c.count + other.variance / other.count));
-    }
-    return z >= EDGE_Z ? best : null;
+  // The angle in degrees between the directions of two suns ({azimuth,
+  // altitude} in degrees)
+  function getSunAngle(a, b) {
+    var deg = Math.PI / 180, u = getSunVector(a.azimuth * deg, a.altitude * deg);
+    var v = getSunVector(b.azimuth * deg, b.altitude * deg);
+    return Math.acos(Math.min(1, u[0] * v[0] + u[1] * v[1] + u[2] * v[2])) / deg;
   }
 
   function getLevelLogBrightness(level) {
@@ -102159,34 +102617,276 @@ ${css.join('\n')}
   // The time of day (hour angle), and the declination within the range of
   // @path.declinations, whose sun position best matches; hours are searched
   // every half hour and refined to about a minute
-  function fitSunPath(level, path) {
-    var deg = Math.PI / 180;
-    var lo = path.declinations ? path.declinations[0] : path.declination;
-    var hi = path.declinations ? path.declinations[1] : path.declination;
-    var steps = Math.ceil((hi - lo) / DECLINATION_STEP);
-    var best = null;
-    var hour, j, s, c, ds;
-    function candidate(hour, dec) {
-      var pos = getSunPosition(path.latitude, dec, hour);
-      if (hour < -90 || hour > 90 || dec < lo || dec > hi || pos.altitude < MIN_ALTITUDE) return null;
-      return {azimuth: pos.azimuth * deg, altitude: pos.altitude * deg, hour: hour, declination: dec,
-        score: scoreSun(level, pos.azimuth * deg, pos.altitude * deg)};
-    }
+  // @levels see fitFreeSun()
+  function fitSunPath(levels, path) {
+    return runFitSteps(fitPathSun(levels, path), levels);
+  }
+
+  // fitSunPath() as a generator of its batch of independent work (see
+  // runFitTask())
+  // @grid see fitImageSun(), with each position's {hour, declination}
+  function* fitPathSun(levels, path, grid) {
+    var range = getPathRange(path), positions = [], best = null;
+    var hour, j, dec, pos;
     for (hour = -90; hour <= 90; hour += 7.5) {
-      for (j = 0; j <= steps; j++) {
-        c = candidate(hour, steps > 0 ? lo + (hi - lo) * j / steps : lo);
-        if (c && (!best || c.score > best.score)) best = c;
+      for (j = 0; j <= range.steps; j++) {
+        dec = range.steps > 0 ? range.lo + (range.hi - range.lo) * j / range.steps : range.lo;
+        pos = getSunPosition(path.latitude, dec, hour);
+        if (pos.altitude >= MIN_ALTITUDE) positions.push({azimuth: pos.azimuth, altitude: pos.altitude, hour: hour,
+          declination: dec});
       }
     }
-    if (!best || best.score <= -1) return {azimuth: 0, altitude: 0, score: -1};
-    ds = steps > 0 ? (hi - lo) / steps / 2 : 0;
-    for (s = 3.75; s >= 0.25; s /= 2, ds /= 2) {
+    (yield {type: 'score', items: positions, common: {tiles: !!grid}}).forEach(function(sc, i) {
+      var p = Object.assign({}, positions[i], sc);
+      if (grid) grid.push(p);
+      if (!best || sc.total > best.total) best = p;
+    });
+    if (!best || best.total <= -1) return {azimuth: 0, altitude: 0, score: -1, shadowScore: 0};
+    best = searchPathSun(levels, path, best, true, PATH_SEARCH_STEP);
+    delete best.total;
+    return best;
+  }
+
+  // The declinations of the sun's path that are searched: {lo, hi, steps}
+  function getPathRange(path) {
+    var lo = path.declinations ? path.declinations[0] : path.declination;
+    var hi = path.declinations ? path.declinations[1] : path.declination;
+    return {lo: lo, hi: hi, steps: Math.ceil((hi - lo) / DECLINATION_STEP)};
+  }
+
+  // Pattern search along the sun's path for the highest scorePosition() (on the
+  // levels of the first search unless @fine) from @start ({hour, declination}),
+  // with steps from @from degrees of hour angle, and a share of the declination
+  // step in the same proportion to PATH_SEARCH_STEP; a step is halved once no
+  // move from the best position improves on it, down to @to (default 0.25)
+  // Returns {azimuth, altitude (radians), hour, declination, total, score,
+  //   shadowScore}, or null if the sun can't be at @start
+  function searchPathSun(levels, path, start, fine, from, to) {
+    var deg = Math.PI / 180, range = getPathRange(path), best, s, ds, moved;
+    to = to || 0.25;
+    function candidate(hour, dec) {
+      var pos = getSunPosition(path.latitude, dec, hour);
+      if (hour < -90 || hour > 90 || dec < range.lo || dec > range.hi || pos.altitude < MIN_ALTITUDE) return null;
+      return Object.assign({azimuth: pos.azimuth * deg, altitude: pos.altitude * deg, hour: hour, declination: dec},
+        scorePosition(levels, pos.azimuth * deg, pos.altitude * deg, fine));
+    }
+    best = candidate(start.hour, start.declination);
+    if (!best) return null;
+    ds = range.steps > 0 ? (range.hi - range.lo) / range.steps / 2 * from / PATH_SEARCH_STEP : 0;
+    for (s = from; s >= to; ) {
+      moved = false;
       [[-s, 0], [s, 0], [0, -ds], [0, ds]].forEach(function(d) {
         var c = d[0] || d[1] ? candidate(best.hour + d[0], best.declination + d[1]) : null;
-        if (c && c.score > best.score) best = c;
+        if (c && c.total > best.total) {
+          best = c;
+          moved = true;
+        }
       });
+      if (!moved) {
+        s /= 2;
+        ds /= 2;
+      }
     }
     return best;
+  }
+
+  // How consistently the cells just inside the cast shadows of the sun at
+  // @azimuth, @altitude (radians) are darker than the sunlit cells beyond them,
+  // from 0 (no more than by chance) to 1 (see COARSE_EDGE_CELLS)
+  // @level an edge level (see getFitLevels())
+  function scoreShadowEdges(level, azimuth, altitude) {
+    return Math.max(0, 2 * getEdgeBounds(countShadowEdges(level, azimuth, altitude)).lo - 1);
+  }
+
+  // The pairs of cells compared by scoreShadowEdges() and how many of them the
+  // shadowed cell is darker in: {pairs, darker}
+  // @other optional {azimuth, altitude}: only the cells that the other sun
+  //   doesn't shadow are compared
+  // @tiles optional (see getEdgeTiles()): the pairs and darker ones are also
+  //   counted in each tile of the shadowed cell, in arrays tilePairs and
+  //   tileDarker
+  function countShadowEdges(level, azimuth, altitude, other, tiles) {
+    var w = level.w, h = level.h, r = level.region, B = level.B, step = level.pairStep;
+    var P = castTerrainShadow(level.Z, w, h, level.cellW, level.cellH, {azimuth: azimuth, altitude: altitude}, r);
+    var Q = other ? castTerrainShadow(level.Z, w, h, level.cellW, level.cellH, other, r) : null;
+    var sun = getSunVector(azimuth, altitude), pairs = 0, darker = 0, n = 0, d = 0;
+    var tilePairs = tiles ? new Float32Array(tiles.tw * tiles.th) : null;
+    var tileDarker = tiles ? new Float32Array(tiles.tw * tiles.th) : null;
+    var x, y, i, j, k, u, v, t;
+    if (level.work) level.work.fit(getRegionCells(r));
+    for (y = r.y0; y < r.y1; y++) {
+      for (x = r.x0; x < r.x1; x++) {
+        i = y * w + x;
+        if (!P[i] || Q && Q[i] || B[i] !== B[i] || !facesSun(level, x, y, sun)) continue;
+        for (k = 0, n = 0, d = 0; k < 8; k++) {
+          u = x + PAIR_DIRECTIONS[k][0] * step;
+          v = y + PAIR_DIRECTIONS[k][1] * step;
+          if (u < r.x0 || v < r.y0 || u >= r.x1 || v >= r.y1) continue;
+          j = v * w + u;
+          if (P[j] || Q && Q[j] || B[j] !== B[j] || !facesSun(level, u, v, sun)) continue;
+          n++;
+          d += B[i] < B[j] ? 1 : B[i] == B[j] ? 0.5 : 0;
+        }
+        pairs += n;
+        darker += d;
+        if (tiles && n > 0 && tiles.x[x] >= 0 && tiles.y[y] >= 0) {
+          t = tiles.y[y] * tiles.tw + tiles.x[x];
+          tilePairs[t] += n;
+          tileDarker[t] += d;
+        }
+      }
+    }
+    return {pairs: pairs, darker: darker, tilePairs: tilePairs, tileDarker: tileDarker};
+  }
+
+  // The tile of the fit level's region (see scoreSun()) that each column and row
+  // of @edges is in, or -1: {x, y, tw, th}
+  function getEdgeTiles(edges, fit) {
+    var r = fit.region, T = fit.tile, f = edges.factor / fit.factor;
+    var tw = Math.ceil((r.x1 - r.x0) / T), th = Math.ceil((r.y1 - r.y0) / T);
+    function index(n, lo, hi, count) {
+      var out = new Int32Array(n), c, k;
+      for (k = 0; k < n; k++) {
+        c = Math.floor((k + 0.5) * f);
+        out[k] = c >= lo && c < hi ? Math.min(count - 1, (c - lo) / T | 0) : -1;
+      }
+      return out;
+    }
+    if (!edges.tiles) {
+      edges.tiles = {x: index(edges.w, r.x0, r.x1, tw), y: index(edges.h, r.y0, r.y1, th), tw: tw, th: th};
+    }
+    return edges.tiles;
+  }
+
+  // The scores of a sun position (radians) in each tile of the fit level:
+  // scoreSun()'s correlation, and the shadow edges of countShadowEdges() on
+  // the coarse edge level (see getFitLevels()), with the totals of
+  // scorePosition() over all the tiles
+  // Returns {total, score, shadowScore, tileR, pairs, darker}
+  function scoreTiles(levels, azimuth, altitude) {
+    var fit = levels.fit, edges = levels.coarseEdges, tiles = getEdgeTiles(edges, fit);
+    var tileR = new Float32Array(tiles.tw * tiles.th), r = scoreSun(fit, azimuth, altitude, tileR), c, e;
+    if (r <= -1) {
+      return {total: -1, score: r, shadowScore: 0, tileR: tileR, pairs: new Float32Array(tileR.length),
+        darker: new Float32Array(tileR.length)};
+    }
+    c = countShadowEdges(edges, azimuth, altitude, null, tiles);
+    e = Math.max(0, 2 * getEdgeBounds(c).lo - 1);
+    return {total: r + e, score: r, shadowScore: e, tileR: tileR, pairs: c.tilePairs, darker: c.tileDarker};
+  }
+
+  // The sums of scoreTiles()'s scores over @tiles (indexes): {r, pairs, darker},
+  // where r is the mean correlation of the tiles scored, or -1 if none were
+  function sumTileScores(sc, tiles) {
+    var sum = 0, n = 0, pairs = 0, darker = 0, t;
+    for (t of tiles) {
+      if (sc.tileR[t] === sc.tileR[t]) {
+        sum += sc.tileR[t];
+        n++;
+      }
+      pairs += sc.pairs[t];
+      darker += sc.darker[t];
+    }
+    return {r: n > 0 ? sum / n : -1, pairs: pairs, darker: darker};
+  }
+
+  // scorePosition()'s total of sumTileScores()'s sums
+  function getSummedTotal(o) {
+    return o.r + Math.max(0, 2 * getEdgeBounds(o).lo - 1);
+  }
+
+  // How many standard errors more often the shadowed cell is darker in the
+  // pairs of countShadowEdges() in @a than in @b ({pairs, darker}); counts with
+  // fewer than MIN_EDGE_OBSERVATIONS observations are taken as chance (half),
+  // and two of them give 0
+  function getEdgeZ(a, b) {
+    var sa = getEdgeShare(a), sb = getEdgeShare(b);
+    var v = sa.v + sb.v;
+    return v > 0 ? (sa.f - sb.f) / Math.sqrt(v) : 0;
+  }
+
+  function hasEdgeObservations(counts) {
+    return counts.pairs / EDGE_PAIR_REDUNDANCY >= MIN_EDGE_OBSERVATIONS;
+  }
+
+  // {f, v}: the share of darker pairs and its variance (0 for chance)
+  function getEdgeShare(counts) {
+    var n = counts.pairs / EDGE_PAIR_REDUNDANCY, f, p;
+    if (!hasEdgeObservations(counts)) return {f: 0.5, v: 0};
+    f = counts.darker / counts.pairs;
+    p = Math.min(0.95, Math.max(0.05, f));
+    return {f: f, v: p * (1 - p) / n};
+  }
+
+  // The Wilson score interval (EDGE_SCORE_Z standard errors) of the share of
+  // pairs with the darker cell in shadow (see countShadowEdges()): {f, lo, hi};
+  // 0 to 1 without pairs
+  function getEdgeBounds(counts) {
+    var n = counts.pairs / EDGE_PAIR_REDUNDANCY, z = EDGE_SCORE_Z, z2 = z * z, f, mid, half;
+    if (!(n > 0)) return {f: NaN, lo: 0, hi: 1};
+    f = counts.darker / counts.pairs;
+    mid = (f + z2 / (2 * n)) / (1 + z2 / n);
+    half = z * Math.sqrt(f * (1 - f) / n + z2 / (4 * n * n)) / (1 + z2 / n);
+    return {f: f, lo: mid - half, hi: mid + half};
+  }
+
+  var PAIR_DIRECTIONS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+  function getSunVector(azimuth, altitude) {
+    return [Math.sin(azimuth) * Math.cos(altitude), Math.cos(azimuth) * Math.cos(altitude), Math.sin(altitude)];
+  }
+
+  // Whether cell (@x, @y) of @level faces the sun (see EDGE_FACING), with its
+  // slope measured level.slopeStep cells to either side; false next to NaN
+  // @sun see getSunVector()
+  function facesSun(level, x, y, sun) {
+    var w = level.w, Z = level.Z, k = level.slopeStep;
+    var xa = Math.max(0, x - k), xb = Math.min(w - 1, x + k), ya = Math.max(0, y - k), yb = Math.min(level.h - 1, y + k);
+    var dx = (Z[y * w + xb] - Z[y * w + xa]) / ((xb - xa) * level.cellW);
+    var dy = (Z[ya * w + x] - Z[yb * w + x]) / ((yb - ya) * level.cellH);
+    return (sun[2] - dx * sun[0] - dy * sun[1]) / Math.sqrt(dx * dx + dy * dy + 1) > EDGE_FACING;
+  }
+
+  // Whether @sun's cast shadows are clearly in the image (see CONFIRM_CONTRAST)
+  // @level an edge level (see getFitLevels())
+  function shadowsConfirmSun(level, sun) {
+    var c = getCastShadowContrast(level, sun.azimuth, sun.altitude);
+    if (!(c.cells * level.cellW * level.cellH >= MIN_CONFIRM_AREA && c.contrast <= CONFIRM_CONTRAST)) return false;
+    return [-Math.PI / 2, Math.PI / 2, Math.PI].every(function(d) {
+      var o = getCastShadowContrast(level, sun.azimuth + d, sun.altitude);
+      return o.cells === 0 || o.contrast >= c.contrast + CONFIRM_MARGIN;
+    });
+  }
+
+  // The median, over cells facing the sun in its cast shadows, of a cell's log
+  // brightness minus the mean of the sunlit cells facing the sun within
+  // CONFIRM_RADIUS meters (where those are at least MIN_CONFIRM_LIT of the cells)
+  // Returns {contrast, cells}
+  function getCastShadowContrast(level, azimuth, altitude) {
+    var w = level.w, h = level.h, N = w * h, region = level.region, B = level.B;
+    var P = castTerrainShadow(level.Z, w, h, level.cellW, level.cellH, {azimuth: azimuth, altitude: altitude},
+      region);
+    var sun = getSunVector(azimuth, altitude), lit = new Float32Array(N), litB = new Float32Array(N);
+    var diffs = [], r, x, y, i;
+    for (y = region.y0; y < region.y1; y++) {
+      for (x = region.x0; x < region.x1; x++) {
+        i = y * w + x;
+        if (B[i] !== B[i] || !facesSun(level, x, y, sun)) continue;
+        if (P[i]) {
+          P[i] = 2;
+        } else {
+          lit[i] = 1;
+          litB[i] = Math.log(B[i] + LOG_EPSILON);
+        }
+      }
+    }
+    r = Math.max(1, Math.round(CONFIRM_RADIUS / Math.sqrt(level.cellW * level.cellH)));
+    boxMean(lit, w, h, r, lit);
+    boxMean(litB, w, h, r, litB);
+    for (i = 0; i < N; i++) {
+      if (P[i] == 2 && lit[i] >= MIN_CONFIRM_LIT) diffs.push(Math.log(B[i] + LOG_EPSILON) - litB[i] / lit[i]);
+    }
+    return {contrast: diffs.length > 0 ? getMedian(diffs) : 0, cells: diffs.length};
   }
 
   // Mean correlation of I with brightness within the tiles of @level.region
@@ -102249,13 +102949,14 @@ ${css.join('\n')}
 
   // The grids reduced by an integer factor, to have up to @maxCells cells in the
   // region (means, ignoring NaN), with cells no larger than @maxCell meters
-  // Returns {Z, B, w, h, cellW, cellH, region, factor}
+  // Returns {Z, B, w, h, cellW, cellH, region, factor, tile}: tile is the side
+  //   of a fit tile, in cells (see FIT_TILES)
   function getFitLevel(Z, B, w, h, cellW, cellH, region, maxCells, maxCell) {
     var cells = (region.x1 - region.x0) * (region.y1 - region.y0);
     var f = Math.min(Math.ceil(Math.sqrt(cells / maxCells)),
       Math.floor(maxCell / Math.max(cellW, cellH)));
     f = Math.max(1, f);
-    var tile = Math.max(MIN_FIT_TILE, Math.round(FIT_TILE / (Math.sqrt(cellW * cellH) * f)));
+    var tile = Math.max(MIN_FIT_TILE, Math.round(Math.sqrt(cells / (f * f) / FIT_TILES)));
     if (f == 1) return {Z: Z, B: B, w: w, h: h, cellW: cellW, cellH: cellH, region: region, factor: 1, tile: tile};
     return {
       Z: downsampleMeans(Z, w, h, f),
@@ -102271,7 +102972,8 @@ ${css.join('\n')}
     };
   }
 
-  // The part of @level within @margin cells of @region (cell coordinates)
+  // The part of @level within @margin cells of @region (cell coordinates),
+  // with {x0, y0}, its offset in @level
   function cropLevel(level, region, margin) {
     var x0 = Math.max(0, region.x0 - margin), y0 = Math.max(0, region.y0 - margin);
     var x1 = Math.min(level.w, region.x1 + margin), y1 = Math.min(level.h, region.y1 + margin);
@@ -102282,7 +102984,7 @@ ${css.join('\n')}
     }
     return {Z: Z, B: B, w: w, h: h, cellW: level.cellW, cellH: level.cellH, factor: level.factor,
       tile: level.tile, region: {x0: region.x0 - x0, y0: region.y0 - y0, x1: region.x1 - x0, y1: region.y1 - y0},
-      work: level.work, latitude: level.latitude};
+      work: level.work, latitude: level.latitude, x0: x0, y0: y0};
   }
 
   function getLevelNormals(level) {
@@ -102334,74 +103036,345 @@ ${css.join('\n')}
     return {x: NX, y: NY, z: NZ};
   }
 
-  // Sun positions for regions of a mosaic (see MAX_BLOCKS)
+  // Sun positions for regions of a mosaic (see CANDIDATE_BLOCKS)
+  // @levels see getFitLevels()
   // @sun the image's sun position
+  // @grid the image fit's grid, scored in each tile (see fitImageSun())
   // Returns {suns, labels, tw, th}: labels has the index in suns of each tile
-  //   of @level's region (null if there's one sun)
-  function fitRegionSuns(level, sun, path) {
-    var r = level.region, T = level.tile;
+  //   of the fit level's region (null if there's one sun)
+  function* fitRegionSuns(levels, sun, path, grid) {
+    var level = levels.fit, r = level.region, T = level.tile;
     var tw = Math.ceil((r.x1 - r.x0) / T), th = Math.ceil((r.y1 - r.y0) / T);
-    var blocks = getBlockCount(level);
-    var margin = Math.ceil(BLOCK_MARGIN / Math.max(level.cellW, level.cellH));
-    var suns = [sun], single = {suns: suns, labels: null, tw: tw, th: th};
-    var work = level.work, w = path ? FIT_WORK.path : FIT_WORK.free, cells = getRegionCells(r);
-    var bx, by, region, sub, fit, out, iter, prev;
-    if (blocks < 2) return single;
-    for (by = 0; by < blocks; by++) {
-      for (bx = 0; bx < blocks; bx++) {
-        region = {
-          x0: r.x0 + Math.round(tw * bx / blocks) * T, x1: Math.min(r.x1, r.x0 + Math.round(tw * (bx + 1) / blocks) * T),
-          y0: r.y0 + Math.round(th * by / blocks) * T, y1: Math.min(r.y1, r.y0 + Math.round(th * (by + 1) / blocks) * T)
-        };
-        sub = cropLevel(level, region, margin);
-        fit = fitRegionSun(sub, sun, path, false);
-        if (fit.score > scoreSun(sub, sun.azimuth, sun.altitude) + REGION_GAIN &&
-            !suns.some(function(s) { return isSameSun(s, fit); })) {
-          suns.push(fit);
-        }
-      }
-    }
-    if (suns.length == 1) return single;
-    if (work) work.expect((w.refits + w.areas) * cells);
-    out = compactSuns(suns, labelSuns(level, suns, tw, th), tw, th);
+    var single = {suns: [sun], labels: null, tw: tw, th: th};
+    var work = level.work, w = path ? FIT_WORK.path : FIT_WORK.free, cells = getRegionFitCells(levels);
+    var refit = {tw: tw, th: th, path: path}, cache = new Map(), base, cands, suns, out, iter, prev;
+    base = (yield* scoreSuns([sun], cache))[0];
+    cands = getRegionCandidates(grid, base, sun, tw, th);
+    if (work) work.expect(cands.length > 0 ? (w.refits + w.areas) * cells : 0);
+    if (cands.length === 0) return single;
+    suns = yield {type: 'refit', common: Object.assign({from: REGION_SEARCH_STEP}, refit), items: cands};
+    out = yield* labelRegionSuns(getDistinctSuns([sun].concat(suns)), cache, tw, th, LABEL_MARGIN);
     for (iter = 0; iter < MAX_REFITS && out.labels; iter++) {
-      suns = out.suns.map(function(s, k) {
-        return refitSun(level, out.labels, k, tw, th, margin, s, path, true);
-      });
-      suns = suns.filter(function(s, k) {
-        return k === 0 || !suns.slice(0, k).some(function(s2) { return isSameSun(s, s2); });
-      });
+      suns = yield {type: 'refit', common: Object.assign({from: REFIT_SEARCH_STEP, to: REFIT_PRECISION}, refit),
+        items: out.suns.map(function(s, k) { return {labels: out.labels, k: k, sun: s}; })};
       prev = out.labels;
       // once the image is a mosaic, its own sun is just one of the candidates
-      out = compactSuns(suns, labelSuns(level, suns, tw, th, 0), tw, th);
-      if (out.labels && out.suns.length == suns.length && out.labels.every(function(l, t) { return l == prev[t]; })) break;
+      out = yield* labelRegionSuns(getDistinctSuns(suns), cache, tw, th, 0);
+      if (out.labels && out.suns.length == suns.length && out.labels.filter(function(l, t) {
+        return l != prev[t];
+      }).length <= SETTLED_LABELS * prev.length) break;
     }
     if (work) work.expect(out.labels ? w.areas * cells : 0);
-    if (out.labels) out = fitAreaSuns(level, out, margin, path);
+    if (out.labels) out = yield* fitAreaSuns(out, refit);
+    if (out.labels) out = yield* mergeUnsupportedAreas(out, cache, sun, base, refit);
+    // a lone sun left over may have been fitted on just some of the tiles
+    return out.labels ? out : single;
+  }
+
+  // Whether the fit level has enough tiles for the regions of a mosaic to be
+  // fitted (see MIN_CANDIDATE_TILES)
+  function hasRegions(level) {
+    var r = level.region, T = level.tile;
+    return Math.ceil((r.x1 - r.x0) / T) * Math.ceil((r.y1 - r.y0) / T) >= MIN_CANDIDATE_TILES;
+  }
+
+  // The candidates for the suns of a mosaic's regions (see CANDIDATE_BLOCKS), as
+  // tasks fitting them on their regions (see refitSun()): [{labels, k, sun}]
+  // @base scoreTiles() of the image's @sun
+  function getRegionCandidates(grid, base, sun, tw, th) {
+    var deg = Math.PI / 180, own = {azimuth: sun.azimuth / deg, altitude: sun.altitude / deg};
+    var found = new Map();
+    getCandidateRegions(tw, th).forEach(function(tiles) {
+      var top = -1, topTotal = -Infinity, z, i, total;
+      for (i = 0; i < grid.length; i++) {
+        if (grid[i].total <= -1) continue;
+        total = getSummedTotal(sumTileScores(grid[i], tiles));
+        if (total > topTotal) {
+          top = i;
+          topTotal = total;
+        }
+      }
+      if (top < 0 || getSunAngle(grid[top], own) < CANDIDATE_SPACING) return;
+      z = Math.max(getPairedZ(grid[top].tileR, base.tileR, tiles),
+        getEdgeZ(sumTileScores(grid[top], tiles), sumTileScores(base, tiles)));
+      if (z >= CANDIDATE_Z && !(found.has(top) && found.get(top).z >= z)) found.set(top, {z: z, tiles: tiles});
+    });
+    return Array.from(found.entries()).sort(function(a, b) {
+      return b[1].z - a[1].z || a[0] - b[0];
+    }).slice(0, MAX_CANDIDATES).map(function(e) {
+      var p = grid[e[0]], labels = new Int8Array(tw * th), s = {azimuth: p.azimuth * deg, altitude: p.altitude * deg};
+      e[1].tiles.forEach(function(t) { labels[t] = 1; });
+      if (p.hour !== undefined) {
+        s.hour = p.hour;
+        s.declination = p.declination;
+      }
+      return {labels: labels, k: 1, sun: s};
+    });
+  }
+
+  // The tiles (indexes) of each candidate region (see CANDIDATE_BLOCKS)
+  function getCandidateRegions(tw, th) {
+    var out = [];
+    function add(x0, x1, y0, y1) {
+      var tiles = [], x, y;
+      for (y = y0; y < y1; y++) {
+        for (x = x0; x < x1; x++) tiles.push(y * tw + x);
+      }
+      if (tiles.length >= MIN_REGION_TILES && tiles.length < tw * th) out.push(tiles);
+    }
+    function at(size, i, n) {
+      return Math.round(size * i / n);
+    }
+    CANDIDATE_BLOCKS.forEach(function(n) {
+      for (var by = 0; by < n; by++) {
+        for (var bx = 0; bx < n; bx++) add(at(tw, bx, n), at(tw, bx + 1, n), at(th, by, n), at(th, by + 1, n));
+      }
+    });
+    CANDIDATE_STRIPS.forEach(function(n) {
+      for (var i = 0; i < n; i++) {
+        add(at(tw, i, n), at(tw, i + 1, n), 0, th);
+        add(0, tw, at(th, i, n), at(th, i + 1, n));
+      }
+    });
     return out;
   }
 
-  // The number of blocks on each side of the grid that a mosaic's suns are
-  // first fitted in (see MAX_BLOCKS); none if fewer than 2
-  function getBlockCount(level) {
-    var r = level.region, T = level.tile;
-    var tw = Math.ceil((r.x1 - r.x0) / T), th = Math.ceil((r.y1 - r.y0) / T);
-    return Math.min(MAX_BLOCKS, Math.floor(Math.sqrt(tw * th / BLOCK_TILES)));
+  // @suns without those within SAME_SUN degrees of an earlier one
+  function getDistinctSuns(suns) {
+    return suns.filter(function(s, k) {
+      return !suns.slice(0, k).some(function(s2) { return isSameSun(s, s2); });
+    });
+  }
+
+  // scoreTiles() of each of @suns, from @cache (a Map) or scored
+  function* scoreSuns(suns, cache) {
+    var missing = suns.filter(function(s, k) {
+      return !cache.has(getSunKey(s)) && suns.findIndex(function(s2) { return getSunKey(s2) == getSunKey(s); }) == k;
+    });
+    if (missing.length > 0) {
+      (yield {type: 'tiles', items: missing}).forEach(function(sc, k) {
+        cache.set(getSunKey(missing[k]), sc);
+      });
+    }
+    return suns.map(function(s) { return cache.get(getSunKey(s)); });
+  }
+
+  function getSunKey(sun) {
+    return sun.azimuth + ',' + sun.altitude;
+  }
+
+  // Each tile's sun (see labelTiles()), by the sum of its scores (see
+  // getTileTotals()), without suns no tile has but the first
+  // @cache see scoreSuns()
+  function* labelRegionSuns(suns, cache, tw, th, margin) {
+    var scores = yield* scoreSuns(suns, cache);
+    var labels = labelTiles(scores.map(function(sc) { return getTileTotals(sc, tw, th); }), tw, th, margin);
+    return compactSuns(suns, labels, tw, th, true);
+  }
+
+  // The total of scoreTiles()'s scores in each tile: its correlation, plus the
+  // score of the shadow edges in it and its neighbors (as a tile has few);
+  // NaN where the correlation isn't scored
+  function getTileTotals(sc, tw, th) {
+    var out = new Float32Array(tw * th), x, y, dx, dy, u, v, t, pairs, darker;
+    for (y = 0; y < th; y++) {
+      for (x = 0; x < tw; x++) {
+        t = y * tw + x;
+        pairs = 0;
+        darker = 0;
+        for (dy = -1; dy <= 1; dy++) {
+          for (dx = -1; dx <= 1; dx++) {
+            u = x + dx;
+            v = y + dy;
+            if (u < 0 || v < 0 || u >= tw || v >= th) continue;
+            pairs += sc.pairs[v * tw + u];
+            darker += sc.darker[v * tw + u];
+          }
+        }
+        out[t] = sc.tileR[t] + Math.max(0, 2 * getEdgeBounds({pairs: pairs, darker: darker}).lo - 1);
+      }
+    }
+    return out;
+  }
+
+  // Areas are merged while the sun of one isn't supported by the evidence in it
+  // over the sun of a neighboring area (see getAreaSupport()): the least
+  // supported area takes the sun best supported over its own in the area,
+  // smallest areas first if equally supported. If the image's @sun was fitted
+  // partly by its shadow edges, which are scored at full resolution, where the
+  // regions' suns aren't, the other suns must also do better than it where
+  // they are. (Each merge either leaves fewer areas, or as many with fewer of
+  // them lit by other suns than the image's.)
+  // @base scoreTiles() of the image's @sun
+  function* mergeUnsupportedAreas(regions, cache, sun, base, refit) {
+    var tw = regions.tw, th = regions.th, suns = regions.suns.concat(), labels = regions.labels;
+    var all = sumTileScores(base, base.tileR.map(function(v, t) { return t; }));
+    var ref = all.pairs > 0 ? all.darker / all.pairs : NaN, edgeBased = sun.shadowScore > 0;
+    var own = edgeBased ? suns.findIndex(function(s) { return isSameSun(s, sun); }) : -2;
+    var disputes = new Map(), scores, areas, areaLabels, tasks, weakest, target;
+    if (own == -1) {
+      own = suns.length;
+      suns.push(sun);
+    }
+    scores = yield* scoreSuns(suns, cache);
+    // the suns that the sun of @area is compared with
+    function rivals(area) {
+      var out = getNeighborLabels(labels, tw, area);
+      if (own >= 0 && labels[area[0]] != own && !out.includes(own)) out.push(own);
+      return out;
+    }
+    function key(area, k, j) {
+      return area.join(',') + ':' + Math.min(k, j) + ':' + Math.max(k, j);
+    }
+    // support of @k over @j in @area
+    function support(area, k, j) {
+      var d = disputes.get(key(area, k, j)), zr = getPairedZ(scores[k].tileR, scores[j].tileR, area);
+      var ea = sumTileScores(scores[k], area), eb = sumTileScores(scores[j], area);
+      var ze = hasEdgeObservations(ea) && hasEdgeObservations(eb) ? getEdgeZ(ea, eb) : NaN;
+      return k < j ? getAreaSupport(zr, ze, d.a, d.b, ref, edgeBased) : getAreaSupport(zr, ze, d.b, d.a, ref, edgeBased);
+    }
+    for (;;) {
+      areas = getLabelAreas(labels, tw).sort(function(a, b) { return a.length - b.length || a[0] - b[0]; });
+      areaLabels = new Int32Array(tw * th);
+      tasks = [];
+      areas.forEach(function(area, a) {
+        var k = labels[area[0]];
+        area.forEach(function(t) { areaLabels[t] = a; });
+        rivals(area).forEach(function(j) {
+          if (!disputes.has(key(area, k, j))) tasks.push({area: area, k: Math.min(k, j), j: Math.max(k, j), a: a});
+        });
+      });
+      if (tasks.length > 0) {
+        (yield {type: 'dispute', common: refit, items: tasks.map(function(o) {
+          return {labels: areaLabels, k: o.a, sun: suns[o.k], other: suns[o.j]};
+        })}).forEach(function(d, n) {
+          disputes.set(key(tasks[n].area, tasks[n].k, tasks[n].j), d);
+        });
+      }
+      weakest = null;
+      areas.forEach(function(area) {
+        var k = labels[area[0]];
+        rivals(area).forEach(function(j) {
+          var v = support(area, k, j);
+          if (v < REGION_Z && (!weakest || v < weakest.v)) weakest = {area: area, v: v};
+        });
+      });
+      if (!weakest) break;
+      target = null;
+      rivals(weakest.area).forEach(function(j) {
+        var v = support(weakest.area, j, labels[weakest.area[0]]), m = getMeanScore(scores[j].tileR, weakest.area);
+        if (!target || v > target.v || v == target.v && m > target.m) target = {j: j, v: v, m: m};
+      });
+      weakest.area.forEach(function(t) { labels[t] = target.j; });
+    }
+    return compactSuns(suns, labels, tw, th);
+  }
+
+  // How strongly the evidence in an area supports its sun over a neighboring
+  // area's, in standard errors, by scoreSun() (see getPairedZ()) and by the
+  // shadow edges that one sun casts in the area and the other doesn't (see
+  // getEdgeEvidence()); it is supported with at least REGION_Z. The support is
+  // -Infinity if the area's sun is worse by CONFLICT_Z by scoreSun() or by the
+  // edges of all their shadows in the area (the sun that lit an area casts the
+  // most consistently darker edges there, as each sun's shadows that the other
+  // doesn't cast have edges darker only by chance), or if the edges that one
+  // sun casts and the other doesn't favor the other sun; otherwise it's the
+  // larger of scoreSun()'s z and the strength with which those edges favor the
+  // area's sun. (All the edges in an area can't support its sun: they favor a
+  // sun fitted on the area over one fitted on the whole image by many standard
+  // errors, even in an image lit by one sun.) If the image's sun was fitted
+  // partly by its shadow edges, the edges must favor the area's sun (or the
+  // support is -Infinity): scoreSun() alone would pull areas without them
+  // toward the sun that the image's shadow edges ruled out.
+  // @zr see getPairedZ(), over the area's tiles
+  // @ze see getEdgeZ(), of the area's sun and the other in the area's tiles, or
+  //   NaN if either has fewer than MIN_EDGE_OBSERVATIONS observations (as one
+  //   sun's shadow edges may be too narrow to be seen at the edge level's
+  //   resolution)
+  // @a, @b countShadowEdges() of the area's sun and of the other in the area,
+  //   without the cells that the other sun shadows
+  // @ref the share of darker pairs of the image's sun (see getEdgeBounds())
+  // @edgeBased whether the image's sun was fitted partly by its shadow edges
+  function getAreaSupport(zr, ze, a, b, ref, edgeBased) {
+    var ea = getEdgeEvidence(a, ref), eb = getEdgeEvidence(b, ref), strength = -Infinity;
+    if (zr <= -CONFLICT_Z || ze <= -CONFLICT_Z || eb.real && !ea.real || ea.refuted && !eb.refuted && !eb.real) {
+      return -Infinity;
+    }
+    if (ea.real && !eb.real) strength = ea.z;
+    if (eb.refuted && !ea.refuted) strength = Math.max(strength, -eb.z);
+    if (edgeBased && strength == -Infinity) return -Infinity;
+    return Math.max(zr, strength);
+  }
+
+  // Whether shadow edges (countShadowEdges()) are those of shadows in the
+  // image: their darker share is compared with the midway point between chance
+  // (half) and @ref, the share of the image's sun (real shadows' edges are
+  // darker about as consistently, and a wrong sun's about as often as by
+  // chance). Returns {real, refuted, z}: z is the difference in standard
+  // errors, and real or refuted if it is at least CONFLICT_Z, with at least
+  // MIN_EDGE_OBSERVATIONS observations.
+  function getEdgeEvidence(counts, ref) {
+    var s = getEdgeShare(counts), z = s.v > 0 ? (s.f - (0.5 + ref) / 2) / Math.sqrt(s.v) : NaN;
+    return {real: z >= CONFLICT_Z, refuted: z <= -CONFLICT_Z, z: z};
+  }
+
+  // How many standard errors the scores in @ra exceed those in @rb, paired over
+  // the tiles (indexes in @tiles, or all) that both are scored in; -Infinity
+  // with fewer than MIN_PAIRED_TILES. Tiles are the samples, not cells, as
+  // neighboring cells' brightness and lighting aren't independent.
+  function getPairedZ(ra, rb, tiles) {
+    var count = tiles ? tiles.length : ra.length, n = 0, sum = 0, sum2 = 0, j, t, d, mean, sd;
+    for (j = 0; j < count; j++) {
+      t = tiles ? tiles[j] : j;
+      d = ra[t] - rb[t];
+      if (d !== d) continue;
+      n++;
+      sum += d;
+      sum2 += d * d;
+    }
+    if (n < MIN_PAIRED_TILES) return -Infinity;
+    mean = sum / n;
+    sd = Math.sqrt(Math.max(1e-12, (sum2 - n * mean * mean) / (n - 1)));
+    return mean / (sd / Math.sqrt(n));
+  }
+
+  // Labels of the tiles 4-connected to @area other than its own
+  function getNeighborLabels(labels, tw, area) {
+    var own = labels[area[0]], out = [], t, u;
+    for (t of area) {
+      for (u of [t % tw > 0 ? t - 1 : -1, t % tw < tw - 1 ? t + 1 : -1, t - tw, t + tw]) {
+        if (u >= 0 && u < labels.length && labels[u] != own && !out.includes(labels[u])) out.push(labels[u]);
+      }
+    }
+    return out;
+  }
+
+  function getMeanScore(arr, tiles) {
+    var sum = 0, n = 0, t;
+    for (t of tiles) {
+      if (arr[t] !== arr[t]) continue;
+      sum += arr[t];
+      n++;
+    }
+    return n > 0 ? sum / n : -Infinity;
   }
 
   // Tiles are labeled by how well brightness matches each sun, which tells
-  // azimuths apart but not altitudes, so each connected area of a sun's tiles
-  // is fitted again on its own (e.g. flight lines on either side of another,
-  // taken at the same azimuth but different altitudes)
-  function fitAreaSuns(level, regions, margin, path) {
+  // azimuths apart better than altitudes, so each connected area of a sun's
+  // tiles is fitted again on its own (e.g. flight lines on either side of
+  // another, taken at the same azimuth but different altitudes)
+  // @refit see runFitTask()
+  function* fitAreaSuns(regions, refit) {
     var tw = regions.tw, th = regions.th, areas = getLabelAreas(regions.labels, tw);
-    var areaLabels = new Int32Array(tw * th), suns = [], labels = new Int8Array(tw * th);
+    var areaLabels = new Int32Array(tw * th), suns = [], labels = new Int8Array(tw * th), fits;
     areas.forEach(function(area, a) {
       area.forEach(function(t) { areaLabels[t] = a; });
     });
+    fits = yield {type: 'refit', common: Object.assign({from: REFIT_SEARCH_STEP}, refit), items: areas.map(function(area, a) {
+      return {labels: areaLabels, k: a, sun: regions.suns[regions.labels[area[0]]]};
+    })};
     areas.forEach(function(area, a) {
-      var start = regions.suns[regions.labels[area[0]]];
-      var sun = refitSun(level, areaLabels, a, tw, th, margin, start, path, true);
+      var sun = fits[a];
       var k = suns.findIndex(function(s) { return isSameSun(s, sun); });
       if (k < 0) {
         k = suns.length;
@@ -102412,19 +103385,36 @@ ${css.join('\n')}
     return {suns: suns, labels: suns.length > 1 ? labels : null, tw: tw, th: th};
   }
 
-  function labelSuns(level, suns, tw, th, margin) {
-    var tileR = suns.map(function(s) {
-      var arr = new Float32Array(tw * th);
-      scoreSun(level, s.azimuth, s.altitude, arr);
-      return arr;
-    });
-    return labelTiles(tileR, tw, th, margin);
+  // @sun fitted again by scorePosition() on the tiles of the fit level labeled
+  // @k (see getAreaLevels()), with steps from @from down to @to degrees (or,
+  // along @path, degrees of hour angle, down to half of @to); @to is 0.5 if
+  // not given
+  function refitSun(levels, labels, k, tw, th, sun, path, from, to) {
+    var deg = Math.PI / 180, sub = getAreaLevels(levels, labels, k, tw, th), best;
+    if (!sub) return sun;
+    to = to || 0.5;
+    if (path) {
+      best = searchPathSun(sub, path, sun, false, from, to / 2);
+    } else {
+      best = Object.assign({azimuth: sun.azimuth / deg, altitude: sun.altitude / deg},
+        scorePosition(sub, sun.azimuth, sun.altitude, false));
+      best = searchSun(sub, best, false, from, to);
+      best = {azimuth: best.azimuth * deg, altitude: best.altitude * deg, score: best.score,
+        shadowScore: best.shadowScore};
+    }
+    if (!best || !(best.score > -1)) return sun;
+    delete best.total;
+    return best;
   }
 
-  // @sun fitted again on the tiles of @level labeled @k (see fitRegionSun())
-  function refitSun(level, labels, k, tw, th, margin, sun, path, edges) {
-    var r = level.region, T = level.tile, tx0 = tw, ty0 = th, tx1 = -1, ty1 = -1;
-    var t, tx, ty, x, y, sub, region, fit;
+  // The fit and coarse edge levels (see getFitLevels()) cropped to the tiles
+  // of the fit level labeled @k, with the shadows cast from REGION_MARGIN
+  // meters around them, and NaN brightness outside them: {fit, coarseEdges,
+  // edges}, where edges is coarseEdges; null if no tile is labeled @k
+  function getAreaLevels(levels, labels, k, tw, th) {
+    var fit = levels.fit, ce = levels.coarseEdges, r = fit.region, T = fit.tile, f = fit.factor / ce.factor;
+    var tiles = getEdgeTiles(ce, fit), tx0 = tw, ty0 = th, tx1 = -1, ty1 = -1;
+    var t, tx, ty, x, y, sub, region, crop;
     for (t = 0; t < labels.length; t++) {
       if (labels[t] != k) continue;
       tx = t % tw;
@@ -102432,10 +103422,10 @@ ${css.join('\n')}
       tx0 = Math.min(tx0, tx); tx1 = Math.max(tx1, tx);
       ty0 = Math.min(ty0, ty); ty1 = Math.max(ty1, ty);
     }
-    if (tx1 < 0) return sun;
+    if (tx1 < 0) return null;
     region = {x0: r.x0 + tx0 * T, y0: r.y0 + ty0 * T,
       x1: Math.min(r.x1, r.x0 + (tx1 + 1) * T), y1: Math.min(r.y1, r.y0 + (ty1 + 1) * T)};
-    sub = cropLevel(level, region, margin);
+    sub = cropLevel(fit, region, Math.ceil(REGION_MARGIN / Math.max(fit.cellW, fit.cellH)));
     for (y = sub.region.y0; y < sub.region.y1; y++) {
       for (x = sub.region.x0; x < sub.region.x1; x++) {
         tx = tx0 + ((x - sub.region.x0) / T | 0);
@@ -102443,44 +103433,19 @@ ${css.join('\n')}
         if (labels[ty * tw + tx] != k) sub.B[y * sub.w + x] = NaN;
       }
     }
-    fit = fitRegionSun(sub, sun, path, edges);
-    return fit.score > -1 ? fit : sun;
-  }
-
-  // Brightness tells a region's sun azimuth, but not always its altitude, which
-  // can trade off against albedo that varies with the terrain; with @edges, the
-  // azimuth is fitted again at the altitude the region's shadow edges tell (see
-  // getEdgeAltitude()), or if they don't, at @sun's
-  function fitRegionSun(sub, sun, path, edges) {
-    if (path) return fitSunPath(sub, path);
-    var fit = fitFreeSun(sub, null, sun), alt, az, k;
-    for (k = 0; edges && fit.score > -1 && k < 2; k++) {
-      az = fit.azimuth;
-      alt = getEdgeAltitude(sub, az);
-      fit = fitAzimuth(sub, az, alt === null ? sun.altitude : alt * Math.PI / 180);
-      // the edges are compared in the direction of the azimuth
-      if (Math.abs(fit.azimuth - az) < SAME_SUN * Math.PI / 180 / 2) break;
-    }
-    return fit;
-  }
-
-  // Pattern search for the azimuth (radians) at a fixed altitude
-  function fitAzimuth(level, azimuth, altitude) {
-    var deg = Math.PI / 180, az = azimuth / deg, best = scoreSun(level, azimuth, altitude);
-    var s, moved, d, sc;
-    for (s = 5; s >= 0.5; ) {
-      moved = false;
-      for (d of [s, -s]) {
-        sc = scoreSun(level, (az + d) * deg, altitude);
-        if (sc > best) {
-          best = sc;
-          az = (az + d + 360) % 360;
-          moved = true;
-        }
+    crop = cropLevel(ce, {x0: Math.floor(region.x0 * f), y0: Math.floor(region.y0 * f),
+      x1: Math.min(ce.w, Math.ceil(region.x1 * f)), y1: Math.min(ce.h, Math.ceil(region.y1 * f))},
+    Math.ceil(REGION_MARGIN / Math.max(ce.cellW, ce.cellH)));
+    crop.pairStep = ce.pairStep;
+    crop.slopeStep = ce.slopeStep;
+    for (y = crop.region.y0; y < crop.region.y1; y++) {
+      for (x = crop.region.x0; x < crop.region.x1; x++) {
+        tx = tiles.x[x + crop.x0];
+        ty = tiles.y[y + crop.y0];
+        if (tx < 0 || ty < 0 || labels[ty * tw + tx] != k) crop.B[y * crop.w + x] = NaN;
       }
-      if (!moved) s /= 2;
     }
-    return {azimuth: az * deg, altitude: altitude, score: best};
+    return {fit: sub, coarseEdges: crop, edges: crop};
   }
 
   function isSameSun(a, b) {
@@ -102608,9 +103573,9 @@ ${css.join('\n')}
     return out;
   }
 
-  // Removes suns that no tile has
-  function compactSuns(suns, labels, tw, th) {
-    var used = suns.map(function(s, k) { return k === 0 || labels.includes(k); });
+  // Removes suns that no tile has (but the first, with @keepFirst)
+  function compactSuns(suns, labels, tw, th, keepFirst) {
+    var used = suns.map(function(s, k) { return keepFirst && k === 0 || labels.includes(k); });
     var index = [], kept = [], t;
     suns.forEach(function(s, k) {
       index[k] = used[k] ? kept.length : 0;
@@ -102623,9 +103588,10 @@ ${css.join('\n')}
   // I of each terrain cell, blended between the suns of nearby tiles
   // @regions see fitRegionSuns()
   // @level the fit level that @regions was fitted on
-  // Returns {I, direct, flat}: Float32Arrays of I, of I without cast shadows,
-  //   and of I on flat ground (sine of the sun's altitude); NaN outside
-  //   @region and where I is unknown
+  // Returns {I, direct, flat, near}: Float32Arrays of I, of I without cast
+  //   shadows, and of I on flat ground (sine of the sun's altitude), NaN
+  //   outside @region and where I is unknown; and a Uint8Array with 1 for cells
+  //   in the shadows of suns NEAR_SHADOW_ALTITUDE degrees lower
   function getCellLighting(terrain, region, demPixelSize, regions, level) {
     var w = terrain.width, h = terrain.height, suns = regions.suns;
     var cell = Math.sqrt(terrain.cellWidth * terrain.cellHeight);
@@ -102635,6 +103601,12 @@ ${css.join('\n')}
     var shadows = suns.map(function(sun) {
       return castTerrainShadow(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight, sun, region);
     });
+    var lowered = suns.map(function(sun) {
+      var alt = Math.max(MIN_ALTITUDE * Math.PI / 180, sun.altitude - NEAR_SHADOW_ALTITUDE * Math.PI / 180);
+      return castTerrainShadow(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight,
+        {azimuth: sun.azimuth, altitude: alt}, region);
+    });
+    var near = new Uint8Array(w * h), inNear;
     var vecs = suns.map(function(sun) {
       return [Math.sin(sun.azimuth) * Math.cos(sun.altitude), Math.cos(sun.azimuth) * Math.cos(sun.altitude),
         Math.sin(sun.altitude)];
@@ -102669,6 +103641,7 @@ ${css.join('\n')}
         sum = 0;
         fsum = 0;
         dsum = 0;
+        inNear = 1;
         for (k = 0; k < suns.length; k++) {
           if (weights[k] === 0) continue;
           v = vecs[k];
@@ -102677,13 +103650,15 @@ ${css.join('\n')}
           dsum += weights[k] * s;
           sum += shadows[k][i] ? 0 : weights[k] * s;
           fsum += weights[k] * v[2];
+          inNear &= lowered[k][i];
         }
         I[i] = sum;
         direct[i] = dsum;
         flat[i] = fsum;
+        near[i] = inNear;
       }
     }
-    return {I: I, direct: direct, flat: flat};
+    return {I: I, direct: direct, flat: flat, near: near};
   }
 
   // I of each pixel. Near the edges of the DEM's shadows (within @band pixels),
@@ -102740,31 +103715,51 @@ ${css.join('\n')}
   //   latitude (optional) excludes sun positions that never occur there
   // @nir optional near-infrared value of each pixel
   // @pixelSize ground size of a pixel, in meters
-  // @demPixelSize ground size of the DEM's own pixels, in meters
+  // @demPixelSize ground size of the DEM's own pixels, in meters (terrain cells
+  //   larger than that are the DEM's resolution instead)
   // @path optional {latitude, declination}, to fit the sun along its path on
   //   the image's date (see fitSunPosition)
   // Returns {samples, sun, suns, diffuse, typicalDiffuse, response, shadowGains, shadowShare, failure}:
-  //   samples is null if the image couldn't be corrected; suns are the sun
-  //   positions of a mosaic's regions (with the image's first), each with the
+  //   samples is null if the image couldn't be corrected; sun has confirmed:
+  //   true if its score is below MIN_SUN_FIT but its cast shadows are in the
+  //   image (see CONFIRM_CONTRAST); suns are the sun positions of a mosaic's
+  //   regions (with the image's first), each with the
   //   share of the image it lights; diffuse is c of each band (typicalDiffuse
   //   is true if it's TYPICAL_DIFFUSE, not measured); response is the power of
   //   the direct light on shaded slopes, if it was fitted (see MAX_RESPONSE);
   //   shadowGains are
   //   the gains of shadows on flat ground, as they apply to 8-bit values;
   //   failure is 'empty' (no pixels have data; sun is null), 'fit' (no sun
-  //   position matches well enough), 'altitude' (the
+  //   position matches well enough, or has its shadows confirmed), 'altitude' (the
   //   best match is at MIN_ALTITUDE), 'diffuse' (c couldn't be fitted) or
   //   'color' (shadows aren't bluer than sunlit ground)
   // @progress optional function receiving the share of the work done (0 to 1)
   //   as it increases (see REST_WORK)
-  // @options optional {balancedThreshold, imageShadows} (see
-  //   getAgreementThreshold() and getPixelShadows())
+  // @options optional {balancedThreshold, imageShadows, despeckle} (see
+  //   getAgreementThreshold(), getPixelShadows() and addSmallShadows())
   function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path, progress, options) {
+    return runFitSteps(deshadowSteps(image, terrain, nir, pixelSize, demPixelSize, path, progress, options));
+  }
+
+  // deshadowImage(), with the independent work of fitting the sun divided
+  // among helper workers (see serveDeshadowHelper())
+  // @helpers MessagePorts connected to the helpers
+  // Returns a promise of deshadowImage()'s result
+  function deshadowImageWithHelpers(image, terrain, nir, pixelSize, demPixelSize, path, progress, options,
+      helpers) {
+    return runFitStepsWithHelpers(deshadowSteps(image, terrain, nir, pixelSize, demPixelSize, path, progress, options),
+      helpers.map(getMessagePortClient));
+  }
+
+  // deshadowImage() as a generator of the sun fit's batches of independent work
+  // (see runFitTask())
+  function* deshadowSteps(image, terrain, nir, pixelSize, demPixelSize, path, progress, options) {
     var W = image.width, H = image.height, N = W * H;
     var work = getWorkTracker(progress || function() {}, N);
     var valid = getValidPixels(image);
     var lin = getLinearImage(image);
     var region = getTerrainRegion(terrain, W, H);
+    demPixelSize = Math.max(demPixelSize, Math.sqrt(terrain.cellWidth * terrain.cellHeight));
     var cells = getPixelCells(terrain, W, H);
     var result = {samples: null, sun: null, suns: null, diffuse: null, shadowGains: null,
       shadowShare: 0, failure: null};
@@ -102773,27 +103768,31 @@ ${css.join('\n')}
       return result;
     }
     var brightness = getCellMeans(getLinearLumas(lin, N), W, H, terrain, valid);
-    var level = getFitLevel(terrain.Z, brightness, terrain.width, terrain.height, terrain.cellWidth,
-      terrain.cellHeight, region, FIT_CELLS, MAX_FIT_CELL);
-    var coarse = path ? null : getFitLevel(level.Z, level.B, level.w, level.h, level.cellW, level.cellH,
-      level.region, COARSE_FIT_CELLS, MAX_COARSE_FIT_CELL);
-    var edges = path ? null : getEdgeLevel(terrain, brightness, region);
-    level.work = work;
-    level.latitude = terrain.latitude;
-    if (coarse) {
-      coarse.work = work;
-      coarse.latitude = terrain.latitude;
-    }
-    if (edges) edges.work = work;
-    work.expect(getFitWork(level, coarse, path) + (edges ? EDGE_FIT_CASTS * getRegionCells(edges.region) : 0));
+    var levels = getFitLevels(terrain.Z, brightness, terrain.width, terrain.height, terrain.cellWidth,
+      terrain.cellHeight, region, !path, demPixelSize);
+    var level = levels.fit;
+    setLevelsContext(levels, work, terrain.latitude);
+    work.expect(getFitWork(levels, path));
     work.rest(PROGRESS.setup);
-    var sun = path ? fitSunPath(level, path) : fitFreeSun(level, coarse, null);
-    if (!path && sun.score > -1) sun = fitEdgeAltitude(level, edges, sun);
+    yield {type: 'load', levels: levels, work: work};
+    var grid = hasRegions(level) ? [] : null;
+    var sun = path ? yield* fitPathSun(levels, path, grid) : yield* fitImageSun(levels, grid);
     var regions, light, tile, margin, all, classes, ratios, litRatios, pixelI, gains, inShadow, nValid, i;
     var byShadows = true;
     var flat, direct, hardI, predicted, shadows, refined;
     result.sun = sun;
-    if (!(sun.score >= MIN_SUN_FIT)) {
+    if (sun.score > 0 && sun.score < MIN_SUN_FIT && shadowsConfirmSun(levels.coarseEdges, sun)) {
+      sun.confirmed = true;
+    }
+    // a mosaic is also looked for where the image's sun fits poorly, as one
+    // sun matches regions lit by others poorly
+    regions = grid && sun.score > -1 ? yield* fitRegionSuns(levels, sun, path, grid) :
+      {suns: [sun], labels: null};
+    work.expect(0);
+    if (!isSunFitted$1(sun) && regions.labels && regionSunsAreFitted(levels, regions)) {
+      sun = result.sun = getLargestRegionSun(regions);
+    }
+    if (!isSunFitted$1(sun)) {
       result.failure = 'fit';
       return result;
     }
@@ -102803,8 +103802,6 @@ ${css.join('\n')}
       result.failure = 'altitude';
       return result;
     }
-    regions = fitRegionSuns(level, sun, path);
-    work.expect(0);
     light = getCellLighting(terrain, region, demPixelSize, regions, level);
     result.suns = getSunShares(regions, level, light, cells, terrain.width, valid, N);
     work.rest(PROGRESS.lighting);
@@ -102814,9 +103811,10 @@ ${css.join('\n')}
     direct = getPixelValues(light.direct, cells, Float32Array);
     hardI = getPixelValues(light.I, cells, Float32Array);
     for (i = 0, predicted = new Uint8Array(N); i < N; i++) predicted[i] = hardI[i] === 0 ? 1 : 0;
-    shadows = getPixelShadows(image, nir, valid, predicted, cells, terrain, region, regions,
+    shadows = getPixelShadows(image, nir, valid, predicted, getPixelValues(light.near, cells, Uint8Array),
+      cells, terrain, region, regions,
       W, H, pixelSize, demPixelSize, work.rest, !!(options && options.balancedThreshold),
-      options && options.imageShadows);
+      options && options.imageShadows, !!(options && options.despeckle));
     work.rest(PROGRESS.shadows);
     result.masked = shadows.masked;
     result.maskRatio = shadows.ratio;
@@ -102899,6 +103897,160 @@ ${css.join('\n')}
     return result;
   }
 
+  function isSunFitted$1(sun) {
+    return sun.score >= MIN_SUN_FIT || !!sun.confirmed;
+  }
+
+  // Whether each of a mosaic's suns fits its tiles as well as the image's sun
+  // must fit the image (see MIN_SUN_FIT), confirming it if needed
+  // @regions see fitRegionSuns()
+  function regionSunsAreFitted(levels, regions) {
+    return regions.suns.every(function(s, k) {
+      var sub;
+      if (s.score >= MIN_SUN_FIT) return true;
+      if (!(s.score > 0)) return false;
+      sub = getAreaLevels(levels, regions.labels, k, regions.tw, regions.th);
+      s.confirmed = !!sub && shadowsConfirmSun(sub.coarseEdges, s);
+      return s.confirmed;
+    });
+  }
+
+  // The sun of the most tiles of a mosaic (see fitRegionSuns())
+  function getLargestRegionSun(regions) {
+    var counts = regions.suns.map(function() { return 0; }), t;
+    for (t = 0; t < regions.labels.length; t++) counts[regions.labels[t]]++;
+    return regions.suns[counts.indexOf(Math.max.apply(null, counts))];
+  }
+
+  // Runs a task of a batch of independent work yielded by the sun fit's
+  // generators (e.g. deshadowSteps()), here or in a helper worker: 'score'
+  // scores a position of the grid of fitImageSun() or fitPathSun() (in each
+  // tile, with common.tiles), 'search' searches from one, 'tiles' scores a sun
+  // in each tile (see scoreTiles()), 'refit' fits a sun again on the tiles
+  // with a label (see refitSun()) and 'dispute' counts the shadow edges of an
+  // area's sun and another sun that the other doesn't cast in the area (see
+  // getAreaSupport())
+  // @common the settings of the batch's tasks
+  function runFitTask(levels, type, item, common) {
+    var deg = Math.PI / 180, sub;
+    if (type == 'score') {
+      return common && common.tiles ? scoreTiles(levels, item.azimuth * deg, item.altitude * deg) :
+        scorePosition(levels, item.azimuth * deg, item.altitude * deg, false);
+    }
+    if (type == 'search') return searchSun(levels, item, false, 5, COARSE_SEARCH_STEP);
+    if (type == 'tiles') return scoreTiles(levels, item.azimuth, item.altitude);
+    if (type == 'refit') {
+      return refitSun(levels, item.labels, item.k, common.tw, common.th, item.sun, common.path, common.from,
+        common.to);
+    }
+    if (type == 'dispute') {
+      sub = getAreaLevels(levels, item.labels, item.k, common.tw, common.th).coarseEdges;
+      return {a: getEdgeCounts(sub, item.sun, item.other), b: getEdgeCounts(sub, item.other, item.sun)};
+    }
+    throw new Error('Unknown task: ' + type);
+  }
+
+  function getEdgeCounts(level, sun, other) {
+    var c = countShadowEdges(level, sun.azimuth, sun.altitude, other);
+    return {pairs: c.pairs, darker: c.darker};
+  }
+
+  // Runs a generator of the sun fit in this thread
+  // @levels its levels (see getFitLevels()), if it doesn't yield them
+  function runFitSteps(gen, levels) {
+    var step = gen.next(), req;
+    function run(item) {
+      return runFitTask(levels, req.type, item, req.common);
+    }
+    while (!step.done) {
+      req = step.value;
+      if (req.type == 'load') levels = req.levels;
+      step = gen.next(req.type == 'load' ? null : req.items.map(run));
+    }
+    return step.value;
+  }
+
+  // Runs a generator of the sun fit with each batch of independent work
+  // divided among helpers as they finish tasks
+  // @clients see getMessagePortClient()
+  async function runFitStepsWithHelpers(gen, clients) {
+    var step = gen.next(), work = null, req, out;
+    try {
+      while (!step.done) {
+        req = step.value;
+        if (req.type == 'load') {
+          work = req.work;
+          out = getHelperLevels(req.levels);
+          await Promise.all(clients.map(function(c) { return c.request({type: 'load', levels: out}); }));
+          out = null;
+        } else {
+          out = await runFitTasksWithHelpers(clients, req, work);
+        }
+        step = gen.next(out);
+      }
+    } finally {
+      clients.forEach(function(c) { c.close(); });
+    }
+    return step.value;
+  }
+
+  function runFitTasksWithHelpers(clients, req, work) {
+    var results = new Array(req.items.length), next = 0;
+    function take(client) {
+      var i = next++;
+      if (i >= req.items.length) return null;
+      return client.request({type: req.type, item: req.items[i], common: req.common}).then(function(o) {
+        results[i] = o.result;
+        if (work) work.fit(o.work);
+        return take(client);
+      });
+    }
+    return Promise.all(clients.map(take)).then(function() { return results; });
+  }
+
+  // The levels that helpers run the sun fit's tasks on (see runFitTask()),
+  // without the full-resolution edges, which are only scored in this thread.
+  // Their arrays are shared with the helpers where memory can be shared (in
+  // Node, or a cross-origin isolated page), and copied to each one otherwise.
+  function getHelperLevels(levels) {
+    var out = {};
+    ['fit', 'coarse', 'coarseEdges'].forEach(function(k) {
+      var lev = levels[k];
+      out[k] = lev ? {Z: toSharedArray(lev.Z), B: toSharedArray(lev.B), w: lev.w, h: lev.h, cellW: lev.cellW,
+        cellH: lev.cellH, factor: lev.factor, tile: lev.tile, region: lev.region, latitude: lev.latitude,
+        pairStep: lev.pairStep, slopeStep: lev.slopeStep} : null;
+    });
+    return out;
+  }
+
+  function toSharedArray(arr) {
+    var out;
+    if (typeof SharedArrayBuffer != 'function' || globalThis.crossOriginIsolated === false) return arr;
+    out = new arr.constructor(new SharedArrayBuffer(arr.byteLength));
+    out.set(arr);
+    return out;
+  }
+
+  // Runs the sun fit's tasks (see runFitTask()) that arrive on @port from
+  // deshadowImageWithHelpers() in another worker
+  function serveDeshadowHelper(port) {
+    var levels = null, done = 0;
+    var work = {fit: function(cells) { done += cells; }};
+    serveMessagePort(port, function(req) {
+      var result;
+      if (req.type == 'load') {
+        levels = req.levels;
+        Object.keys(levels).forEach(function(k) {
+          if (levels[k]) levels[k].work = work;
+        });
+        return true;
+      }
+      done = 0;
+      result = runFitTask(levels, req.type, req.item, req.common);
+      return {result: result, work: done};
+    });
+  }
+
   // deshadowImage()'s progress is measured in work, which is roughly time: a
   // unit is a cell scored or cast in fitting the sun's position, and the other
   // stages take REST_WORK units per pixel, of which PROGRESS is the share done
@@ -102906,17 +104058,22 @@ ${css.join('\n')}
   var REST_WORK = 170;
   var PROGRESS = {setup: 0.01, lighting: 0.05, mask: 0.12, casts: 0.17, shadows: 0.35, ratios: 0.36,
     classes: 0.58, sunlit: 0.74, relit: 0.91};
-  // The work of fitting the sun, in units per cell of the fit level, along its
-  // path (path) or anywhere (free, where each cell of the coarse level is also
-  // scored once per position of fitFreeSun()'s grid, FREE_SEARCH_FITS): the
-  // image's fit, and with blocks (see fitRegionSuns()), the blocks' fits, the
-  // refits and the fits of a mosaic's areas. An image with blocks is expected
-  // to be a mosaic, which is most of the work, until the blocks show it isn't.
+  // The work of fitting the sun along its path (path) or anywhere (free, where
+  // each cell of the coarse level is also scored once per position of
+  // fitFreeSun()'s grid, FREE_SEARCH_FITS): the image's fit, in units per cell
+  // of the fit level, and if the image may be a mosaic (see fitRegionSuns()),
+  // the fits of the candidates and the refits, and the fits of the mosaic's
+  // areas, in units per cell of the fit and coarse edge levels. An image that
+  // may be a mosaic is expected to be one until no region's sun is a candidate.
   var FIT_WORK = {
-    path: {fit: 30, blocks: 37, refits: 410, areas: 45},
-    free: {fit: 110, blocks: 42, refits: 720, areas: 105}
+    path: {fit: 30, refits: 120, areas: 55},
+    free: {fit: 110, refits: 90, areas: 35}
   };
-  var FREE_SEARCH_FITS = 36 * 8;
+  var FREE_SEARCH_FITS = 36 * 8 + GRID_STARTS * 30;
+  // ... and the shadow edges scored on coarseEdges in the first search along
+  // the sun's path, and on edges in refining the sun (see getFitLevels())
+  var PATH_SEARCH_FITS = 25;
+  var EDGE_REFINE_FITS = {path: 25, free: 50};
   var PROGRESS_STEP = 0.005;
 
   // Reports the share of the work done to @progress, in steps of at least
@@ -102952,12 +104109,19 @@ ${css.join('\n')}
   }
 
   // The expected work of fitting the sun (see FIT_WORK)
-  // @coarse level of the first search of a free fit
-  function getFitWork(level, coarse, path) {
-    var w = path ? FIT_WORK.path : FIT_WORK.free, cells = getRegionCells(level.region);
-    var work = w.fit * cells + (coarse ? FREE_SEARCH_FITS * getRegionCells(coarse.region) : 0);
-    if (getBlockCount(level) > 1) work += (w.blocks + w.refits + w.areas) * cells;
+  // @levels see getFitLevels()
+  function getFitWork(levels, path) {
+    var level = levels.fit, w = path ? FIT_WORK.path : FIT_WORK.free, cells = getRegionCells(level.region);
+    var work = w.fit * cells + (levels.coarse ? FREE_SEARCH_FITS * getRegionCells(levels.coarse.region) : 0);
+    work += (path ? PATH_SEARCH_FITS : FREE_SEARCH_FITS) * getRegionCells(levels.coarseEdges.region) +
+      EDGE_REFINE_FITS[path ? 'path' : 'free'] * getRegionCells(levels.edges.region);
+    if (hasRegions(level)) work += (w.refits + w.areas) * getRegionFitCells(levels);
     return work;
+  }
+
+  // The cells of the levels that regions' suns are fitted on (see FIT_WORK)
+  function getRegionFitCells(levels) {
+    return getRegionCells(levels.fit.region) + getRegionCells(levels.coarseEdges.region);
   }
 
   function getRegionCells(r) {
@@ -102981,7 +104145,7 @@ ${css.join('\n')}
       pixelSize, margin, work) {
     var N = W * H, lit, relit;
     lit = Object.assign({}, image, {samples: correctSunlitPixels(image, lin, valid, labels, ratios, litRatios,
-      flat, direct, shadows.mask.hard, W, H, pixelSize)});
+      flat, direct, shadows.mask.hard, W, H, pixelSize, Math.max(toPixels(EDGE_LIGHTING, pixelSize), margin * 2))});
     work.rest(PROGRESS.sunlit);
     relit = relightShadows(lit, getLuma(lit.samples, lit.bands, N), valid, shadows.mask, pixelSize, shadows.sun);
     work.rest(PROGRESS.relit);
@@ -102993,16 +104157,59 @@ ${css.join('\n')}
 
   // A copy of @image's samples with the pixels outside the mask @hard corrected
   // for their lighting (see getPixelGains())
-  function correctSunlitPixels(image, lin, valid, labels, ratios, litRatios, flat, direct, hard, W, H, pixelSize) {
+  // @edge pixels from the mask's edges within which the image's lumas can raise
+  //   the DEM's lighting (see raiseEdgeLighting())
+  function correctSunlitPixels(image, lin, valid, labels, ratios, litRatios, flat, direct, hard, W, H, pixelSize,
+      edge) {
     var N = W * H, litI = new Float32Array(N), i, b, gains;
     // ground outside the mask is sunlit, even where the DEM faces away from the sun
     for (i = 0; i < N; i++) litI[i] = Math.max(direct[i], LIT_FLOOR * flat[i]);
+    raiseEdgeLighting(lin, valid, hard, litI, W, H, edge);
     gains = getPixelGains(lin, labels, ratios, litRatios, flat, litI, litI, valid, W, H, pixelSize);
     for (i = 0; i < N; i++) {
       if (hard[i]) for (b = 0; b < 3; b++) gains[b][i] = NaN;
     }
     limitBrightness(lin, gains, valid, getLitCap(lin, valid, direct, flat, hard));
     return writeCorrectedSamples(image, lin, gains, valid);
+  }
+
+  // Raises @litI of sunlit pixels within @r pixels of the mask @hard to the I
+  // that their lumas show, Y = Y_lit (I + c) / (I_lit + c), where Y_lit and
+  // I_lit are the mean luma and I of the sunlit pixels around them (beyond @r
+  // pixels from the mask) and Y_lit c / (I_lit + c) is the mean luma of the
+  // shadowed pixels around them (inside the mask, away from its edges), within
+  // SHADOW_REFERENCE times @r pixels, if those differ by MIN_SHADOW_CONTRAST
+  // (log luma). A pixel darker than that (e.g. of darker ground, or of a shadow
+  // the mask has missed) keeps the DEM's I.
+  function raiseEdgeLighting(lin, valid, hard, litI, W, H, r) {
+    var N = W * H, near = maskMean(hard, W, H, r), core = maskMean(hard, W, H, 1);
+    var wLit = new Float32Array(N), yLit = new Float32Array(N), iLit = new Float32Array(N);
+    var wShade = new Float32Array(N), yShade = new Float32Array(N);
+    var i, y, yl, ys, s;
+    for (i = 0; i < N; i++) {
+      if (!valid[i]) continue;
+      y = getLinearLuma(lin, i);
+      if (near[i] < 0.001 && litI[i] === litI[i]) {
+        wLit[i] = 1;
+        yLit[i] = y;
+        iLit[i] = litI[i];
+      } else if (core[i] > 0.999) {
+        wShade[i] = 1;
+        yShade[i] = y;
+      }
+    }
+    [wLit, yLit, iLit, wShade, yShade].forEach(function(arr) {
+      boxMean(arr, W, H, r * SHADOW_REFERENCE, arr);
+    });
+    for (i = 0; i < N; i++) {
+      if (!valid[i] || hard[i] || !(near[i] >= 0.001) || litI[i] !== litI[i] ||
+          !(wLit[i] > 0.01 && wShade[i] > 0.01)) continue;
+      yl = yLit[i] / wLit[i];
+      ys = yShade[i] / wShade[i];
+      if (!(Math.log(yl / ys) >= MIN_SHADOW_CONTRAST)) continue;
+      s = Math.max(0, Math.min(1, (yl - getLinearLuma(lin, i)) / (yl - ys)));
+      litI[i] = Math.max(litI[i], (1 - s) * iLit[i] / wLit[i]);
+    }
   }
 
   // @samples corrected copy of @image's samples, kept within the colors of
@@ -103702,15 +104909,8 @@ ${css.join('\n')}
   function relightShadows(image, L, valid, mask, pixelSize, sun) {
     var W = image.width, H = image.height, N = W * H, bands = image.bands;
     var src = image.samples, hard = mask.hard;
-    var edge = maskMean(hard, W, H, toPixels(EDGE_RADIUS, pixelSize));
-    // samples at least two pixels from the edges: in resampled imagery (e.g.
-    // map tiles), pixels next to an edge are partly shadowed
-    var edgeR = toPixels(EDGE_RADIUS, pixelSize);
-    var gap = edgeR >= 2 ? edge : maskMean(hard, W, H, 2);
-    // pixels that may be shadowed are neither sunlit nor shadow samples
-    if (mask.uncertain) gap = excludeUncertain(gap, mask.uncertain);
-    // shadows the mask has missed, and partly lit pixels, aren't sunlit
-    var litT = Math.max(mask.threshold, getLitThreshold(L, valid, gap, mask.near));
+    var samples = getMaskSamples(L, valid, mask, W, H, pixelSize);
+    var edge = samples.edge, gap = samples.gap, litT = samples.litT;
     var gains = measureGains(src, bands, L, valid, gap, litT, W, H, pixelSize);
     if (!gains) return null;
     if (gains[0] < gains[2] * MIN_RED_BLUE_GAIN) return {samples: null, gains: gains};
@@ -103721,7 +104921,7 @@ ${css.join('\n')}
     var classes = measureClassGains(src, bands, L, valid, hard, edge, pairs, W, H, gains, pixelSize);
     var bare = getBareShare(src, bands, valid, hard, gap, near, W, H, pixelSize);
     var bareGains = measureBareGains(src, bands, pairs, classes.cls, classes.lo.length, W, H, gains, pixelSize);
-    var bareLo = getShadowLightness(L, valid, edge, hard);
+    var bareLo = getBareShadowLightness(L, valid, edge, hard, classes, bare);
     var rg = measureRankGains(src, bands, L, valid, hard, edge, gap, near, litT, W, H, pixelSize);
     weighRankGains(rg, pairs, L, W);
     gap = near = null;
@@ -103743,7 +104943,7 @@ ${css.join('\n')}
       // the shadows' brightened by the gains of their ground there
       g = Math.exp(g);
       la = getLightnessAlpha(L[i], classes.lo[s], Math.max(classes.lo[s] + 1, classes.lo[s] * g));
-      if (b > 0) la = (1 - b) * la + b * getLightnessAlpha(L[i], bareLo, Math.max(bareLo + 1, bareLo * g));
+      if (b > 0) la = (1 - b) * la + b * getLightnessAlpha(L[i], bareLo[s], Math.max(bareLo[s] + 1, bareLo[s] * g));
       if (mask.dem && mask.dem[i]) alpha[i] = 1;
       else if (edge[i] > 0 && edge[i] < 1) alpha[i] = la;
       else if (hard[i]) alpha[i] = Math.min(1, la * 1.5);
@@ -103755,6 +104955,7 @@ ${css.join('\n')}
     var r = toPixels(CHROMA_RADIUS, pixelSize), mw = boxMean(wt, W, H, r, wt);
     logG.forEach(function(arr) { boxMean(arr, W, H, r, arr); });
     applyRankGains(logG, mw, rg, L, cls, bare, W);
+    if (mask.small) applySmallShadowGains(logG, mw, alpha, mask.small);
     // the relit values are written over the log gains
     relit = logG;
     for (i = 0; i < N; i++) {
@@ -103766,6 +104967,7 @@ ${css.join('\n')}
       if (a < 0.01) continue;
       cap = Math.min(imageCap, classes.cap[cls[i]]);
       if (bare[i] > 0) cap = (1 - bare[i]) * cap + bare[i] * imageCap;
+      if (mask.small && mask.small.pixels[i]) cap = imageCap;
       y = 0.299 * relit[0][i] + 0.587 * relit[1][i] + 0.114 * relit[2][i];
       if (y > cap && y > L[i]) {
         f = Math.max(L[i], cap) / y;
@@ -103777,6 +104979,189 @@ ${css.join('\n')}
       samples: writeRelitSamples(src, bands, relit, alpha, edge, valid, W, H, pixelSize),
       gains: gains
     };
+  }
+
+  // Sets the gains (@logG, sums of log gains over @mw pixels) of the shadows
+  // added by addSmallShadows() to their own, and their @alpha to 1
+  // @small mask.small (see addSmallShadows())
+  function applySmallShadowGains(logG, mw, alpha, small) {
+    for (var i = 0, j = 0, k; i < alpha.length; i++) {
+      if (!small.pixels[i]) continue;
+      if (mw[i] > 0) {
+        alpha[i] = 1;
+        for (k = 0; k < 3; k++) logG[k][i] = Math.log(small.gains[j + k]) * mw[i];
+      }
+      j += 3;
+    }
+  }
+
+  // Returns {edge, gap, litT}: edge is the share of the mask's shadow pixels
+  //   within EDGE_RADIUS of each pixel; gap is the same with shadow samples
+  //   (gap > 0.999) and sunlit samples (gap 0, and luma above litT) at least two
+  //   pixels from the edges
+  function getMaskSamples(L, valid, mask, W, H, pixelSize) {
+    var hard = mask.hard, edgeR = toPixels(EDGE_RADIUS, pixelSize);
+    var edge = maskMean(hard, W, H, edgeR);
+    // in resampled imagery (e.g. map tiles), pixels next to an edge are partly
+    // shadowed
+    var gap = edgeR >= 2 ? edge : maskMean(hard, W, H, 2);
+    // pixels that may be shadowed are neither sunlit nor shadow samples
+    if (mask.uncertain) gap = excludeUncertain(gap, mask.uncertain);
+    // shadows the mask has missed, and partly lit pixels, aren't sunlit
+    var litT = Math.max(mask.threshold, getLitThreshold(L, valid, gap, mask.near));
+    return {edge: edge, gap: gap, litT: litT};
+  }
+
+  // Adds to the mask shadows too small for it (and for the DEM to cast
+  // reliably), e.g. of ledges a few meters high in imagery of several meters per
+  // pixel: pixels in the shadows of suns NEAR_SHADOW_ALTITUDE degrees lower
+  // (@nearShadows; a DEM smoother than the terrain casts shorter shadows, and
+  // not those of features about its cell size) that are at least half shadowed,
+  // by their luma, the mean luma of the sunlit pixels within SMALL_SHADOW_REF
+  // DEM cells and the luma gain of the image's shadows. (Their color doesn't
+  // tell them: small shadows can be lit by sunlit ground around them, e.g. red
+  // rock, more than by the sky.) Connected areas of those pixels larger than
+  // SMALL_SHADOW_CELLS DEM cells are left out, as more likely darker ground.
+  // With @despeckle, small areas of those pixels outside the lower suns'
+  // shadows are added too: small shadows the DEM doesn't cast at all are then
+  // relit, along with small dark trees and water.
+  // The shadows of the mask that small, with those added, are relit to the
+  // luma of that sunlit ground, in the color of the sunlit ground nearest them
+  // (see relightShadows()): they are too small for their own color to be worth
+  // keeping, and gains for the whole image leave those that are bluer (deeper,
+  // lit more by the sky) grayish.
+  // Sets mask.small to {pixels, gains}: pixels is 1 for the pixels of the small
+  //   shadows and 2 for the pixels around them (0 for others); gains are each
+  //   of those pixels' gains (three, in order of their indexes)
+  // Returns the number of pixels added
+  function addSmallShadows(mask, image, valid, nearShadows, W, H, pixelSize, demPixelSize, despeckle) {
+    var N = W * H, src = image.samples, bands = image.bands, hard = mask.hard;
+    var L = getLuma(src, bands, N), samples = getMaskSamples(L, valid, mask, W, H, pixelSize);
+    var gains = measureGains(src, bands, L, valid, samples.gap, samples.litT, W, H, pixelSize);
+    if (!gains) return 0;
+    var g = Math.exp(0.299 * Math.log(gains[0]) + 0.587 * Math.log(gains[1]) + 0.114 * Math.log(gains[2]));
+    if (!(g > 1)) return 0;
+    var w = new Float32Array(N), ref = [0, 1, 2].map(function() { return new Float32Array(N); });
+    var cell = Math.max(demPixelSize, pixelSize) / pixelSize;
+    var ratio = new Float32Array(N), r = Math.max(1, Math.round(SMALL_SHADOW_REF * cell)), i, k, n, lr;
+    for (i = 0; i < N; i++) {
+      if (!valid[i] || hard[i] || !(L[i] > samples.litT)) continue;
+      w[i] = 1;
+      for (k = 0; k < 3; k++) ref[k][i] = src[i * bands + k];
+    }
+    boxMean(w, W, H, r, w);
+    ref.forEach(function(arr) { boxMean(arr, W, H, r, arr); });
+    for (i = 0; i < N; i++) {
+      if (!valid[i] || hard[i] || !(despeckle || nearShadows[i]) || !(w[i] > 0.25)) continue;
+      lr = (0.299 * ref[0][i] + 0.587 * ref[1][i] + 0.114 * ref[2][i]) / w[i];
+      if ((1 - L[i] / lr) / (1 - 1 / g) >= 0.5) ratio[i] = lr / Math.max(1, L[i]);
+    }
+    var maxSize = SMALL_SHADOW_CELLS * cell * cell, sizes = getAreaSizes(ratio, W, H), nearSizes = sizes;
+    var all = new Uint8Array(N), small = new Uint8Array(N), large = new Uint8Array(N);
+    if (despeckle) {
+      // those in the lower suns' shadows are added as they would be without
+      // @despeckle, also where they are part of larger areas
+      for (i = 0; i < N; i++) all[i] = ratio[i] > 0 && nearShadows[i] ? 1 : 0;
+      nearSizes = getAreaSizes(all, W, H);
+    }
+    for (i = 0, n = 0; i < N; i++) {
+      if (sizes[i] > maxSize && !(nearShadows[i] && nearSizes[i] > 0 && nearSizes[i] <= maxSize)) ratio[i] = 0;
+      if (ratio[i] > 0) n++;
+      all[i] = hard[i] || ratio[i] > 0 ? 1 : 0;
+    }
+    // small shadows already in the mask are relit like those added, and the
+    // pixels added next to larger ones like those
+    sizes = getAreaSizes(all, W, H);
+    var pixels = new Uint8Array(N), m = 0, near, edge, edgeR = toPixels(EDGE_RADIUS, pixelSize), j;
+    for (i = 0; i < N; i++) {
+      if (!all[i]) continue;
+      hard[i] = 1;
+      lr = (0.299 * ref[0][i] + 0.587 * ref[1][i] + 0.114 * ref[2][i]) / w[i];
+      if (sizes[i] > maxSize || !(w[i] > 0.25) || !(lr > L[i])) {
+        large[i] = 1;
+      } else {
+        small[i] = pixels[i] = 1;
+        m++;
+      }
+    }
+    mask.count += n;
+    if (m === 0) return n;
+    // the partly shadowed pixels around them (away from larger shadows); those
+    // as light as the ground around them are kept
+    near = maskMean(small, W, H, edgeR);
+    edge = maskMean(large, W, H, edgeR);
+    for (i = 0; i < N; i++) {
+      if (all[i] || !(near[i] > 0) || edge[i] > 0 || !valid[i] || !(w[i] > 0.25)) continue;
+      pixels[i] = 2;
+      m++;
+    }
+    // their color is that of the nearest sunlit ground, which is more likely
+    // the same ground than all the ground within SMALL_SHADOW_REF
+    var lit = new Uint8Array(N), color = [0, 0, 0], lc;
+    for (i = 0; i < N; i++) lit[i] = valid[i] && !all[i] && pixels[i] != 2 && L[i] > samples.litT ? 1 : 0;
+    gains = new Float32Array(m * 3).fill(1);
+    for (i = 0, j = 0; i < N; i++) {
+      if (!pixels[i]) continue;
+      lr = (0.299 * ref[0][i] + 0.587 * ref[1][i] + 0.114 * ref[2][i]) / w[i];
+      if (pixels[i] == 1 || lr > L[i]) {
+        if (getNearbyColor(src, bands, lit, W, H, i, r, color) > 0) {
+          lc = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2];
+        } else {
+          for (k = 0; k < 3; k++) color[k] = ref[k][i] / w[i];
+          lc = lr;
+        }
+        for (k = 0; k < 3; k++) gains[j + k] = Math.max(1, color[k] * lr / Math.max(1, lc)) / Math.max(1, src[i * bands + k]);
+      }
+      j += 3;
+    }
+    mask.small = {pixels: pixels, gains: gains};
+    return n;
+  }
+
+  // The mean color of the @lit pixels in the smallest square around pixel @i
+  // (radius 2, 4, 8... up to @maxR) with at least SMALL_SHADOW_NEIGHBORS of them
+  // Returns their number (0 if there are too few within @maxR), and sets @out
+  function getNearbyColor(src, bands, lit, W, H, i, maxR, out) {
+    var x0 = i % W, y0 = Math.floor(i / W), r, x, y, j, n, k;
+    for (r = 2; ; r = Math.min(maxR, r * 2)) {
+      out[0] = out[1] = out[2] = 0;
+      n = 0;
+      for (y = Math.max(0, y0 - r); y <= Math.min(H - 1, y0 + r); y++) {
+        for (x = Math.max(0, x0 - r); x <= Math.min(W - 1, x0 + r); x++) {
+          j = y * W + x;
+          if (!lit[j]) continue;
+          for (k = 0; k < 3; k++) out[k] += src[j * bands + k];
+          n++;
+        }
+      }
+      if (n >= SMALL_SHADOW_NEIGHBORS || r >= maxR) break;
+    }
+    if (n < SMALL_SHADOW_NEIGHBORS) return 0;
+    for (k = 0; k < 3; k++) out[k] /= n;
+    return n;
+  }
+
+  // The size (pixels) of the connected area (4-connected) of @mask that each
+  // pixel is in, or 0
+  function getAreaSizes(mask, W, H) {
+    var N = W * H, seen = new Uint8Array(N), queue = new Int32Array(N), sizes = new Int32Array(N);
+    var i, j, x, head, tail, k;
+    for (i = 0; i < N; i++) {
+      if (!mask[i] || seen[i]) continue;
+      head = tail = 0;
+      seen[i] = 1;
+      queue[tail++] = i;
+      while (head < tail) {
+        j = queue[head++];
+        x = j % W;
+        if (x > 0 && mask[j - 1] && !seen[j - 1]) { seen[j - 1] = 1; queue[tail++] = j - 1; }
+        if (x < W - 1 && mask[j + 1] && !seen[j + 1]) { seen[j + 1] = 1; queue[tail++] = j + 1; }
+        if (j >= W && mask[j - W] && !seen[j - W]) { seen[j - W] = 1; queue[tail++] = j - W; }
+        if (j < N - W && mask[j + W] && !seen[j + W]) { seen[j + W] = 1; queue[tail++] = j + W; }
+      }
+      for (k = 0; k < tail; k++) sizes[queue[k]] = tail;
+    }
+    return sizes;
   }
 
   // A copy of @gap (share of shadow pixels nearby: 0 for sunlit samples, 1 for
@@ -104013,14 +105398,23 @@ ${css.join('\n')}
     return ratios.map(function(arr) { return Math.max(1, getMedian(arr)); });
   }
 
-  // Shadow luma: the median of the shadows' cores
-  function getShadowLightness(L, valid, edge, hard) {
-    var N = L.length, core = [], i;
-    for (i = 0; i < N; i += 13) if (edge[i] > 0.999 && valid[i]) core.push(L[i]);
-    if (core.length === 0) {
-      for (i = 0; i < N; i++) if (hard[i] && edge[i] > 0.999 && valid[i]) core.push(L[i]);
+  // Shadow luma of each class of shadowed ground (see measureClassGains()) where
+  // it isn't vegetation: the median of the class's shadows' cores where @bare
+  // is at least 0.5, or with fewer than MIN_COLOR_SAMPLES of those, the class's
+  // lo. (Classes differ in lightness: shadowed snow is several times as light
+  // as shadowed rock, and would look sunlit next to the lightness of all the
+  // shadows.)
+  function getBareShadowLightness(L, valid, edge, hard, classes, bare) {
+    var K = classes.lo.length, cls = classes.cls, out = new Float32Array(K), i, s, groups;
+    var key = new Int32Array(L.length).fill(-1);
+    for (i = 0; i < L.length; i++) {
+      if (valid[i] && hard[i] && edge[i] > 0.999 && bare[i] >= 0.5) key[i] = cls[i];
     }
-    return getMedian(core);
+    groups = groupValues(key, K, function(i) { return L[i]; });
+    for (s = 0; s < K; s++) {
+      out[s] = groups.start[s + 1] - groups.start[s] >= MIN_COLOR_SAMPLES ? groupMedian(groups, s) : classes.lo[s];
+    }
+    return out;
   }
 
   // How much of a pixel is shadowed (0-1), from its luma: shadows are ground
@@ -104690,11 +106084,12 @@ ${css.join('\n')}
   // @balanced see getAgreementThreshold()
   // @imageShadows optional 'on' to use the mask whatever its size (see
   //   MAX_MASK_RATIO), or 'off' to use the DEM's shadows
+  // @despeckle see addSmallShadows()
   // Returns {shadow, masked, count, ratio, mask, sun}: masked is true if the
   //   shadows are from the mask (see getShadowMask()), cast by @sun; ratio is
   //   the mask's size over the DEM's shadows'
-  function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, regions,
-      W, H, pixelSize, demPixelSize, progress, balanced, imageShadows) {
+  function getPixelShadows(image, nir, valid, predicted, nearShadows, cells, terrain, region, regions,
+      W, H, pixelSize, demPixelSize, progress, balanced, imageShadows, despeckle) {
     var N = W * H, L = getLuma(image.samples, image.bands, N);
     var band = Math.max(MIN_BAND, demPixelSize * BAND_DEM_PIXELS);
     var shadow = new Float32Array(N), stretch = 1, mask, n, i, maskSun, dark, lowered;
@@ -104719,6 +106114,7 @@ ${css.join('\n')}
       addDemShadows(mask, predicted, valid, W, H);
       addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, regions.suns, W, H,
         band / pixelSize, progress);
+      addSmallShadows(mask, image, valid, nearShadows, W, H, pixelSize, demPixelSize, despeckle);
       for (i = 0; i < N; i++) shadow[i] = mask.hard[i];
       return {shadow: shadow, masked: true, count: mask.count, ratio: mask.count / n, mask: mask,
         sun: maskSun || regions.suns[0]};
@@ -105210,15 +106606,19 @@ ${css.join('\n')}
     var majBoth = darkBoth == dark ? maj : r > 0 ? boxMean(darkBoth, W, H, r) : darkBoth;
     var hard = new Uint8Array(N);
     var regionR = toPixels(REGION_RADIUS, pixelSize);
+    // in coarse imagery a window of whole pixels is wider than REGION_RADIUS
+    // (3 pixels of 8m, for 1.2 pixels), and would leave out shadows a few
+    // pixels wide: it needs the share of itself that the window would have
+    var regionShare = REGION_SHARE * Math.min(1, (2 * REGION_RADIUS / pixelSize + 1) / (2 * regionR + 1));
     var share, region, dist, grow, count = 0;
     region = new Uint8Array(N);
     for (i = 0; i < N; i++) majBoth[i] = majBoth[i] > 0.5 ? 1 : 0;
     share = boxMean(majBoth, W, H, regionR);
-    for (i = 0; i < N; i++) region[i] = share[i] > REGION_SHARE ? 1 : 0;
+    for (i = 0; i < N; i++) region[i] = share[i] > regionShare ? 1 : 0;
     share = majBoth = darkBoth = null;
     dist = chamferDistance(region, W, H);
     // the window test pulls a straight edge in by about this many pixels
-    grow = Math.ceil(regionR * (2 * REGION_SHARE - 1)) + 1;
+    grow = Math.max(0, Math.ceil(regionR * (2 * regionShare - 1))) + 1;
     for (i = 0; i < N; i++) hard[i] = maj[i] > 0.5 && dist[i] <= grow * 3 ? 1 : 0;
     dist = maj = null;
     removeUnmatchedAreas(hard, predicted, W, H, SMALL_AREA / (pixelSize * pixelSize));
@@ -105641,10 +107041,12 @@ ${css.join('\n')}
     MIN_SUN_FIT: MIN_SUN_FIT,
     addDemShadows: addDemShadows,
     addSignatureShadows: addSignatureShadows,
+    addSmallShadows: addSmallShadows,
     boxMean: boxMean,
     castTerrainShadow: castTerrainShadow,
     chamferDistance: chamferDistance,
     deshadowImage: deshadowImage,
+    deshadowImageWithHelpers: deshadowImageWithHelpers,
     excludeUncertain: excludeUncertain,
     fillEmptyCells: fillEmptyCells,
     fitDiffuseRatios: fitDiffuseRatios,
@@ -105654,13 +107056,18 @@ ${css.join('\n')}
     fitShadowRatios: fitShadowRatios,
     fitSunPosition: fitSunPosition,
     getAgreementThreshold: getAgreementThreshold,
+    getAreaSizes: getAreaSizes,
+    getAreaSupport: getAreaSupport,
+    getBareShadowLightness: getBareShadowLightness,
     getDataSpacing: getDataSpacing,
-    getEdgeAltitude: getEdgeAltitude,
+    getEdgeZ: getEdgeZ,
     getFitLevel: getFitLevel,
     getLuma: getLuma,
     getMixtureScorer: getMixtureScorer,
     getNormals: getNormals,
+    getPairedZ: getPairedZ,
     getPlausibleShadows: getPlausibleShadows,
+    getRegionCandidates: getRegionCandidates,
     getShadowMask: getShadowMask,
     getSolarDeclination: getSolarDeclination,
     getSunPosition: getSunPosition,
@@ -105668,20 +107075,33 @@ ${css.join('\n')}
     labelTiles: labelTiles,
     lowerSunAltitude: lowerSunAltitude,
     mergeSmallAreas: mergeSmallAreas,
+    raiseEdgeLighting: raiseEdgeLighting,
     removeUnmatchedAreas: removeUnmatchedAreas,
     resampleGridBand: resampleGridBand,
+    serveDeshadowHelper: serveDeshadowHelper,
+    shadowsConfirmSun: shadowsConfirmSun,
     slopeFitIsConfounded: slopeFitIsConfounded
   });
 
   var DESHADOW_WORKER_SCRIPT = 'deshadow-worker.js';
   // Smaller images take a fraction of a second, and starting a worker has a cost
   var MIN_WORKER_PIXELS = 250000;
+  // Fitting the sun's position is divided among helper workers in images of at
+  // least this many pixels, where it takes a second or more; each helper holds a
+  // copy of the coarser levels of the fit (where memory can't be shared, as in
+  // most browser pages), up to about 40 MB
+  var MIN_HELPER_PIXELS = 1e6;
+  var MAX_AUTO_HELPERS = 8;
   // how often the progress line is updated while waiting for the worker (ms)
   var PROGRESS_TICK = 100;
 
   // Terrain cells are about this size, or the size of an image pixel if larger
   var TERRAIN_CELL = 1.2;
+  // The terrain grid has up to this many cells, or (in larger images, which need
+  // as much memory per pixel) this many per image pixel: coarser terrain misses
+  // the shadows of smaller features
   var MAX_TERRAIN_CELLS = 16e6;
+  var MAX_TERRAIN_CELLS_PER_PIXEL = 2;
   // Terrain beyond the image is read out to the length of the shadow of the
   // DEM's relief at this sun altitude, up to MAX_MARGIN meters
   var MIN_SHADOW_ALTITUDE = 15;
@@ -105721,6 +107141,9 @@ ${css.join('\n')}
     if (opts.image_shadows && opts.image_shadows != 'on' && opts.image_shadows != 'off') {
       stop$1('image-shadows= should be on or off');
     }
+    if (opts.workers != null && !(opts.workers >= 0 && opts.workers <= 64)) {
+      stop$1('workers= should be from 0 to 64');
+    }
     grid = getRasterGrid(lyr.raster);
     demGrid = getRasterGrid(dem.layer.raster);
     if (rasterGridIsRotated(grid) || rasterGridIsRotated(demGrid)) {
@@ -105758,14 +107181,18 @@ ${css.join('\n')}
         image: {samples: grid.samples, bands: grid.bands, width: grid.width, height: grid.height,
           nodata: grid.nodata},
         terrain: terrain, nir: nir, pixelSize: pixelSize, demPixelSize: demPixelSize, path: path,
-        options: {balancedThreshold: !!opts.balanced_threshold || coarseDem, imageShadows: opts.image_shadows}
-      }, printer.update, signal);
+        options: {balancedThreshold: !!opts.balanced_threshold || coarseDem, imageShadows: opts.image_shadows,
+          despeckle: !!opts.despeckle}
+      }, printer.update, signal, opts.workers);
     } finally {
       resume();
       printer.end(!!(result && result.samples));
     }
     stopIfInterrupted(signal);
-    if (result.sun && result.sun.score >= MIN_SUN_FIT) {
+    if (result.workers > 1) {
+      verbose('Workers:', result.workers);
+    }
+    if (result.sun && isSunFitted(result.sun)) {
       verbose(formatSun(result.sun, path));
     }
     if (result.suns && result.suns.length > 1) {
@@ -105819,16 +107246,21 @@ ${css.join('\n')}
     return [out];
   };
 
-  // Runs deshadowImage() in a worker, so that the GUI stays responsive, or in
-  // this thread if the image is small or a worker can't be started (where
+  // Runs deshadowImage() in a worker, so that the GUI stays responsive, with
+  // helper workers fitting the sun's position (see deshadowImageWithHelpers()),
+  // or in this thread if the image is small or workers can't be started (where
   // @signal can't stop it)
   // @task {image, terrain, nir, pixelSize, demPixelSize, path, options}: its
   //   arrays other than the image's samples can't be used afterwards
-  // Returns deshadowImage()'s result, or null if @signal aborted
-  async function runDeshadowImage(task, onProgress, signal) {
-    var image = task.image;
-    var pool = image.width * image.height >= MIN_WORKER_PIXELS ?
-      await startWorkerPool(DESHADOW_WORKER_SCRIPT, 1) : null;
+  // @workers the number of helpers, or null for automatic
+  // Returns deshadowImage()'s result, with the number of workers used, or null
+  //   if @signal aborted
+  async function runDeshadowImage(task, onProgress, signal, workers) {
+    var image = task.image, pixels = image.width * image.height;
+    var helpers = getDeshadowHelperCount(workers, pixels);
+    var pool = pixels >= MIN_WORKER_PIXELS || helpers > 0 ?
+      await startWorkerPool(DESHADOW_WORKER_SCRIPT, 1 + helpers) : null;
+    var ports = [], i, channel, result;
     if (signal && signal.aborted) {
       if (pool) pool.close();
       return null;
@@ -105838,16 +107270,32 @@ ${css.join('\n')}
         onProgress, task.options);
     }
     try {
+      for (i = 1; i <= helpers; i++) {
+        channel = new MessageChannel();
+        await pool.run(i, {helper: true, port: channel.port2});
+        ports.push(channel.port1);
+      }
       // the worker gets a copy of the samples, which stay with the source layer
-      return await Promise.race([
+      result = await Promise.race([
         pool.run(0, Object.assign({}, task, {
-          image: Object.assign({}, image, {samples: image.samples.slice()})
+          image: Object.assign({}, image, {samples: image.samples.slice()}),
+          helpers: ports
         }), onProgress),
         whenInterrupted(signal).then(function() { return null; })
       ]);
+      if (result) result.workers = 1 + helpers;
+      return result;
     } finally {
       pool.close();
     }
+  }
+
+  // @requested a number of helpers, or null for automatic
+  function getDeshadowHelperCount(requested, pixels) {
+    if (typeof MessageChannel != 'function') return 0;
+    if (requested != null) return requested;
+    if (pixels < MIN_HELPER_PIXELS) return 0;
+    return Math.min(MAX_AUTO_HELPERS, getProcessorCount());
   }
 
   // Prints the progress line (see getProgressMeter()), timed from now; dots are
@@ -105877,8 +107325,12 @@ ${css.join('\n')}
     };
   }
 
+  function isSunFitted(sun) {
+    return sun.score >= MIN_SUN_FIT || !!sun.confirmed;
+  }
+
   function formatSun(sun, path) {
-    var match = 'match ' + sun.score.toFixed(2);
+    var match = 'match ' + sun.score.toFixed(2) + (sun.confirmed ? ', confirmed by its cast shadows' : '');
     if (!path) {
       return 'Sun position (fitted): azimuth ' + formatDegrees(sun.azimuth) +
         ', altitude ' + formatDegrees(sun.altitude) + ' (' + match + ')';
@@ -105968,9 +107420,9 @@ ${css.join('\n')}
     if (result.sun.score <= -1) {
       return 'The terrain is too flat to tell where the sun was; the image is unchanged';
     }
-    if (result.sun.score < MIN_SUN_FIT) {
-      return 'The image\'s light and shade don\'t match the terrain well enough to tell where the sun was' +
-        ' (as in a mosaic of images taken at many times); the image is unchanged';
+    if (!isSunFitted(result.sun)) {
+      return 'The image\'s light and shade don\'t match the terrain well enough to tell where the sun was;' +
+        ' the image is unchanged';
     }
     if (result.failure == 'altitude') {
       return 'The image\'s dark areas look like dark ground in valleys (e.g. forest), not shadows;' +
@@ -105987,9 +107439,10 @@ ${css.join('\n')}
   // The measurements behind a failure, for verbose
   function getFailureDetails(result) {
     if (!result.sun || result.sun.score <= -1) return null;
-    if (result.sun.score < MIN_SUN_FIT) {
+    if (!isSunFitted(result.sun)) {
       return 'Best match of the image\'s brightness with the lighting of the terrain: ' +
-        result.sun.score.toFixed(2) + ' (' + MIN_SUN_FIT + ' is needed)';
+        result.sun.score.toFixed(2) + ' (' + MIN_SUN_FIT + ' is needed, unless the cast shadows of the' +
+        ' best-matching sun are clearly in the image)';
     }
     if (result.failure == 'altitude') {
       return 'The best match is with the sun at the lowest altitude tried (' + MIN_ALTITUDE + '°)';
@@ -106020,6 +107473,7 @@ ${css.join('\n')}
     var bbox = grid.bbox, db = demGrid.bbox;
     var unitX = (bbox[2] - bbox[0]) / grid.width, unitY = (bbox[3] - bbox[1]) / grid.height;
     var unitMeters = getElevationUnitMeters(demGrid);
+    var maxCells = Math.max(MAX_TERRAIN_CELLS, MAX_TERRAIN_CELLS_PER_PIXEL * grid.width * grid.height);
     var margin, cw, ch, x0, y0, x1, y1, Z, i;
     if (db[0] >= bbox[2] || db[2] <= bbox[0] || db[1] >= bbox[3] || db[3] <= bbox[1]) return null;
     margin = Math.min(MAX_MARGIN, getRelief(demGrid) * unitMeters / Math.tan(MIN_SHADOW_ALTITUDE * Math.PI / 180));
@@ -106031,7 +107485,7 @@ ${css.join('\n')}
       x1 = Math.max(0, Math.min(Math.ceil(margin / (pixelW * factor)), Math.ceil((db[2] - bbox[2]) / cw)));
       y0 = Math.max(0, Math.min(Math.ceil(margin / (pixelH * factor)), Math.ceil((db[3] - bbox[3]) / ch)));
       y1 = Math.max(0, Math.min(Math.ceil(margin / (pixelH * factor)), Math.ceil((bbox[1] - db[1]) / ch)));
-      if ((x0 + x1 + Math.ceil(grid.width / factor)) * (y0 + y1 + Math.ceil(grid.height / factor)) <= MAX_TERRAIN_CELLS) break;
+      if ((x0 + x1 + Math.ceil(grid.width / factor)) * (y0 + y1 + Math.ceil(grid.height / factor)) <= maxCells) break;
       factor++;
     }
     var width = x0 + x1 + Math.ceil(grid.width / factor);
@@ -113500,7 +114954,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.8.4";
+  var version = "0.8.6";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

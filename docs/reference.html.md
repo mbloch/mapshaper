@@ -669,15 +669,19 @@ Some options are not available for rasters: `save-as=`, `values=`, `index-field=
 
 Breaks are calculated from a sample of up to one million pixels. Categorical classification requires an integer band; by default the categories are all the band's values. `null-value=` sets the color of nodata pixels, which are transparent by default. `other=` colors values that are not listed in `categories=`. With `continuous quantile`, the gradient is calculated from up to 32 quantiles (or from every value, if the band has few of them).
 
-`hypsometric=`  [raster] Color an elevation raster with hypsometric tints, at fixed elevations. There are six climate zone presets (`desert`, `steppe`, `tropical`, `temperate`, `boreal` and `polar`) and three miscellaneous presets (`atlas`, `lowland` and `highland`). `none` colors only the sea (see `sea=`, which then needs bathymetric colors). `blended` mixes the six climate presets by climate zone/ The zones are derived from the Köppen-Geiger classification for 1991-2020 (Beck et al. 2023, Scientific Data 10, 724, CC BY 4.0). It is meant for maps of the world and of large regions.
+`land-colors=`  [raster] Color an elevation raster with hypsometric tints, at fixed elevations: the name of a preset, or a list of colors (which needs `land-breaks=`). There are six climate zone presets (`desert`, `steppe`, `tropical`, `temperate`, `boreal` and `polar`) and three miscellaneous presets (`atlas`, `lowland` and `highland`). `blended` mixes the six climate presets by climate zone. The zones are derived from the Köppen-Geiger classification for 1991-2020 (Beck et al. 2023, Scientific Data 10, 724, CC BY 4.0). It is meant for maps of the world and of large regions. To recolor some of the presets of a blend, give each one's name before its colors, e.g. `land-colors=desert:#c9b98a,...,polar:#f4efe6,...`; presets that aren't named keep their own colors. Without `land-colors=`, `sea-colors=` colors only the sea.
 
-With `hypsometric=`, `colors=` recolors the preset, with a color for each of its elevations, and `breaks=` moves its elevations, in the band's units, giving every one of them, lowest first. With `blended`, `breaks=` moves the elevations of all six presets, which they share, and a preset is recolored by giving its name before its colors, e.g. `colors=desert:#c9b98a,...,polar:#f4efe6,...`; presets that aren't named keep their own colors.
+`land-breaks=`  [raster] The elevation of each land color, in the band's units, lowest first. With a preset, it moves the preset's elevations, giving every one of them; the presets of a blend share their elevations.
 
-Several lists can be given in one `colors=` or `breaks=` option: a name and a colon start a named list, which runs to the next name, e.g. `colors=#b2c9ba,...,sea:#003366,...`. The sea's list is named `sea:` (see `sea=`). Named lists work only with rasters.
+`land-classed`  [raster] Color the land in classes rather than continuously (not with `blended`): each class runs from one elevation up to the next, and the first one also takes everything below its elevation.
 
-`classed`  [raster] With `hypsometric=` and a single preset, color in classes rather than continuously: each class runs from one elevation up to the next, and the first one also takes everything below its elevation.
+`sea-colors=`  [raster] What to do with the sea area of an elevation raster. `transparent` leaves sea areas uncolored (the default with `land-colors=`); `land` colors them like other values; `pale`, `blue` or `gray` colors them by depth, with bathymetric tints at fixed depths; a list of colors (which needs `sea-breaks=`) gives custom tints. The sea is the area at or below 0 that connects to the edge of the raster or to pixels without a value. Basins below sea level enclosed by land, such as the Dead Sea, are not treated as sea. Inland seas that a world map's coarse pixels can enclose (the Mediterranean, Black, Caspian, Baltic and Red Seas, the Persian Gulf, Hudson Bay and a few others) come from a built-in list, even in a DEM without their depths; this needs the raster's coordinate system. Without one, an enclosed basin more than 500 m deep is treated as sea. `sea-colors=` also works with other colors for the land, given by `colors=`.
 
-`sea=`  [raster] What to do with the sea area of an elevation raster. `transparent` leaves sea areas uncolored (the default with `hypsometric=`); `land` colors them like other values; `pale`, `blue` or `gray` colors them by depth, with bathymetric tints at fixed depths. The sea is the area at or below 0 that connects to the edge of the raster or to pixels without a value. Basins below sea level enclosed by land, such as the Dead Sea, are not treated as sea. Inland seas that a world map's coarse pixels can enclose (the Mediterranean, Black, Caspian, Baltic and Red Seas, the Persian Gulf, Hudson Bay and a few others) come from a built-in list, even in a DEM without their depths; this needs the raster's coordinate system. Without one, an enclosed basin more than 500 m deep is treated as sea. `colors=sea:...` and `breaks=sea:...` recolor a bathymetric preset and move its depths (deepest first, in the band's units).
+`sea-breaks=`  [raster] The depth of each sea color, in the band's units, deepest first (e.g. `sea-breaks=-6000,-2000,-200,0`). With a preset, it moves the preset's depths, giving every one of them.
+
+`sea-classed`  [raster] Color the sea in classes rather than continuously: each class runs from one depth down to the next, and the deepest one also takes everything below its depth.
+
+The options `hypsometric=`, `sea=` and `classed`, and lists named `sea:` in `colors=` and `breaks=`, from earlier versions, still work.
 
 **Options for generating SVG keys**
 
@@ -706,10 +710,14 @@ mapshaper dem.tif -classify colors=#2b5c3f,#c9b98a,#f4efe6 continuous \
   equal-interval outer-breaks=0,3000 -o out.png
 
 # Color a world DEM with tints that blend between climate regions
-mapshaper world-dem.tif -classify hypsometric=blended -proj +proj=eqearth -o world.png
+mapshaper world-dem.tif -classify land-colors=blended -proj +proj=eqearth -o world.png
 
 # The same, with the ocean colored by depth
-mapshaper world-dem.tif -classify hypsometric=blended sea=pale -proj +proj=eqearth -o world.png
+mapshaper world-dem.tif -classify land-colors=blended sea-colors=pale -proj +proj=eqearth -o world.png
+
+# Custom land colors in classes, and the shallow sea in two classes
+mapshaper dem.tif -classify land-colors=#b2c9ba,#e8dcb5,#c8a47e land-breaks=0,200,800 land-classed \
+  sea-colors=#2f79a6,#9fd0ea sea-breaks=-50,0 sea-classed -o out.png
 
 # Apply a sequential color ramp to a polygon dataset using quantiles.
 mapshaper covid_cases.geojson \
@@ -2038,6 +2046,10 @@ Apply the shadows and highlights of a hillshade layer (made by `-hillshade`) to 
 
 `chroma=`  Share of the target's color kept under the shading: 0 is plain stacking, 1 keeps the color, and values above 1 make it more vivid; one value, or two values for shadows and highlights (default is 0,1).
 
+`shadow-color=`  Color of the shadows, in place of the hillshade's own (black, or the hillshade's `shadow-color=`). Its hue shows where `chroma=` is below 1; its lightness always affects how dark the shadows are.
+
+`highlight-color=`  Color of the highlights, in place of the hillshade's own (white, or the hillshade's `highlight-color=`). Its hue shows where `chroma=` is below 1, so with the default `chroma=0,1`, lower the highlights' chroma to see it.
+
 `base-color=`  Color of flat ground in an opaque hillshade not made by `-hillshade` (default is its most common color).
 
 `overlay`  Keep the targets and recolor the hillshade, so that drawn over the targets it looks like the blend.
@@ -2138,6 +2150,8 @@ mapshaper dem.tif -contours interval=100 no-smoothing \
 (Experimental) Remove terrain shadows and lighten dark slopes in an RGB aerial image, using an elevation layer to find them. Useful before applying a hillshade with `-blend`.
 
 `<dem>` or `dem=`  Elevation layer covering the image (e.g. from `-fetch`).
+
+`despeckle`  Also brighten small dark spots that the elevation data can't explain, such as the shadows of ledges too low to show up in the DEM. Use it for terrain without trees or water, which this option would brighten too.
 
 `verbose`  Print technical details about the correction.
 

@@ -1135,27 +1135,34 @@
 
   // Connects a worker script to its parent, in a browser worker or a Node
   // worker thread. @handler receives each task and a function for reporting
-  // its progress (any value that can be posted), and returns its result.
+  // its progress (any value that can be posted), and returns its result (or a
+  // promise of it).
   function serveWorkerTasks(handler) {
     var port = getParentPort();
     function report(value) {
       port.post({progress: value});
+    }
+    function fail(e) {
+      port.post({error: e && e.message || String(e)});
     }
     port.listen(function(task) {
       var result;
       try {
         result = handler(task, report);
       } catch (e) {
-        port.post({error: e && e.message || String(e)});
+        fail(e);
         return;
       }
-      port.post({result: result}, getTransferList(result));
+      Promise.resolve(result).then(function(result) {
+        port.post({result: result}, getTransferList(result));
+      }, fail);
     });
     port.post({ready: true});
   }
 
   // Buffers of the typed arrays in @obj and its plain objects and arrays, for
-  // transferring rather than copying them
+  // transferring rather than copying them, and the MessagePorts in them, which
+  // can only be transferred
   function getTransferList(obj) {
     var buffers = [];
     collectBuffers(obj, buffers);
@@ -1164,6 +1171,10 @@
 
   function collectBuffers(obj, buffers) {
     if (!obj || typeof obj != 'object') return;
+    if (typeof MessagePort != 'undefined' && obj instanceof MessagePort) {
+      buffers.push(obj);
+      return;
+    }
     if (ArrayBuffer.isView(obj)) {
       if (obj.buffer instanceof ArrayBuffer && buffers.indexOf(obj.buffer) == -1) {
         buffers.push(obj.buffer);

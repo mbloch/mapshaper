@@ -1781,11 +1781,6 @@ img.eye-btn {
 	color: #666;
 }
 
-/* hints at a tooltip that counts the features with null geometry */
-.layer-item .layer-contents.has-nulls span {
-	border-bottom: 1px dotted #999;
-}
-
 .layer-item .layer-name {
 	display: inline-block;
 	max-width: 100%;
@@ -5905,6 +5900,18 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	min-width: 0;
 }
 
+/* A shading color, laid out as a slider row: caption in the sliders' column,
+   then the field, as wide as a slider (short of the readout's 28px) */
+.label-style-panel .raster-blend-color-row {
+	margin-top: 2px;
+}
+
+.label-style-panel .raster-blend-color-row .label-color-field {
+	flex: 1;
+	min-width: 0;
+	margin-right: 28px;
+}
+
 .raster-blend-note {
 	margin-top: 6px;
 	font-size: 11px;
@@ -6212,11 +6219,6 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	cursor: default;
 }
 
-.class-breaks-handle:focus-visible {
-	outline: 2px solid var(--theme-col);
-	outline-offset: 1px;
-}
-
 .class-breaks-axis {
 	display: flex;
 	justify-content: space-between;
@@ -6235,6 +6237,22 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 
 .class-breaks-log-row input {
 	margin: 0;
+}
+
+.class-breaks-log-row label:not(.hidden) {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.class-breaks-continuous-btn {
+	margin-left: auto;
+}
+
+.label-style-row.class-breaks-lightness-row {
+	margin-top: 4px;
+	font-size: 11px;
+	color: #555;
 }
 
 /* The classes, stacked with a 3px gap between their tiles. Each break's mark
@@ -6356,40 +6374,21 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	border-color: rgba(0,0,0,0.7);
 }
 
-.class-breaks-chip.selected,
-.class-breaks-chip:focus-visible {
+.class-breaks-chip.selected {
 	outline: none;
-	box-shadow: 0 0 0 1px #fff, 0 0 0 3px var(--theme-col);
+	border-color: #000;
 }
 
 /* a recolored chip: a dot, like a pinned tile's */
-.class-breaks-chip.edited {
-	background-image: radial-gradient(circle at center, rgba(0,0,0,0.55) 1.5px, transparent 2px);
-}
-
-/* under the table: the chip being recolored, and which presets to recolor */
+/* under the table: buttons for the stop of the chip being recolored */
 .class-breaks-chip-bar {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 4px 8px;
+	gap: 4px;
 	margin-top: 6px;
 	font-size: 11px;
 	color: #555;
-}
-
-.class-breaks-chip-bar label {
-	display: flex;
-	align-items: center;
-	gap: 3px;
-}
-
-.class-breaks-chip-bar input {
-	margin: 0;
-}
-
-.class-breaks-chip-reset {
-	margin-left: auto;
 }
 
 /* the color picker opens to the left of the dialog (see selectChip()) */
