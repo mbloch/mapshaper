@@ -21,7 +21,7 @@ import {
 import { runHillshadeStages } from '../rasters/mapshaper-hillshade-runner';
 import { formatVerticalUnits, getVerticalUnitMeters } from '../rasters/mapshaper-vertical-units';
 import { formatColor, parseColor } from '../color/color-utils';
-import { getHillshadeColorRamp, getHillshadeRampColors } from '../rasters/mapshaper-raster-color';
+import { getHillshadeBasePosition, getHillshadeColorRamp, getHillshadeRampColors } from '../rasters/mapshaper-raster-color';
 import { runningInBrowser } from '../mapshaper-env';
 import { message, stop, verbose, warnOnce } from '../utils/mapshaper-logging';
 // Smoothing levels 1-4 (smoothing=0 is off). Each uses dynamic smoothing:
@@ -212,7 +212,8 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     maxOpacity: opts.max_opacity >= 0 ? opts.max_opacity : getDefaultMaxOpacity(style),
     highlightRatio: opts.highlights >= 0 ? opts.highlights : getDefaultHighlightRatio(),
     gamma: opts.gamma > 0 ? opts.gamma : DEFAULT_GAMMA,
-    maxShade: getHillshadeMaxShade(lights)
+    maxShade: getHillshadeMaxShade(lights),
+    basePosition: stops ? getHillshadeBasePosition(stops) : null
   };
   hasMin = opts.min_elevation != null;
   valid = getRasterValidityMask(grid);

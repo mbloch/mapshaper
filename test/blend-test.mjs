@@ -155,6 +155,21 @@ describe('mapshaper-blend.mjs', function () {
       assert(Math.abs(a[3] + (1 - 112 / 223)) < 0.01);
       assert.equal(a[4], 0);
     });
+
+    it('opaque -hillshade output: tones on its ramp, at the transparent style\'s default opacities', function () {
+      var stops = {shadow: {r: 104, g: 104, b: 104}, base: {r: 215, g: 215, b: 215}, highlight: {r: 255, g: 255, b: 255}};
+      var px = new Uint8Array([215, 215, 215, 255, 104, 104, 104, 255, 255, 255, 255, 255, 9, 9, 9, 0]);
+      var a = Array.from(internal.decodeOpaqueHillshadeShading(px, stops));
+      var halfway = internal.writeHillshadeRgba(Float32Array.from([-0.5, 0.5]), null, 'opaque',
+        {ramp: internal.getHillshadeColorRamp(stops)});
+      var b = Array.from(internal.decodeOpaqueHillshadeShading(halfway, stops));
+      assert.equal(a[0], 0);
+      assert(Math.abs(a[1] + 0.55) < 1e-6);
+      assert(Math.abs(a[2] - 0.55) < 1e-6);
+      assert.equal(a[3], 0);
+      assert(Math.abs(b[0] + 0.275) < 0.01);
+      assert(Math.abs(b[1] - 0.275) < 0.01);
+    });
   });
 
   describe('guessBaseColor()', function () {
@@ -320,7 +335,7 @@ describe('mapshaper-blend.mjs', function () {
           assert(Math.abs(out[i * 3 + k] - expected) <= 1);
         }
       }
-      assert(shadows > 100 && highlights > 100);
+      assert(shadows > 100 && highlights > 50);
       assert.equal(findLayer(catalog, 'out').raster.derivation.shadow_color, '#281e78');
       assert.equal(findLayer(catalog, 'out').raster.derivation.highlight_color, '#ffe6b4');
     });
@@ -381,6 +396,25 @@ describe('mapshaper-blend.mjs', function () {
       var out = findLayer(catalog, 'img').raster.grid.samples;
       var i = 15 * 30 + 3;
       assert.deepEqual(Array.from(out.subarray(i * 3, i * 3 + 3)), [40, 160, 60]);
+    });
+
+    it('opaque and transparent hillshades of the same terrain blend at similar strength', async function () {
+      var catalog = await run(makeDataset(30, 30, ridge, [90, 110, 80]),
+        '-hillshade target=dem + name=hs1 -hillshade opaque target=dem + name=hs2 ' +
+        '-blend hs1 target=img + name=out1 -blend hs2 target=img + name=out2');
+      var a = findLayer(catalog, 'out1').raster.grid.samples;
+      var b = findLayer(catalog, 'out2').raster.grid.samples;
+      var lighter = [0, 0], darker = [0, 0], i, k, d;
+      for (i = 0; i < 900; i++) {
+        [a, b].forEach(function(out, j) {
+          d = out[i * 3 + 1] - 110;
+          if (d > 0) lighter[j] += d; else darker[j] -= d;
+        });
+      }
+      for (k = 0; k < 2; k++) {
+        var x = [lighter, darker][k];
+        assert(x[0] > 0 && Math.abs(x[1] / x[0] - 1) < 0.25, x);
+      }
     });
 
     it('strength=0 leaves the image unchanged', async function () {

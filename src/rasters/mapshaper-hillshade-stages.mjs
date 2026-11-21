@@ -11,7 +11,9 @@ import {
   getOpennessReach,
   getTextureShadingReach,
   getToneMaxOpacity,
-  restoreLowElevations
+  removeThinHighlights,
+  restoreLowElevations,
+  THIN_HIGHLIGHT_REACH
 } from './mapshaper-hillshade';
 import {
   featurePreservingSmooth,
@@ -129,7 +131,7 @@ export function shadeTerrain(grid, s) {
       s.exaggeration, s.textureDetail, TEXTURE_MAX_SCALE), land,
       s.texture, Math.min(1, s.texture * s.textureHighlights));
   }
-  return tones;
+  return removeThinHighlights(tones, valid, w, h);
 }
 
 export function getShadingReach(s) {
@@ -143,7 +145,7 @@ export function getShadingReach(s) {
   if (s.texture > 0) {
     reach = Math.max(reach, getTextureShadingReach(TEXTURE_MAX_SCALE));
   }
-  return reach + REACH_MARGIN;
+  return reach + THIN_HIGHLIGHT_REACH + REACH_MARGIN;
 }
 
 function getRowCellSizes(grid) {

@@ -360,18 +360,22 @@ same pattern as other mapshaper commands.
     Lights added between existing ones (e.g. every 30°) change almost
     nothing: Lambert shading is linear, so lights only differ from their
     combined direction where a slope faces away from one of them.
-  - `gdal`: GDAL's `-multidirectional` weighting (Mark 1992): equal lights at
-    -90°, -45°, 0° and +45°, each weighted at every pixel by cos² of the
-    angle between the light and the direction the slope faces. GDAL's lights
-    are fixed at 225–360°; here they follow `azimuth=`, matching GDAL at the
-    default 315°. (Smoothing, `ambient=` and the tone curve still apply, so
-    the output is not GDAL's.) Slopes come out in pairs of equal brightness
-    (e.g. facing W and NW), with a sharp step between the lit and shaded
-    halves. There is no closed form for its brightest slope, so
-    `getHillshadeMaxShade()` searches for it.
   - Undocumented, for experiments: a list of `azimuth:weight[:altitude]`
     entries, e.g. `lighting=-45:0.3,0:0.4,45:0.3`. Azimuths are relative to
-    `azimuth=`; altitude defaults to `altitude=`.
+    `azimuth=`; altitude defaults to `altitude=`. With opposing lights (e.g.
+    `0:0.6,180:0.4:20`) a slope turned from the blend of lights can be
+    brighter than the one facing it, because the lights it turns away from
+    give no negative light, so `getHillshadeMaxShade()` also searches slopes
+    and aspects for the brightest. Without the search, the blend
+    underestimated it, and the brightest slopes merged into a flat patch of
+    full highlight.
+  - A `gdal` scheme imitating GDAL's `-multidirectional` weighting (Mark
+    1992: equal lights at -90°, -45°, 0° and +45°, each weighted at every
+    pixel by cos² of the angle between the light and the direction the slope
+    faces) was removed. Slopes came out in pairs of equal brightness (e.g.
+    facing W and NW), with a sharp step between the lit and shaded halves,
+    and since smoothing, `ambient=` and the tone curve still applied, the
+    output was not GDAL's anyway.
 - `exaggeration=` vertical exaggeration. The default increases with the map's
   ground pixel size (1 at 50 m per pixel and below, about 4.5 at 1 km, capped at
   10), because relief flattens out at small scales. It is the square root of
@@ -447,15 +451,17 @@ same pattern as other mapshaper commands.
   colors are tied by a weight of 0.8: the base is 80% of the lightness from
   the shadow color to the highlight color (`getHillshadeRampColors()`). The
   highlight color defaults to white. A missing base color is 80% of the way
-  from the shadow color to the highlight color (in OKLCH), or `#dfdfdf` if
+  from the shadow color to the highlight color (in OKLCH), or `#d7d7d7` if
   the shadow color is missing too. A missing shadow color gets the
   lightness that puts the base at 80%, with the base's hue and chroma
   (reduced to fit the sRGB gamut), or black if the base is too dark for
   that (darker than `#bebebe` with a white highlight). Extrapolating the
   hue and chroma as well would multiply small differences between the base
   and highlight colors into a strong, unrelated color. With all three
-  colors given nothing is derived. The defaults give `#686868` →
-  `#dfdfdf` → `#ffffff`; `base-color=#e0d8c0` gives a `#514a36` shadow.
+  colors given nothing is derived. The defaults are `#686868` → `#d7d7d7`
+  → `#ffffff`: the shadow color that a `#dfdfdf` base gets, with the base
+  darkened to 75% of the way to white, for more highlight headroom;
+  `base-color=#e0d8c0` gives a `#514a36` shadow.
   The weight 0.8 is 1 / `getHillshadeMaxShade()` with the former default
   lights (the brightest slope was 1.25 times as bright as flat ground; 1.21
   with `lighting=balanced`). It is fixed so that `altitude=` and `lighting=`
@@ -472,7 +478,8 @@ same pattern as other mapshaper commands.
   darker than the sRGB blending the conventional `#b4b4b4` was paired with
   (a shadow tone of 0.5 was 90 with sRGB over `#b4b4b4`, 60 with OKLab over
   `#a1a1a1`, 80 over `#d3d3d3`), and mountain relief went nearly black; but
-  full shadow was still black. The `#dfdfdf` base was chosen by eye. The
+  full shadow was still black. The `#dfdfdf` base was chosen by eye, then
+  darkened to `#d7d7d7` with the spline tone curve (see `gamma=`). The
   two-color forms are a quick way to color relief; matching a reference map
   usually takes all three colors, because a reference's midtones are often
   more saturated than any blend of its extremes (a Swiss relief measured
@@ -495,11 +502,19 @@ same pattern as other mapshaper commands.
 - `max-opacity=` 0-1 opacity of the darkest shadows (default 0.55; shadow
   style only).
 - `highlights=` opacity of the brightest highlights (a slope facing the light),
-  as a ratio of `max-opacity=` (shadow style only; default 0.5). It was
+  as a ratio of `max-opacity=` (shadow style only; default 1). It was
   raised from 0.6 to 1 while highlights were scaled to a single light's
   brightest slope, which no slope reaches under the blend of lights (see
   below), and returned to 0.6 once highlights reached full strength. It was
-  lowered to 0.5 to suit typical aerial imagery. Over a background of
+  lowered to 0.5 to suit typical aerial imagery, and raised to 1 with the
+  spline tone curve (see `gamma=`), which weakened highlights on gently lit
+  slopes: at 30° from the brightest slope, 1 gives about the opacity that
+  0.5 gave with the former curve (0.11 against 0.10). Blended with seven
+  imagery scenes (`-blend` defaults), highlights at 1 still added a fifth
+  to a quarter as much light as shadows took away in the mountain scenes,
+  and less over light rock; 0.75 and 1.25 also looked natural. It only
+  scales the highlights: the tone curve's shape in this style doesn't
+  depend on it (see `gamma=`). Over a background of
   lightness v (0-1), a shadow of opacity a darkens it by a·v and a highlight
   lightens it by a·(1 - v), so highlights gain on darker backgrounds. Averaging
   each where it occurs, the two balanced on backgrounds of about 0.42 at 0.6
@@ -523,15 +538,48 @@ same pattern as other mapshaper commands.
   light and cool shadow. In the shadow style, the alpha of an rgba() color
   scales the opacity of its tones; the opaque style ignores alpha. The
   defaults differ in the opaque style (see `base-color=`).
-- `gamma=` exponent of the tone curve: tone = darkness ^ gamma, where
-  darkness is 0 on flat ground and 1 in full shadow (default 0.7). Values
-  below 1 strengthen faint shading and ease off the darkest shadows; values
-  above 1 do the opposite. Applies to both styles. 0.5 was first chosen by
-  comparing renderings of France (zoom 7) and Mount Rainier (zoom 11), since
-  1 left gentle terrain such as the Massif Central nearly invisible; manual
-  testing then settled on 0.75 together with default sharpening, which
-  restores local contrast that the lower gamma had flattened, and later on
-  0.7.
+- `gamma=` steepness of the tone curve where slopes meet flat ground
+  (default 0.7). Applies to both styles. The tone curve
+  (`getToneCurves()`) makes lightness a cubic spline of the angle between a
+  slope and the brightest slope: the highlight color at 0°, the base color
+  on flat ground (34° from the brightest slope with the default lights) and
+  the shadow color at 90°, flat at both ends. Lightness changes at the same
+  rate on both sides of flat ground; that rate is the average (the whole
+  lightness range over 90°) divided by gamma, so 1 is even and lower values
+  give gentle slopes more contrast. Below about 0.5 (with the default
+  colors) the rate is capped, as a steeper one would make the spline turn
+  back, and lower values change nothing. In the shadow style the base is
+  placed at 2/3 of the way from full shadow to the brightest highlight,
+  where max-opacity / (max-opacity + highlight opacity) put it with
+  `highlights=0.5`. It used to follow that ratio, so raising `highlights=`
+  also strengthened the shadows (by 4-14% of their darkening on imagery
+  between 0.5 and 1.5); fixed, `highlights=` and `max-opacity=` only scale
+  the tones.
+  - Before the spline, tone = darkness ^ gamma, where darkness was 0 on flat
+    ground and 1 in full shadow, with the same curve for highlights. 0.5 was
+    first chosen by comparing renderings of France (zoom 7) and Mount
+    Rainier (zoom 11), since 1 left gentle terrain such as the Massif
+    Central nearly invisible; manual testing then settled on 0.75 together
+    with default sharpening, which restores local contrast that the lower
+    gamma had flattened, and later on 0.7. On a dome, the brightest slopes
+    were a disc of nearly uniform highlight with a sharp edge: the power
+    curve's infinitely steep start concentrated contrast just past flat
+    ground, in a ring, and shading changes with the square of the angle near
+    the brightest slope, so the slopes inside the ring got nearly the same
+    tone.
+  - Curves of the angle tried before the spline: power curves with a finite
+    starting slope, separate for highlights and shadows, and a variant with
+    lighter shadow midtones. They softened the ring a little but kept the
+    sharp-edged disc. The spline is also flat at the brightest slope, but
+    it matches the rate of change on both sides of flat ground, so the
+    disc's edge is soft; it was preferred on domes and on terrain
+    (Yellowstone). It darkens
+    deep shadows more than the power curve (the darkest 1% of Yellowstone's
+    pixels went from gray 134 to 125), while giving them about 20% more
+    local contrast. A slope at the dark end, to keep contrast between the
+    darkest slopes, was tried and not preferred: only about 0.6% of pixels
+    are more than 75° from the brightest slope, and the slope lightened the
+    shadows at 60-80° and lowered their contrast.
 - `verbose` prints the settings used, including automatic ones such as
   `exaggeration=`, as command options that can be pasted back into a command,
   plus the ground pixel size. The global `-verbose` command prints them too.
@@ -564,7 +612,24 @@ map units are assumed to be meters, with a warning.
 6. Optionally apply aerial perspective (`aerial=`).
 7. Apply the tone curve, then optionally darken where the sky is hidden
    (`ambient=`) and add texture shading (`texture=`).
-8. Write RGBA (`uint8`). Invalid pixels are transparent.
+8. Remove bright lines one pixel wide (`removeThinHighlights()`), with a
+   morphological opening of the tones by a 2x2 square.
+9. Write RGBA (`uint8`). Invalid pixels are transparent.
+
+Without step 8, ridge crests often get a one-pixel line brighter than both
+faces, which reads as a knife edge. Horn's 3x3 window at a crest blends the two
+faces into a gentler slope; when the lit face is steeper than the brightest
+slope (about 34 degrees with the default lights), the blend is closer to the
+brightest slope than either face. `ambient=` adds to it: the crest's horizon
+drops away on both sides, so it is lightened, and the pixels just below it are
+darkened, because their uphill horizon is the crest. On the Glacier National
+Park 3DEP 1 m frame (default settings), pixels at least 16 gray levels brighter
+than both neighbors across some direction fell from 0.56% to 0.13%; 90% of
+pixels are unchanged, and the image darkens by 0.3 gray levels on average.
+Rejected alternatives: lowering pixels brighter than both neighbors across one
+of four directions breaks staircased diagonal crests into dots (the line is two
+pixels wide at each step); a 3x3 opening makes the terrain blotchy; not letting
+`ambient=` lighten crests leaves the darkened pixels below them.
 
 The output is a 4-band RGBA image (`interpretation: 'image'`, display scaling
 `none`), which uses the raster renderer's fast 8-bit path and keeps

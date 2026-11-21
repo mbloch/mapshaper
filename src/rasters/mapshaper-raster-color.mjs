@@ -495,14 +495,17 @@ export function getHillshadeColorRamp(stops) {
 // following 1 / getHillshadeMaxShade() so that altitude= and lighting= don't
 // change the colors.)
 var HILLSHADE_BASE_WEIGHT = 0.8;
-var DEFAULT_HILLSHADE_BASE = {r: 223, g: 223, b: 223};
+// The default colors: the shadow color that #dfdfdf gets, with a darker base
+// for more highlight headroom (75% of the way to white)
+var DEFAULT_HILLSHADE_SHADOW = {r: 104, g: 104, b: 104};
+var DEFAULT_HILLSHADE_BASE = {r: 215, g: 215, b: 215};
 var DEFAULT_HILLSHADE_HIGHLIGHT = {r: 255, g: 255, b: 255};
 
 // The three colors of opaque shading. The highlight color defaults to white.
 // A missing base color is HILLSHADE_BASE_WEIGHT of the way from the shadow
-// color to the highlight color, or #dfdfdf if the shadow color is missing
+// color to the highlight color, or #d7d7d7 if the shadow color is missing
 // too. A missing shadow color is extrapolated from the base and highlight
-// colors (see getDerivedShadowColor()).
+// colors (see getDerivedShadowColor()), or #686868 if all three are missing.
 // @shadow, @base, @highlight {r, g, b} or null
 // Returns {shadow, base, highlight}, as {r, g, b} objects
 export function getHillshadeRampColors(shadow, base, highlight) {
@@ -510,8 +513,18 @@ export function getHillshadeRampColors(shadow, base, highlight) {
   var mid = base ? toRgb(base) : shadow ?
     parseColor(getOklchInterpolator(formatRgb(shadow), formatRgb(light))(HILLSHADE_BASE_WEIGHT).color) :
     toRgb(DEFAULT_HILLSHADE_BASE);
-  var dark = shadow ? toRgb(shadow) : getDerivedShadowColor(mid, light);
+  var dark = shadow ? toRgb(shadow) : !base && !highlight ? toRgb(DEFAULT_HILLSHADE_SHADOW) :
+    getDerivedShadowColor(mid, light);
   return {shadow: dark, base: mid, highlight: light};
+}
+
+// Where the base color is on the ramp from the shadow color to the highlight
+// color, as a share of their difference in lightness (0.5 if they don't differ)
+// @stops from getHillshadeRampColors()
+export function getHillshadeBasePosition(stops) {
+  var dark = rgbToOklab(stops.shadow).l;
+  var range = rgbToOklab(stops.highlight).l - dark;
+  return range > 0 ? (rgbToOklab(stops.base).l - dark) / range : 0.5;
 }
 
 // The shadow color that puts @base HILLSHADE_BASE_WEIGHT of the way to

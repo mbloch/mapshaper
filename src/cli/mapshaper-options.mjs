@@ -2840,7 +2840,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('lighting', {
-      describe: 'fill lights around the main light: balanced (default), hard, soft or gdal'
+      describe: 'fill lights around the main light: balanced (default), hard or soft'
     })
     .option('exaggeration', {
       describe: 'vertical exaggeration (default depends on the map scale)',
@@ -2921,14 +2921,14 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('base-color', {
-      describe: 'color of flat ground, for opaque shading (default is #dfdfdf); implies opaque'
+      describe: 'color of flat ground, for opaque shading (default is #d7d7d7); implies opaque'
     })
     .option('max-opacity', {
       describe: 'opacity of the darkest shadows, if not opaque; 0-1 (default is 0.55)',
       type: 'number'
     })
     .option('highlights', {
-      describe: 'opacity of the brightest highlights, relative to max-opacity (default is 0.5)',
+      describe: 'opacity of the brightest highlights, relative to max-opacity (default is 1)',
       type: 'number'
     })
     .option('shadow-color', {

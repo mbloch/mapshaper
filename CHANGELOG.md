@@ -1,3 +1,11 @@
+v0.8.7
+* New -hillshade tone curve, which softens the edge of the highlights on slopes facing the light.
+* The default base color of opaque -hillshade output is darker (#d7d7d7), for more highlight headroom.
+* Removed `-hillshade lighting=gdal`.
+* -hillshade no longer creates thin bright lines along ridge crests, which made ridges look like knife edges.
+* Stronger transparent -hillshade highlights by default (`highlights=1`).
+* -blend reads opaque hillshades on the same scale as transparent ones. Previously, the highlights of opaque hillshades were too strong.
+
 v0.8.6
 * Improvements to the hypsometric/bathymetric tint UI.
 * Improvements to -deshadow accuracy, and a new -deshadow despeckle option for removing tiny shadows that the DEM does not model accurately.

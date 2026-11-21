@@ -1,5 +1,5 @@
 import { parseColor } from '../color/color-utils';
-import { isOpaqueHillshade } from './mapshaper-hillshade';
+import { DEFAULT_HIGHLIGHT_RATIO, DEFAULT_MAX_OPACITY, isOpaqueHillshade } from './mapshaper-hillshade';
 import { getOklchLightnessChroma } from './mapshaper-raster-color';
 import { getRasterValidityMask } from './mapshaper-raster-grid';
 import { getRasterGrid, renderRasterPreview } from './mapshaper-raster-utils';
@@ -57,6 +57,12 @@ export function getShadingAmounts(raster, baseColor) {
       colors.highlight = readColor(params.highlight_color) || WHITE;
     }
     amounts = decodeShadowStyleShading(pixels, colors.shadow, colors.highlight);
+  } else if (hillshade && params.shadow_color && params.highlight_color && (baseColor || params.base_color)) {
+    amounts = decodeOpaqueHillshadeShading(pixels, {
+      shadow: readColor(params.shadow_color),
+      base: baseColor || readColor(params.base_color),
+      highlight: readColor(params.highlight_color)
+    });
   } else {
     base = baseColor || (hillshade ? readColor(params.base_color) : null);
     if (!base) {
@@ -250,6 +256,48 @@ export function decodeOpaqueShading(pixels, base) {
     amounts[i] = a;
   }
   return amounts;
+}
+
+// The shading of an opaque hillshade made by -hillshade, on the scale of a
+// transparent hillshade with default opacities, so that both styles blend
+// alike. Read through the colors of its ramp: a pixel's tone is how far its
+// lightness is from the base color's toward the shadow or highlight color's
+// (lightness changes evenly along each half of the ramp, see
+// getHillshadeColorRamp()). Read like decodeOpaqueShading() instead, the
+// brightest highlights would be opaque white.
+// @stops {shadow, base, highlight} as {r, g, b}
+export function decodeOpaqueHillshadeShading(pixels, stops) {
+  var n = pixels.length / 4;
+  var amounts = new Float32Array(n);
+  var cache = new Map();
+  var ls = getLightness(stops.shadow.r, stops.shadow.g, stops.shadow.b);
+  var lb = getLightness(stops.base.r, stops.base.g, stops.base.b);
+  var lh = getLightness(stops.highlight.r, stops.highlight.g, stops.highlight.b);
+  var maxShadow = DEFAULT_MAX_OPACITY;
+  var maxHighlight = Math.min(1, DEFAULT_MAX_OPACITY * DEFAULT_HIGHLIGHT_RATIO);
+  var i, j, key, a, l;
+  for (i = 0, j = 0; i < n; i++, j += 4) {
+    if (pixels[j + 3] === 0) continue;
+    key = pixels[j] << 16 | pixels[j + 1] << 8 | pixels[j + 2];
+    a = cache.get(key);
+    if (a === undefined) {
+      l = getLightness(pixels[j], pixels[j + 1], pixels[j + 2]);
+      if (l < lb) {
+        a = lb > ls ? -Math.min(1, (lb - l) / (lb - ls)) * maxShadow : 0;
+      } else {
+        a = lh > lb ? Math.min(1, (l - lb) / (lh - lb)) * maxHighlight : 0;
+      }
+      cache.set(key, a);
+    }
+    amounts[i] = a;
+  }
+  return amounts;
+}
+
+function getLightness(r, g, b) {
+  var lc = [0, 0];
+  getOklchLightnessChroma(r, g, b, lc);
+  return lc[0];
 }
 
 // The sRGB value (0-1) of the gray with a color's OKLab lightness

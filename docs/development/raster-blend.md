@@ -104,9 +104,21 @@ amounts already include `max-opacity=` and `highlights=`, so a hillshade
 tuned for stacking blends at the same strength.
 
 **Opaque style.** A pixel lies on the shadow, base, highlight ramp. Its
-position is found from its OKLab lightness, which rises from the shadow
-color to the highlight color. It is then converted to the overlay amount that takes the
-base to the same lightness: with \(g\) the sRGB gray value of a lightness,
+position (its tone) is found from its OKLab lightness, which changes evenly
+along each half of the ramp, from the base color's toward the shadow or
+highlight color's (`decodeOpaqueHillshadeShading()`). The tones are then
+given the opacities of a transparent hillshade with the default
+`max-opacity=` and `highlights=` (0.55 for both the darkest shadows and the
+brightest highlights), so that the two styles blend alike, whatever the
+opaque hillshade's colors.
+
+They used to be converted to the overlay amount that takes the base to the
+pixel's lightness, the rule that is still used for opaque hillshades from
+elsewhere (below). The brightest highlights of a mapshaper hillshade are
+white, so they blended as opaque white, about four times as strong as a
+transparent hillshade's highlights, while the shadows of the default
+colors happened to come out about the same as the transparent style's.
+With \(g\) the sRGB gray value of a lightness,
 
 \[
 a_s = 1 - g(P) / g(B) \qquad a_h = (g(P) - g(B)) / (1 - g(B))
@@ -114,8 +126,9 @@ a_s = 1 - g(P) / g(B) \qquad a_h = (g(P) - g(B)) / (1 - g(B))
 
 where \(P\) is the pixel and \(B\) the base color. For a gray ramp this is
 exact: stacking black at \(a_s\) over the base color reproduces the pixel.
-The base color comes from the derivation (`base_color` is recorded with the
-colors actually used, including derived ones).
+The colors come from the derivation (`shadow_color`, `base_color` and
+`highlight_color` are recorded with the colors actually used, including
+derived ones).
 
 **Hillshades from elsewhere** (a GDAL hillshade GeoTIFF, or a mapshaper
 hillshade written to a file and read back) have no recorded settings:
@@ -136,8 +149,10 @@ hillshade written to a file and read back) have no recorded settings:
   their view, which may stretch them. Other one-band rasters are refused as
   elevation data.
 
-A mapshaper opaque hillshade written to GeoTIFF and read back blends
-identically to the original: the guess finds its base color exactly.
+A mapshaper opaque hillshade written to GeoTIFF and read back is read by
+the overlay rule, since its colors are not recorded in the file: the guess
+finds its base color exactly, but its highlights blend more strongly than
+the original's.
 
 **Grid alignment.** The amounts are computed on the hillshade's own grid and
 then resampled to the output grid as floats. Resampling the RGBA image
