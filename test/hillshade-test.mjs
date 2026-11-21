@@ -993,25 +993,76 @@ describe('mapshaper-hillshade.mjs', function () {
         assert.deepEqual(presetSettings(await getDerivation('-hillshade smoothing=4')), [3, 25, 8, 1, 1, 1.9, 10]);
       })
 
-      it('higher levels are smoother', async function () {
-        function detail(catalog) {
-          var a = getAlpha(catalog), sum = 0;
-          for (var i = 1; i < a.length - 1; i++) sum += Math.abs(2 * a[i] - a[i - 1] - a[i + 1]);
-          return sum;
+      describe('generalization of landforms of different sizes', function () {
+        var size = 64, border = 8;
+        // position along a direction, in pixels
+        function along(x, y, deg) {
+          var a = deg * Math.PI / 180;
+          return x * Math.cos(a) + y * Math.sin(a);
         }
-        // pixel-scale noise on a gentle slope
-        var rough = function() {
-          return makeElevationDataset(40, 40, function(x, y) {
-            return x * 3 + y * 2 + 4 * (((x * 7919 + y * 104729) % 13) / 12 - 0.5);
-          });
-        };
-        var values = [];
-        for (var level = 0; level <= 4; level++) {
-          values.push(detail(await runOnDataset(rough(), '-hillshade lighting=hard smoothing=' + level)));
+        // Pixels are about 111 m. Sharp-crested ridges 40 pixels apart and 300 m
+        // high; spurs 12 pixels apart, whose faces differ by about 22 degrees
+        // (exaggerated), between the thresholds of levels 3 and 4; gullies and
+        // hummocks 5-6 pixels apart; and pixel-scale noise
+        var ridges = [20, 40], spurs = [110, 12], small = [[65, 5], [160, 6]];
+        function terrain(x, y) {
+          return 300 * (1 - Math.abs(Math.sin(Math.PI * along(x, y, ridges[0]) / ridges[1]))) +
+            28 * Math.sin(2 * Math.PI * along(x, y, spurs[0]) / spurs[1] + 0.5) +
+            8 * Math.sin(2 * Math.PI * along(x, y, small[0][0]) / small[0][1] + 1.3) +
+            6 * Math.sin(2 * Math.PI * along(x, y, small[1][0]) / small[1][1] + 2.1) +
+            4 * (((x * 7919 + y * 104729) % 13) / 12 - 0.5);
         }
-        for (var i = 1; i < values.length; i++) {
-          assert(values[i] < values[i - 1], 'level ' + i + ': ' + values.join(', '));
+        // Amplitude of a wave in the shading's gray values, away from the edges
+        function waveAmplitude(catalog, wave) {
+          var samples = catalog.getLayers()[0].layer.raster.grid.samples;
+          var c = 0, s = 0, n = 0, x, y, t, v;
+          for (y = border; y < size - border; y++) {
+            for (x = border; x < size - border; x++) {
+              t = 2 * Math.PI * along(x, y, wave[0]) / wave[1];
+              v = samples[(y * size + x) * 4 + 1];
+              c += v * Math.cos(t);
+              s += v * Math.sin(t);
+              n++;
+            }
+          }
+          return 2 * Math.sqrt(c * c + s * s) / n;
         }
+        var levels;
+
+        before(async function () {
+          levels = [];
+          for (var level = 0; level <= 4; level++) {
+            var catalog = await runOnDataset(makeElevationDataset(size, size, terrain),
+              '-hillshade opaque smoothing=' + level);
+            levels.push({
+              ridges: waveAmplitude(catalog, ridges),
+              spurs: waveAmplitude(catalog, spurs),
+              small: waveAmplitude(catalog, small[0]) + waveAmplitude(catalog, small[1])
+            });
+          }
+        });
+
+        function share(key) {
+          return levels.map(function(o) { return +(o[key] / levels[0][key]).toFixed(2); });
+        }
+
+        it('each level removes more of the small landforms', function () {
+          var shares = share('small');
+          for (var i = 1; i < shares.length; i++) {
+            assert(shares[i] < 0.8 * shares[i - 1], shares.join(', '));
+          }
+        })
+
+        it('levels 1-3 keep mid-sized landforms, and level 4 removes much of them', function () {
+          var shares = share('spurs');
+          assert(shares[1] > 0.9 && shares[2] > 0.9 && shares[3] > 0.9, shares.join(', '));
+          assert(shares[4] < 0.75, shares.join(', '));
+        })
+
+        it('every level keeps sharp ridges', function () {
+          var shares = share('ridges');
+          assert(shares.every(function(v) { return v > 0.9; }), shares.join(', '));
+        })
       })
 
       it('FPS settings override the level', async function () {
