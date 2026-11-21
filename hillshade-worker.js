@@ -124,7 +124,22 @@
 
   var DEFAULT_MAX_OPACITY = 0.55;
   var DEFAULT_GAMMA = 0.7;
-  var DEFAULT_HIGHLIGHT_RATIO = 0.5;
+  var DEFAULT_HIGHLIGHT_RATIO = 1;
+  // Where the shadow style's tone curve puts flat ground, as a share of the
+  // lightness from full shadow to the brightest highlight (see getToneCurves()).
+  // Fixed, so that highlights= and max-opacity= scale the tones without
+  // changing the curve's shape.
+  var SHADOW_STYLE_BASE_POSITION = 2 / 3;
+  // ambient= darkening per unit of weight, as a share of the max opacity;
+  // chosen so that the default keeps about the valley shadows of the earlier
+  // version, which darkened the shading instead of the tones
+  var AMBIENT_TONE_SCALE = 2;
+  // How much more ambient= takes from highlights than from shadows and flat
+  // ground, as if sky light were a larger share of the light. A highlight spans
+  // less shading per unit of opacity than a shadow, so 1 takes about 2.4 times
+  // less light from sunlit slopes than from shaded ones; about 2.4 takes the same
+  // amount, which grays out sunlit valleys.
+  var AMBIENT_HIGHLIGHT_FACTOR = 1.8;
 
   // Returns brightness values, scaled so that flat ground is 1, lit slopes are
   // brighter and shaded slopes darker (0 is fully shaded).
@@ -136,27 +151,23 @@
   function computeHillshade(elev, valid, width, height, cellWidths, cellHeights, lights, exaggeration, azimuthOffsets) {
     var out = new Float32Array(width * height);
     var zf = exaggeration > 0 ? exaggeration : 1;
-    var flat = 0, totalWeight = 0;
-    var aspectWeighted = lights.length > 0 && !!lights[0].aspectWeighted;
+    var flat = 0;
     var prepared = lights.map(function(light) {
       var zenith = (90 - light.altitude) * Math.PI / 180;
       // mathematical angle of the direction the light comes from
       var az = (360 - light.azimuth + 90) * Math.PI / 180;
       flat += light.weight * Math.cos(zenith);
-      totalWeight += light.weight;
       return {
-        weight: light.weight,
         cosZ: Math.cos(zenith) * light.weight,
         sinZ: Math.sin(zenith) * light.weight,
         cosAz: Math.cos(az),
         sinAz: Math.sin(az)
       };
     });
-    var flatPerWeight = flat / totalWeight;
     var n = prepared.length;
     var y, x, i, ym, yp, xm, xp, c, a, b, cc, d, f, g, h, k;
     var dzdx, dzdy, slope2, cosSlope, sinSlope, aspectCos, aspectSin, mag, sum, p, j;
-    var cd, sd, rc, ca, w, wsum;
+    var cd, sd, rc;
     for (y = 0; y < height; y++) {
       ym = (y > 0 ? y - 1 : 0) * width;
       yp = (y < height - 1 ? y + 1 : y) * width;
@@ -196,22 +207,6 @@
           aspectSin = aspectSin * cd + aspectCos * sd;
           aspectCos = rc;
         }
-        // on flat ground every light gives the same shade, so the weights
-        // don't matter
-        if (aspectWeighted && mag > 0) {
-          wsum = 0;
-          for (j = 0; j < n; j++) {
-            p = prepared[j];
-            ca = p.cosAz * aspectCos + p.sinAz * aspectSin;
-            w = ca * ca;
-            // p.cosZ and p.sinZ include the light's weight
-            var vw = p.cosZ * cosSlope + p.sinZ * sinSlope * ca;
-            if (vw > 0) sum += w * vw;
-            wsum += w * p.weight;
-          }
-          out[i] = wsum > 0 ? sum / wsum / flatPerWeight : 0;
-          continue;
-        }
         for (j = 0; j < n; j++) {
           p = prepared[j];
           // cos(az - aspect) = cos(az)cos(aspect) + sin(az)sin(aspect)
@@ -236,50 +231,103 @@
     return DEFAULT_HIGHLIGHT_RATIO;
   }
 
-  // Applies the tone curve to shading. Tones are signed opacities: negative for
-  // shadows, positive for highlights, 0 on flat ground. They follow a power
-  // curve: tone = t ^ gamma, where t is 0 on flat ground and 1 in full shadow
-  // (or, for highlights, on a slope facing the light). Gamma below 1
-  // strengthens faint shading and eases off the extremes.
+  // Opacity of the darkest shadows, as getHillshadeTones() uses it
+  function getToneMaxOpacity(style, opts) {
+    var o = opts || {};
+    if (style == 'opaque') return 1;
+    return o.maxOpacity >= 0 ? Math.min(1, o.maxOpacity) : getDefaultMaxOpacity(style);
+  }
+
+  // Applies the tone curve to shading (see getToneCurves()). Tones are signed
+  // opacities: negative for shadows, positive for highlights, 0 on flat ground.
   // @style 'shadow' or 'opaque'; opaque tones run from -1 to 1, the ends of the
   //   color ramp, and ignore the opacities
   // @opts.maxOpacity 0-1, opacity of the darkest shadows
   // @opts.highlightRatio opacity of the brightest highlights, as a fraction of
   //   maxOpacity; the result is capped at 1
-  // @opts.gamma exponent of the tone curve
+  // @opts.gamma steepness of the tone curve at flat ground
   // @opts.maxShade shade of the brightest slope, which gets the full highlight
   //   (see getHillshadeMaxShade()); without it there are no highlights
+  // @opts.basePosition for the opaque style: where the base color is on the
+  //   ramp, as a share of its lightness (see getHillshadeBasePosition())
   function getHillshadeTones(shade, valid, style, opts) {
     var o = opts || {};
     var n = shade.length;
     var tones = new Float32Array(n);
     var opaque = style == 'opaque';
-    var maxOpacity = opaque ? 1 : o.maxOpacity >= 0 ? Math.min(1, o.maxOpacity) : getDefaultMaxOpacity(style);
+    var maxOpacity = getToneMaxOpacity(style, o);
     var ratio = opaque ? 1 : o.highlightRatio >= 0 ? o.highlightRatio : getDefaultHighlightRatio();
     var maxHighlight = Math.min(1, maxOpacity * ratio);
     var gamma = o.gamma > 0 ? o.gamma : DEFAULT_GAMMA;
     var litRange = o.maxShade > 1 ? o.maxShade - 1 : 0;
-    var curve = getToneCurve(gamma);
+    var curves = getToneCurves(o.maxShade > 1 ? o.maxShade : 1, gamma,
+      opaque ? o.basePosition : SHADOW_STYLE_BASE_POSITION);
+    var shadowCurve = curves.shadow;
+    var highlightCurve = curves.highlight;
     var i, s;
     for (i = 0; i < n; i++) {
       if (valid && !valid[i]) continue;
       s = shade[i];
       if (s < 1) {
-        tones[i] = -curve(1 - s) * maxOpacity;
+        tones[i] = -shadowCurve(1 - s) * maxOpacity;
       } else if (s > 1 && litRange > 0) {
-        tones[i] = curve((s - 1) / litRange) * maxHighlight;
+        tones[i] = highlightCurve((s - 1) / litRange) * maxHighlight;
       }
     }
     return tones;
   }
 
-  // Returns a function mapping 0-1 to 0-1. The curve is tabulated because
-  // Math.pow() for every pixel is slow.
-  function getToneCurve(gamma) {
+  // The tone curve: lightness is a cubic spline of the angle between a slope and
+  // the brightest slope, falling from the highlight color at 0 degrees to the
+  // base color on flat ground to the shadow color at 90 degrees, with flat ends.
+  // Lightness changes at the same rate on both sides of flat ground, so the edge
+  // between highlights and shadows is soft, where a curve that starts steeply
+  // at flat ground concentrates contrast there in a visible ring. That rate is the average rate (the whole lightness range over 90 degrees)
+  // divided by gamma, so gamma 1 is even, and lower gammas give more contrast to
+  // gentle slopes. The rate is capped where the spline would stop falling
+  // steadily.
+  // @maxShade see getHillshadeMaxShade()
+  // @basePosition 0-1, lightness of flat ground, as a share of the range from
+  //   the darkest shadow to the brightest highlight (default 0.8)
+  // Returns {shadow, highlight}: functions of the inputs of getHillshadeTones()'
+  //   curves, 1 - shade and (shade - 1) / (maxShade - 1)
+  function getToneCurves(maxShade, gamma, basePosition) {
+    var b = basePosition >= 0 ? Math.min(0.95, Math.max(0.05, basePosition)) : 0.8;
+    var flatAngle = Math.acos(1 / maxShade) * 180 / Math.PI;
+    var rate = 1 / 90 / gamma;
+    if (flatAngle > 0) rate = Math.min(rate, 3 * (1 - b) / flatAngle);
+    rate = Math.min(rate, 3 * b / (90 - flatAngle));
+    var lightness = function(s) {
+      var deg = Math.acos(Math.min(1, s / maxShade)) * 180 / Math.PI;
+      if (deg >= 90) return 0;
+      return deg < flatAngle ?
+        getHermiteValue(deg / flatAngle, 1, 0, b, -rate * flatAngle) :
+        getHermiteValue((deg - flatAngle) / (90 - flatAngle), b, -rate * (90 - flatAngle), 0, 0);
+    };
+    return {
+      shadow: getTabulatedCurve(function(d) {
+        return Math.max(0, (b - lightness(1 - d)) / b);
+      }),
+      highlight: getTabulatedCurve(function(t) {
+        return Math.max(0, (lightness(1 + t * (maxShade - 1)) - b) / (1 - b));
+      })
+    };
+  }
+
+  // Cubic Hermite interpolation at @t (0-1) between values @y0 and @y1, with
+  // slopes @m0 and @m1 per unit of @t
+  function getHermiteValue(t, y0, m0, y1, m1) {
+    var t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * y0 + (t3 - 2 * t2 + t) * m0 + (-2 * t3 + 3 * t2) * y1 + (t3 - t2) * m1;
+  }
+
+  // Returns a function mapping 0-1 to 0-1. Curves are tabulated because
+  // computing them for every pixel is slow.
+  function getTabulatedCurve(f) {
     var steps = 1024;
     var table = new Float32Array(steps + 1);
     for (var i = 0; i <= steps; i++) {
-      table[i] = Math.pow(i / steps, gamma);
+      table[i] = f(i / steps);
     }
     return function(d) {
       var x = (d > 1 ? 1 : d) * steps;
@@ -424,17 +472,33 @@
     return steps;
   }
 
-  // Darkens directional shading where the sky is hidden: @weight 0 is
-  // directional only, 1 scales shading by openness. Openness is 1 on flat ground
-  // and on planar slopes, so these keep their shading; valleys darken and
-  // ridges brighten. Blending the two additively instead would halve
-  // directional contrast everywhere, including highlights.
-  function blendAmbientLight(shade, openness, valid, weight) {
-    for (var i = 0; i < shade.length; i++) {
+  // Darkens tones where the sky is hidden, as a shadow layer of opacity
+  // @weight * AMBIENT_TONE_SCALE * @maxOpacity * (1 - openness). Openness is 1
+  // on flat ground and on planar slopes, so these are left alone; valleys
+  // darken, and ridges (openness above 1) lighten. Applied to tones rather than
+  // to shading, because highlights span a much narrower range of shading than
+  // shadows: darkening the shading took most of the highlights from sunlit
+  // slopes in valleys, and darkened shaded slopes much less.
+  // Over a shadow this is exact compositing. A highlight is reduced
+  // AMBIENT_HIGHLIGHT_FACTOR times as fast, and any darkening left once it is
+  // gone becomes a shadow. Ridges are lightened as in applyTextureTones().
+  function applyAmbientTones(tones, openness, valid, weight, maxOpacity) {
+    var scale = weight * AMBIENT_TONE_SCALE * maxOpacity;
+    var h = AMBIENT_HIGHLIGHT_FACTOR;
+    var a, t;
+    for (var i = 0; i < tones.length; i++) {
       if (valid && !valid[i]) continue;
-      shade[i] *= 1 - weight * (1 - openness[i]);
+      a = scale * (1 - openness[i]);
+      t = tones[i];
+      if (a > 0 && t > 0) {
+        tones[i] = t >= a * h ? t - a * h : t / h - a;
+      } else if (a > 0) {
+        tones[i] = t - a * (1 + t);
+      } else {
+        tones[i] = t - a * (1 - Math.max(t, 0));
+      }
     }
-    return shade;
+    return tones;
   }
 
   // Aerial perspective, as in Swiss manual relief shading: contrast falls with
@@ -495,6 +559,48 @@
   var TEXTURE_MIN_SCALE = 0.7;
   // brings typical relief (France at zoom 7) to about 1 at the 98th percentile
   var TEXTURE_SCALE = 0.125;
+
+  // Removes bright lines one pixel wide from signed tones, in place: a
+  // morphological opening with a 2x2 square (each pixel gets the brightest of
+  // the darkest values of the four 2x2 squares that contain it). Crest pixels
+  // otherwise come out brighter than both faces of a ridge, which reads as a
+  // knife edge: the 3x3 gradient of computeHillshade() blends the faces into a
+  // slope closer to the brightest one, and ambient= lightens the crest and
+  // darkens the pixels below it. Features two or more pixels wide and edges
+  // between light and dark areas are unchanged, and no pixel gets brighter.
+  // Invalid pixels and pixels outside the grid are ignored.
+  function removeThinHighlights(tones, valid, width, height) {
+    var n = width * height;
+    var lows = new Float32Array(n);
+    var x, y, i, v, m;
+    for (y = 0; y < height; y++) {
+      for (x = 0; x < width; x++) {
+        i = y * width + x;
+        m = Infinity;
+        if (!valid || valid[i]) m = tones[i];
+        if (x + 1 < width && (!valid || valid[i + 1]) && tones[i + 1] < m) m = tones[i + 1];
+        if (y + 1 < height) {
+          if ((!valid || valid[i + width]) && tones[i + width] < m) m = tones[i + width];
+          if (x + 1 < width && (!valid || valid[i + width + 1]) && tones[i + width + 1] < m) m = tones[i + width + 1];
+        }
+        lows[i] = m;
+      }
+    }
+    for (y = 0; y < height; y++) {
+      for (x = 0; x < width; x++) {
+        i = y * width + x;
+        if (valid && !valid[i]) continue;
+        m = lows[i];
+        if (x > 0 && (v = lows[i - 1]) > m) m = v;
+        if (y > 0) {
+          if ((v = lows[i - width]) > m) m = v;
+          if (x > 0 && (v = lows[i - width - 1]) > m) m = v;
+        }
+        tones[i] = m;
+      }
+    }
+    return tones;
+  }
 
   // Darkens drainages and lightens ridges, as shadow and highlight layers of up
   // to @opacity and @highlightOpacity over the hillshade's signed tones. Over a
@@ -1094,21 +1200,22 @@
     // a flattened sea stays flat, rather than shading along the coast
     land = s.minElevation != null && (s.ambient > 0 || s.texture > 0) ?
       getAboveMinimumMask(elev, valid, s.minElevation) : valid;
-    if (s.ambient > 0) {
-      blendAmbientLight(shade, computeOpenness(elev, valid, w, h, grid.cellWidths,
-        grid.cellHeights, s.exaggeration, OPENNESS_RADIUS), land, s.ambient);
-    }
     if (s.aerial > 0) {
       applyAerialPerspective(shade, elev, valid, s.aerial, s.aerialRange);
     }
     tones = getHillshadeTones(shade, valid, s.style, s.toneOpts);
+    if (s.ambient > 0) {
+      applyAmbientTones(tones, computeOpenness(elev, valid, w, h, grid.cellWidths,
+        grid.cellHeights, s.exaggeration, OPENNESS_RADIUS), land, s.ambient,
+        getToneMaxOpacity(s.style, s.toneOpts));
+    }
     // after the tone curve, so max-opacity= and gamma= don't affect it
     if (s.texture > 0) {
       applyTextureTones(tones, computeTextureShading(elev, land, w, h, getRowCellSizes(grid),
         s.exaggeration, s.textureDetail, TEXTURE_MAX_SCALE), land,
         s.texture, Math.min(1, s.texture * s.textureHighlights));
     }
-    return tones;
+    return removeThinHighlights(tones, valid, w, h);
   }
 
   function getRowCellSizes(grid) {

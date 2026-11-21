@@ -2569,7 +2569,7 @@ Convert an elevation raster to shaded relief. By default, the shading is transpa
 
 `azimuth=` `altitude=`  Direction and height of the main light, in degrees (defaults are 315 and 45).
 
-`lighting=`  How the main light is supplemented by fainter lights from other directions. `hard` uses the main light alone, for the most contrast. `balanced` (the default) softens shadows by adding fill lights from multiple angles. `soft` adds still more fill light, which brightens slopes facing away from the main light for more midtones and less contrast. `gdal` imitates the multidirectional hillshade of GDAL.
+`lighting=`  How the main light is supplemented by fainter lights from other directions. `hard` uses the main light alone, for the most contrast. `balanced` (the default) softens shadows by adding fill lights from multiple angles. `soft` adds still more fill light, which brightens slopes facing away from the main light for more midtones and less contrast.
 
 `exaggeration=`  Vertical exaggeration (default depends on the map scale).
 
@@ -2581,7 +2581,7 @@ Convert an elevation raster to shaded relief. By default, the shading is transpa
 
 `aerial=`  Aerial perspective: reduce contrast at low elevations, 0-1 (default is 0).
 
-`max-opacity=` `highlights=`  For transparent shading, opacity of the darkest shadows (default is 0.55), and of the brightest highlights relative to it (default is 0.5).
+`max-opacity=` `highlights=`  For transparent shading, opacity of the darkest shadows (default is 0.55), and of the brightest highlights relative to it (default is 1).
 
 `shadow-color=` `highlight-color=` `base-color=`  Colors of shadows, highlights and (with `opaque`) flat ground; `base-color=` implies `opaque`.
 

@@ -56672,7 +56672,7 @@ ${css.join('\n')}
         type: 'number'
       })
       .option('lighting', {
-        describe: 'fill lights around the main light: balanced (default), hard, soft or gdal'
+        describe: 'fill lights around the main light: balanced (default), hard or soft'
       })
       .option('exaggeration', {
         describe: 'vertical exaggeration (default depends on the map scale)',
@@ -56753,14 +56753,14 @@ ${css.join('\n')}
         type: 'number'
       })
       .option('base-color', {
-        describe: 'color of flat ground, for opaque shading (default is #dfdfdf); implies opaque'
+        describe: 'color of flat ground, for opaque shading (default is #d7d7d7); implies opaque'
       })
       .option('max-opacity', {
         describe: 'opacity of the darkest shadows, if not opaque; 0-1 (default is 0.55)',
         type: 'number'
       })
       .option('highlights', {
-        describe: 'opacity of the brightest highlights, relative to max-opacity (default is 0.5)',
+        describe: 'opacity of the brightest highlights, relative to max-opacity (default is 1)',
         type: 'number'
       })
       .option('shadow-color', {
@@ -91763,7 +91763,22 @@ ${css.join('\n')}
   var DEFAULT_ALTITUDE = 45;
   var DEFAULT_MAX_OPACITY = 0.55;
   var DEFAULT_GAMMA = 0.7;
-  var DEFAULT_HIGHLIGHT_RATIO = 0.5;
+  var DEFAULT_HIGHLIGHT_RATIO = 1;
+  // Where the shadow style's tone curve puts flat ground, as a share of the
+  // lightness from full shadow to the brightest highlight (see getToneCurves()).
+  // Fixed, so that highlights= and max-opacity= scale the tones without
+  // changing the curve's shape.
+  var SHADOW_STYLE_BASE_POSITION = 2 / 3;
+  // ambient= darkening per unit of weight, as a share of the max opacity;
+  // chosen so that the default keeps about the valley shadows of the earlier
+  // version, which darkened the shading instead of the tones
+  var AMBIENT_TONE_SCALE = 2;
+  // How much more ambient= takes from highlights than from shadows and flat
+  // ground, as if sky light were a larger share of the light. A highlight spans
+  // less shading per unit of opacity than a shadow, so 1 takes about 2.4 times
+  // less light from sunlit slopes than from shaded ones; about 2.4 takes the same
+  // amount, which grays out sunlit valleys.
+  var AMBIENT_HIGHLIGHT_FACTOR = 1.8;
 
   var DEFAULT_LIGHTING = 'balanced';
 
@@ -91776,15 +91791,8 @@ ${css.join('\n')}
     hard: [[0, 1]],
     // balanced, plus faint lights on slopes facing away from the main light,
     // for more midtones and less contrast
-    soft: [[-135, 0.05], [-90, 0.1], [-45, 0.2], [0, 0.3], [45, 0.2], [90, 0.1], [135, 0.05]],
-    // GDAL's -multidirectional (after Mark 1992), whose lights are at 225, 270,
-    // 315 and 360 degrees; weighted per pixel (see ASPECT_WEIGHTED)
-    gdal: [[-90, 1], [-45, 1], [0, 1], [45, 1]]
+    soft: [[-135, 0.05], [-90, 0.1], [-45, 0.2], [0, 0.3], [45, 0.2], [90, 0.1], [135, 0.05]]
   };
-
-  // Schemes whose lights are weighted at each pixel by cos^2 of the angle
-  // between the light and the direction the slope faces, as in GDAL
-  var ASPECT_WEIGHTED = {gdal: true};
 
   function getLightingSchemeNames() {
     return Object.keys(LIGHTING_SCHEMES);
@@ -91800,11 +91808,8 @@ ${css.join('\n')}
     var alt = altitude == null ? DEFAULT_ALTITUDE : altitude;
     var name = lighting || DEFAULT_LIGHTING;
     var lights = parseLighting(name);
-    var aspectWeighted = ASPECT_WEIGHTED[name] === true;
     return lights ? lights.map(function(o) {
-      var light = {azimuth: az + o[0], altitude: o.length > 2 ? o[2] : alt, weight: o[1]};
-      if (aspectWeighted) light.aspectWeighted = true;
-      return light;
+      return {azimuth: az + o[0], altitude: o.length > 2 ? o[2] : alt, weight: o[1]};
     }) : null;
   }
 
@@ -91825,15 +91830,57 @@ ${css.join('\n')}
 
   // Relief flattens out as pixels grow, so small-scale maps need more vertical
   // exaggeration to read: none at 50 m per pixel, about 4.5 at 1 km.
-  // The shade of the brightest slope, the one facing the blend of @lights
-  // (flat ground is 1): 1 / sin(altitude) for a single light. A blend lights
-  // no slope as fully as one light can, so at 45 degrees the default lights
-  // top out at about 1.21, rather than 1.41.
+  // The shade of the brightest slope, usually the one facing the blend of
+  // @lights (flat ground is 1): 1 / sin(altitude) for a single light. A blend
+  // lights no slope as fully as one light can, so at 45 degrees the default
+  // lights top out at about 1.21, rather than 1.41. When lights oppose each
+  // other, a slope turned from the blend can be brighter, because the lights it
+  // turns away from give no negative light, so the brightest slope is also
+  // searched for.
   function getHillshadeMaxShade(lights) {
+    return Math.max(getBlendedMaxShade(lights), getSearchedMaxShade(lights));
+  }
+
+  // Searches slopes and aspects in 1 degree steps, then 0.05 degree steps
+  // around the brightest
+  function getSearchedMaxShade(lights) {
+    var D = Math.PI / 180;
+    var flat = 0;
+    var prepared = lights.map(function(light) {
+      flat += light.weight * Math.sin(light.altitude * D);
+      return {
+        azimuth: light.azimuth,
+        sinAlt: Math.sin(light.altitude * D) * light.weight,
+        cosAlt: Math.cos(light.altitude * D) * light.weight
+      };
+    });
+    if (!(flat > 0)) return 1;
+    var shade = function(slope, aspect) {
+      var cs = Math.cos(slope * D), ss = Math.sin(slope * D);
+      var sum = 0, v;
+      for (var j = 0; j < prepared.length; j++) {
+        v = prepared[j].sinAlt * cs + prepared[j].cosAlt * ss * Math.cos((prepared[j].azimuth - aspect) * D);
+        if (v > 0) sum += v;
+      }
+      return sum / flat;
+    };
+    var best = {max: 1, slope: 0, aspect: 0};
+    var search = function(slope0, slope1, aspect0, aspect1, step) {
+      var slope, aspect, v;
+      for (slope = Math.max(0, slope0); slope <= Math.min(90, slope1); slope += step) {
+        for (aspect = aspect0; aspect <= aspect1; aspect += step) {
+          v = shade(slope, aspect);
+          if (v > best.max) best = {max: v, slope: slope, aspect: aspect};
+        }
+      }
+    };
+    search(0, 90, 0, 359, 1);
+    search(best.slope - 1, best.slope + 1, best.aspect - 1, best.aspect + 1, 0.05);
+    return best.max;
+  }
+
+  function getBlendedMaxShade(lights) {
     var vec = [0, 0, 0], flat = 0, len, sum = 0;
-    if (lights.length > 0 && lights[0].aspectWeighted) {
-      return getAspectWeightedMaxShade(lights);
-    }
     var dirs = lights.map(function(light) {
       var alt = light.altitude * Math.PI / 180;
       var az = (360 - light.azimuth + 90) * Math.PI / 180;
@@ -91851,35 +91898,6 @@ ${css.join('\n')}
       sum += Math.max(0, (dir[0] * vec[0] + dir[1] * vec[1] + dir[2] * vec[2]) / len) * lights[i].weight;
     });
     return Math.max(1, sum / flat);
-  }
-
-  // Aspect weighting has no closed form for the brightest slope, so this
-  // searches slopes in 0.5 degree steps and aspects in 1 degree steps
-  function getAspectWeightedMaxShade(lights) {
-    var D = Math.PI / 180;
-    var flat = 0, total = 0, max = 1;
-    var slope, aspect, cs, ss, sum, wsum, ca, w, v, j;
-    lights.forEach(function(light) {
-      flat += light.weight * Math.sin(light.altitude * D);
-      total += light.weight;
-    });
-    for (slope = 0.5; slope < 90; slope += 0.5) {
-      cs = Math.cos(slope * D);
-      ss = Math.sin(slope * D);
-      for (aspect = 0; aspect < 360; aspect++) {
-        sum = 0;
-        wsum = 0;
-        for (j = 0; j < lights.length; j++) {
-          ca = Math.cos((lights[j].azimuth - aspect) * D);
-          w = lights[j].weight * ca * ca;
-          v = Math.sin(lights[j].altitude * D) * cs + Math.cos(lights[j].altitude * D) * ss * ca;
-          if (v > 0) sum += w * v;
-          wsum += w;
-        }
-        if (wsum > 0) max = Math.max(max, sum / wsum / (flat / total));
-      }
-    }
-    return max;
   }
 
   // Rounded to a multiple of 0.25, so that the printed value is easy to read
@@ -91933,27 +91951,23 @@ ${css.join('\n')}
   function computeHillshade(elev, valid, width, height, cellWidths, cellHeights, lights, exaggeration, azimuthOffsets) {
     var out = new Float32Array(width * height);
     var zf = exaggeration > 0 ? exaggeration : 1;
-    var flat = 0, totalWeight = 0;
-    var aspectWeighted = lights.length > 0 && !!lights[0].aspectWeighted;
+    var flat = 0;
     var prepared = lights.map(function(light) {
       var zenith = (90 - light.altitude) * Math.PI / 180;
       // mathematical angle of the direction the light comes from
       var az = (360 - light.azimuth + 90) * Math.PI / 180;
       flat += light.weight * Math.cos(zenith);
-      totalWeight += light.weight;
       return {
-        weight: light.weight,
         cosZ: Math.cos(zenith) * light.weight,
         sinZ: Math.sin(zenith) * light.weight,
         cosAz: Math.cos(az),
         sinAz: Math.sin(az)
       };
     });
-    var flatPerWeight = flat / totalWeight;
     var n = prepared.length;
     var y, x, i, ym, yp, xm, xp, c, a, b, cc, d, f, g, h, k;
     var dzdx, dzdy, slope2, cosSlope, sinSlope, aspectCos, aspectSin, mag, sum, p, j;
-    var cd, sd, rc, ca, w, wsum;
+    var cd, sd, rc;
     for (y = 0; y < height; y++) {
       ym = (y > 0 ? y - 1 : 0) * width;
       yp = (y < height - 1 ? y + 1 : y) * width;
@@ -91993,22 +92007,6 @@ ${css.join('\n')}
           aspectSin = aspectSin * cd + aspectCos * sd;
           aspectCos = rc;
         }
-        // on flat ground every light gives the same shade, so the weights
-        // don't matter
-        if (aspectWeighted && mag > 0) {
-          wsum = 0;
-          for (j = 0; j < n; j++) {
-            p = prepared[j];
-            ca = p.cosAz * aspectCos + p.sinAz * aspectSin;
-            w = ca * ca;
-            // p.cosZ and p.sinZ include the light's weight
-            var vw = p.cosZ * cosSlope + p.sinZ * sinSlope * ca;
-            if (vw > 0) sum += w * vw;
-            wsum += w * p.weight;
-          }
-          out[i] = wsum > 0 ? sum / wsum / flatPerWeight : 0;
-          continue;
-        }
         for (j = 0; j < n; j++) {
           p = prepared[j];
           // cos(az - aspect) = cos(az)cos(aspect) + sin(az)sin(aspect)
@@ -92046,41 +92044,94 @@ ${css.join('\n')}
     return DEFAULT_HIGHLIGHT_RATIO;
   }
 
-  // Applies the tone curve to shading. Tones are signed opacities: negative for
-  // shadows, positive for highlights, 0 on flat ground. They follow a power
-  // curve: tone = t ^ gamma, where t is 0 on flat ground and 1 in full shadow
-  // (or, for highlights, on a slope facing the light). Gamma below 1
-  // strengthens faint shading and eases off the extremes.
+  // Opacity of the darkest shadows, as getHillshadeTones() uses it
+  function getToneMaxOpacity(style, opts) {
+    var o = opts || {};
+    if (style == 'opaque') return 1;
+    return o.maxOpacity >= 0 ? Math.min(1, o.maxOpacity) : getDefaultMaxOpacity(style);
+  }
+
+  // Applies the tone curve to shading (see getToneCurves()). Tones are signed
+  // opacities: negative for shadows, positive for highlights, 0 on flat ground.
   // @style 'shadow' or 'opaque'; opaque tones run from -1 to 1, the ends of the
   //   color ramp, and ignore the opacities
   // @opts.maxOpacity 0-1, opacity of the darkest shadows
   // @opts.highlightRatio opacity of the brightest highlights, as a fraction of
   //   maxOpacity; the result is capped at 1
-  // @opts.gamma exponent of the tone curve
+  // @opts.gamma steepness of the tone curve at flat ground
   // @opts.maxShade shade of the brightest slope, which gets the full highlight
   //   (see getHillshadeMaxShade()); without it there are no highlights
+  // @opts.basePosition for the opaque style: where the base color is on the
+  //   ramp, as a share of its lightness (see getHillshadeBasePosition())
   function getHillshadeTones(shade, valid, style, opts) {
     var o = opts || {};
     var n = shade.length;
     var tones = new Float32Array(n);
     var opaque = style == 'opaque';
-    var maxOpacity = opaque ? 1 : o.maxOpacity >= 0 ? Math.min(1, o.maxOpacity) : getDefaultMaxOpacity(style);
+    var maxOpacity = getToneMaxOpacity(style, o);
     var ratio = opaque ? 1 : o.highlightRatio >= 0 ? o.highlightRatio : getDefaultHighlightRatio();
     var maxHighlight = Math.min(1, maxOpacity * ratio);
     var gamma = o.gamma > 0 ? o.gamma : DEFAULT_GAMMA;
     var litRange = o.maxShade > 1 ? o.maxShade - 1 : 0;
-    var curve = getToneCurve(gamma);
+    var curves = getToneCurves(o.maxShade > 1 ? o.maxShade : 1, gamma,
+      opaque ? o.basePosition : SHADOW_STYLE_BASE_POSITION);
+    var shadowCurve = curves.shadow;
+    var highlightCurve = curves.highlight;
     var i, s;
     for (i = 0; i < n; i++) {
       if (valid && !valid[i]) continue;
       s = shade[i];
       if (s < 1) {
-        tones[i] = -curve(1 - s) * maxOpacity;
+        tones[i] = -shadowCurve(1 - s) * maxOpacity;
       } else if (s > 1 && litRange > 0) {
-        tones[i] = curve((s - 1) / litRange) * maxHighlight;
+        tones[i] = highlightCurve((s - 1) / litRange) * maxHighlight;
       }
     }
     return tones;
+  }
+
+  // The tone curve: lightness is a cubic spline of the angle between a slope and
+  // the brightest slope, falling from the highlight color at 0 degrees to the
+  // base color on flat ground to the shadow color at 90 degrees, with flat ends.
+  // Lightness changes at the same rate on both sides of flat ground, so the edge
+  // between highlights and shadows is soft, where a curve that starts steeply
+  // at flat ground concentrates contrast there in a visible ring. That rate is the average rate (the whole lightness range over 90 degrees)
+  // divided by gamma, so gamma 1 is even, and lower gammas give more contrast to
+  // gentle slopes. The rate is capped where the spline would stop falling
+  // steadily.
+  // @maxShade see getHillshadeMaxShade()
+  // @basePosition 0-1, lightness of flat ground, as a share of the range from
+  //   the darkest shadow to the brightest highlight (default 0.8)
+  // Returns {shadow, highlight}: functions of the inputs of getHillshadeTones()'
+  //   curves, 1 - shade and (shade - 1) / (maxShade - 1)
+  function getToneCurves(maxShade, gamma, basePosition) {
+    var b = basePosition >= 0 ? Math.min(0.95, Math.max(0.05, basePosition)) : 0.8;
+    var flatAngle = Math.acos(1 / maxShade) * 180 / Math.PI;
+    var rate = 1 / 90 / gamma;
+    if (flatAngle > 0) rate = Math.min(rate, 3 * (1 - b) / flatAngle);
+    rate = Math.min(rate, 3 * b / (90 - flatAngle));
+    var lightness = function(s) {
+      var deg = Math.acos(Math.min(1, s / maxShade)) * 180 / Math.PI;
+      if (deg >= 90) return 0;
+      return deg < flatAngle ?
+        getHermiteValue(deg / flatAngle, 1, 0, b, -rate * flatAngle) :
+        getHermiteValue((deg - flatAngle) / (90 - flatAngle), b, -rate * (90 - flatAngle), 0, 0);
+    };
+    return {
+      shadow: getTabulatedCurve(function(d) {
+        return Math.max(0, (b - lightness(1 - d)) / b);
+      }),
+      highlight: getTabulatedCurve(function(t) {
+        return Math.max(0, (lightness(1 + t * (maxShade - 1)) - b) / (1 - b));
+      })
+    };
+  }
+
+  // Cubic Hermite interpolation at @t (0-1) between values @y0 and @y1, with
+  // slopes @m0 and @m1 per unit of @t
+  function getHermiteValue(t, y0, m0, y1, m1) {
+    var t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * y0 + (t3 - 2 * t2 + t) * m0 + (-2 * t3 + 3 * t2) * y1 + (t3 - t2) * m1;
   }
 
   // @tones from getHillshadeTones(), clamped to the -1 to 1 range
@@ -92132,13 +92183,13 @@ ${css.join('\n')}
     return v < 0 ? 0 : v > 1 ? 1 : v;
   }
 
-  // Returns a function mapping 0-1 to 0-1. The curve is tabulated because
-  // Math.pow() for every pixel is slow.
-  function getToneCurve(gamma) {
+  // Returns a function mapping 0-1 to 0-1. Curves are tabulated because
+  // computing them for every pixel is slow.
+  function getTabulatedCurve(f) {
     var steps = 1024;
     var table = new Float32Array(steps + 1);
     for (var i = 0; i <= steps; i++) {
-      table[i] = Math.pow(i / steps, gamma);
+      table[i] = f(i / steps);
     }
     return function(d) {
       var x = (d > 1 ? 1 : d) * steps;
@@ -92309,17 +92360,33 @@ ${css.join('\n')}
     return steps;
   }
 
-  // Darkens directional shading where the sky is hidden: @weight 0 is
-  // directional only, 1 scales shading by openness. Openness is 1 on flat ground
-  // and on planar slopes, so these keep their shading; valleys darken and
-  // ridges brighten. Blending the two additively instead would halve
-  // directional contrast everywhere, including highlights.
-  function blendAmbientLight(shade, openness, valid, weight) {
-    for (var i = 0; i < shade.length; i++) {
+  // Darkens tones where the sky is hidden, as a shadow layer of opacity
+  // @weight * AMBIENT_TONE_SCALE * @maxOpacity * (1 - openness). Openness is 1
+  // on flat ground and on planar slopes, so these are left alone; valleys
+  // darken, and ridges (openness above 1) lighten. Applied to tones rather than
+  // to shading, because highlights span a much narrower range of shading than
+  // shadows: darkening the shading took most of the highlights from sunlit
+  // slopes in valleys, and darkened shaded slopes much less.
+  // Over a shadow this is exact compositing. A highlight is reduced
+  // AMBIENT_HIGHLIGHT_FACTOR times as fast, and any darkening left once it is
+  // gone becomes a shadow. Ridges are lightened as in applyTextureTones().
+  function applyAmbientTones(tones, openness, valid, weight, maxOpacity) {
+    var scale = weight * AMBIENT_TONE_SCALE * maxOpacity;
+    var h = AMBIENT_HIGHLIGHT_FACTOR;
+    var a, t;
+    for (var i = 0; i < tones.length; i++) {
       if (valid && !valid[i]) continue;
-      shade[i] *= 1 - weight * (1 - openness[i]);
+      a = scale * (1 - openness[i]);
+      t = tones[i];
+      if (a > 0 && t > 0) {
+        tones[i] = t >= a * h ? t - a * h : t / h - a;
+      } else if (a > 0) {
+        tones[i] = t - a * (1 + t);
+      } else {
+        tones[i] = t - a * (1 - Math.max(t, 0));
+      }
     }
-    return shade;
+    return tones;
   }
 
   // Aerial perspective, as in Swiss manual relief shading: contrast falls with
@@ -92391,6 +92458,51 @@ ${css.join('\n')}
   // brings typical relief (France at zoom 7) to about 1 at the 98th percentile
   var TEXTURE_SCALE = 0.125;
 
+  // Removes bright lines one pixel wide from signed tones, in place: a
+  // morphological opening with a 2x2 square (each pixel gets the brightest of
+  // the darkest values of the four 2x2 squares that contain it). Crest pixels
+  // otherwise come out brighter than both faces of a ridge, which reads as a
+  // knife edge: the 3x3 gradient of computeHillshade() blends the faces into a
+  // slope closer to the brightest one, and ambient= lightens the crest and
+  // darkens the pixels below it. Features two or more pixels wide and edges
+  // between light and dark areas are unchanged, and no pixel gets brighter.
+  // Invalid pixels and pixels outside the grid are ignored.
+  function removeThinHighlights(tones, valid, width, height) {
+    var n = width * height;
+    var lows = new Float32Array(n);
+    var x, y, i, v, m;
+    for (y = 0; y < height; y++) {
+      for (x = 0; x < width; x++) {
+        i = y * width + x;
+        m = Infinity;
+        if (!valid || valid[i]) m = tones[i];
+        if (x + 1 < width && (!valid || valid[i + 1]) && tones[i + 1] < m) m = tones[i + 1];
+        if (y + 1 < height) {
+          if ((!valid || valid[i + width]) && tones[i + width] < m) m = tones[i + width];
+          if (x + 1 < width && (!valid || valid[i + width + 1]) && tones[i + width + 1] < m) m = tones[i + width + 1];
+        }
+        lows[i] = m;
+      }
+    }
+    for (y = 0; y < height; y++) {
+      for (x = 0; x < width; x++) {
+        i = y * width + x;
+        if (valid && !valid[i]) continue;
+        m = lows[i];
+        if (x > 0 && (v = lows[i - 1]) > m) m = v;
+        if (y > 0) {
+          if ((v = lows[i - width]) > m) m = v;
+          if (x > 0 && (v = lows[i - width - 1]) > m) m = v;
+        }
+        tones[i] = m;
+      }
+    }
+    return tones;
+  }
+
+  // How far, in pixels, values travel in removeThinHighlights()
+  var THIN_HIGHLIGHT_REACH = 1;
+
   // Darkens drainages and lightens ridges, as shadow and highlight layers of up
   // to @opacity and @highlightOpacity over the hillshade's signed tones. Over a
   // tone of the same sign this is exact compositing; over the opposite tone it
@@ -92438,9 +92550,10 @@ ${css.join('\n')}
     DEFAULT_LIGHTING: DEFAULT_LIGHTING,
     DEFAULT_MAX_OPACITY: DEFAULT_MAX_OPACITY,
     FITTED_MEDIAN_SLOPE: FITTED_MEDIAN_SLOPE,
+    THIN_HIGHLIGHT_REACH: THIN_HIGHLIGHT_REACH,
     applyAerialPerspective: applyAerialPerspective,
+    applyAmbientTones: applyAmbientTones,
     applyTextureTones: applyTextureTones,
-    blendAmbientLight: blendAmbientLight,
     computeHillshade: computeHillshade,
     computeLightAdjustment: computeLightAdjustment,
     computeOpenness: computeOpenness,
@@ -92457,8 +92570,10 @@ ${css.join('\n')}
     getLightingSchemeNames: getLightingSchemeNames,
     getOpennessReach: getOpennessReach,
     getTextureShadingReach: getTextureShadingReach,
+    getToneMaxOpacity: getToneMaxOpacity,
     isOpaqueHillshade: isOpaqueHillshade,
     raiseLowElevations: raiseLowElevations,
+    removeThinHighlights: removeThinHighlights,
     renderHillshadeRgba: renderHillshadeRgba,
     restoreLowElevations: restoreLowElevations,
     writeHillshadeRgba: writeHillshadeRgba
@@ -93087,21 +93202,22 @@ ${css.join('\n')}
     // a flattened sea stays flat, rather than shading along the coast
     land = s.minElevation != null && (s.ambient > 0 || s.texture > 0) ?
       getAboveMinimumMask(elev, valid, s.minElevation) : valid;
-    if (s.ambient > 0) {
-      blendAmbientLight(shade, computeOpenness(elev, valid, w, h, grid.cellWidths,
-        grid.cellHeights, s.exaggeration, OPENNESS_RADIUS), land, s.ambient);
-    }
     if (s.aerial > 0) {
       applyAerialPerspective(shade, elev, valid, s.aerial, s.aerialRange);
     }
     tones = getHillshadeTones(shade, valid, s.style, s.toneOpts);
+    if (s.ambient > 0) {
+      applyAmbientTones(tones, computeOpenness(elev, valid, w, h, grid.cellWidths,
+        grid.cellHeights, s.exaggeration, OPENNESS_RADIUS), land, s.ambient,
+        getToneMaxOpacity(s.style, s.toneOpts));
+    }
     // after the tone curve, so max-opacity= and gamma= don't affect it
     if (s.texture > 0) {
       applyTextureTones(tones, computeTextureShading(elev, land, w, h, getRowCellSizes(grid),
         s.exaggeration, s.textureDetail, TEXTURE_MAX_SCALE), land,
         s.texture, Math.min(1, s.texture * s.textureHighlights));
     }
-    return tones;
+    return removeThinHighlights(tones, valid, w, h);
   }
 
   function getShadingReach(s) {
@@ -93115,7 +93231,7 @@ ${css.join('\n')}
     if (s.texture > 0) {
       reach = Math.max(reach, getTextureShadingReach(TEXTURE_MAX_SCALE));
     }
-    return reach + REACH_MARGIN;
+    return reach + THIN_HIGHLIGHT_REACH + REACH_MARGIN;
   }
 
   function getRowCellSizes(grid) {
@@ -94056,14 +94172,17 @@ ${css.join('\n')}
   // following 1 / getHillshadeMaxShade() so that altitude= and lighting= don't
   // change the colors.)
   var HILLSHADE_BASE_WEIGHT = 0.8;
-  var DEFAULT_HILLSHADE_BASE = {r: 223, g: 223, b: 223};
+  // The default colors: the shadow color that #dfdfdf gets, with a darker base
+  // for more highlight headroom (75% of the way to white)
+  var DEFAULT_HILLSHADE_SHADOW = {r: 104, g: 104, b: 104};
+  var DEFAULT_HILLSHADE_BASE = {r: 215, g: 215, b: 215};
   var DEFAULT_HILLSHADE_HIGHLIGHT = {r: 255, g: 255, b: 255};
 
   // The three colors of opaque shading. The highlight color defaults to white.
   // A missing base color is HILLSHADE_BASE_WEIGHT of the way from the shadow
-  // color to the highlight color, or #dfdfdf if the shadow color is missing
+  // color to the highlight color, or #d7d7d7 if the shadow color is missing
   // too. A missing shadow color is extrapolated from the base and highlight
-  // colors (see getDerivedShadowColor()).
+  // colors (see getDerivedShadowColor()), or #686868 if all three are missing.
   // @shadow, @base, @highlight {r, g, b} or null
   // Returns {shadow, base, highlight}, as {r, g, b} objects
   function getHillshadeRampColors(shadow, base, highlight) {
@@ -94071,8 +94190,18 @@ ${css.join('\n')}
     var mid = base ? toRgb(base) : shadow ?
       parseColor(getOklchInterpolator(formatRgb(shadow), formatRgb(light))(HILLSHADE_BASE_WEIGHT).color) :
       toRgb(DEFAULT_HILLSHADE_BASE);
-    var dark = shadow ? toRgb(shadow) : getDerivedShadowColor(mid, light);
+    var dark = shadow ? toRgb(shadow) : !base && !highlight ? toRgb(DEFAULT_HILLSHADE_SHADOW) :
+      getDerivedShadowColor(mid, light);
     return {shadow: dark, base: mid, highlight: light};
+  }
+
+  // Where the base color is on the ramp from the shadow color to the highlight
+  // color, as a share of their difference in lightness (0.5 if they don't differ)
+  // @stops from getHillshadeRampColors()
+  function getHillshadeBasePosition(stops) {
+    var dark = rgbToOklab(stops.shadow).l;
+    var range = rgbToOklab(stops.highlight).l - dark;
+    return range > 0 ? (rgbToOklab(stops.base).l - dark) / range : 0.5;
   }
 
   // The shadow color that puts @base HILLSHADE_BASE_WEIGHT of the way to
@@ -94137,6 +94266,7 @@ ${css.join('\n')}
     applyToneColorTable: applyToneColorTable,
     blendShadingPixels: blendShadingPixels,
     getContrastCenter: getContrastCenter,
+    getHillshadeBasePosition: getHillshadeBasePosition,
     getHillshadeColorRamp: getHillshadeColorRamp,
     getHillshadeRampColors: getHillshadeRampColors,
     getImageLightnessPercentiles: getImageLightnessPercentiles,
@@ -94335,7 +94465,8 @@ ${css.join('\n')}
       maxOpacity: opts.max_opacity >= 0 ? opts.max_opacity : getDefaultMaxOpacity(style),
       highlightRatio: opts.highlights >= 0 ? opts.highlights : getDefaultHighlightRatio(),
       gamma: opts.gamma > 0 ? opts.gamma : DEFAULT_GAMMA,
-      maxShade: getHillshadeMaxShade(lights)
+      maxShade: getHillshadeMaxShade(lights),
+      basePosition: stops ? getHillshadeBasePosition(stops) : null
     };
     hasMin = opts.min_elevation != null;
     valid = getRasterValidityMask(grid);
@@ -101268,6 +101399,12 @@ ${css.join('\n')}
         colors.highlight = readColor(params.highlight_color) || WHITE;
       }
       amounts = decodeShadowStyleShading(pixels, colors.shadow, colors.highlight);
+    } else if (hillshade && params.shadow_color && params.highlight_color && (baseColor || params.base_color)) {
+      amounts = decodeOpaqueHillshadeShading(pixels, {
+        shadow: readColor(params.shadow_color),
+        base: baseColor || readColor(params.base_color),
+        highlight: readColor(params.highlight_color)
+      });
     } else {
       base = baseColor || (hillshade ? readColor(params.base_color) : null);
       if (!base) {
@@ -101463,6 +101600,48 @@ ${css.join('\n')}
     return amounts;
   }
 
+  // The shading of an opaque hillshade made by -hillshade, on the scale of a
+  // transparent hillshade with default opacities, so that both styles blend
+  // alike. Read through the colors of its ramp: a pixel's tone is how far its
+  // lightness is from the base color's toward the shadow or highlight color's
+  // (lightness changes evenly along each half of the ramp, see
+  // getHillshadeColorRamp()). Read like decodeOpaqueShading() instead, the
+  // brightest highlights would be opaque white.
+  // @stops {shadow, base, highlight} as {r, g, b}
+  function decodeOpaqueHillshadeShading(pixels, stops) {
+    var n = pixels.length / 4;
+    var amounts = new Float32Array(n);
+    var cache = new Map();
+    var ls = getLightness(stops.shadow.r, stops.shadow.g, stops.shadow.b);
+    var lb = getLightness(stops.base.r, stops.base.g, stops.base.b);
+    var lh = getLightness(stops.highlight.r, stops.highlight.g, stops.highlight.b);
+    var maxShadow = DEFAULT_MAX_OPACITY;
+    var maxHighlight = Math.min(1, DEFAULT_MAX_OPACITY * DEFAULT_HIGHLIGHT_RATIO);
+    var i, j, key, a, l;
+    for (i = 0, j = 0; i < n; i++, j += 4) {
+      if (pixels[j + 3] === 0) continue;
+      key = pixels[j] << 16 | pixels[j + 1] << 8 | pixels[j + 2];
+      a = cache.get(key);
+      if (a === undefined) {
+        l = getLightness(pixels[j], pixels[j + 1], pixels[j + 2]);
+        if (l < lb) {
+          a = lb > ls ? -Math.min(1, (lb - l) / (lb - ls)) * maxShadow : 0;
+        } else {
+          a = lh > lb ? Math.min(1, (l - lb) / (lh - lb)) * maxHighlight : 0;
+        }
+        cache.set(key, a);
+      }
+      amounts[i] = a;
+    }
+    return amounts;
+  }
+
+  function getLightness(r, g, b) {
+    var lc = [0, 0];
+    getOklchLightnessChroma(r, g, b, lc);
+    return lc[0];
+  }
+
   // The sRGB value (0-1) of the gray with a color's OKLab lightness
   function getGrayValue(r, g, b) {
     var lc = [0, 0];
@@ -101551,6 +101730,7 @@ ${css.join('\n')}
 
   var RasterBlend = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    decodeOpaqueHillshadeShading: decodeOpaqueHillshadeShading,
     decodeOpaqueShading: decodeOpaqueShading,
     decodeShadowStyleShading: decodeShadowStyleShading,
     getShadingAmounts: getShadingAmounts,
@@ -114954,7 +115134,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.8.6";
+  var version = "0.8.7";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
