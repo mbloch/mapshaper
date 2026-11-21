@@ -17,6 +17,12 @@ export var DEFAULT_HIGHLIGHT_RATIO = 0.5;
 // chosen so that the default keeps about the valley shadows of the earlier
 // version, which darkened the shading instead of the tones
 var AMBIENT_TONE_SCALE = 2;
+// How much more ambient= takes from highlights than from shadows and flat
+// ground, as if sky light were a larger share of the light. A highlight spans
+// less shading per unit of opacity than a shadow, so 1 takes about 2.4 times
+// less light from sunlit slopes than from shaded ones; about 2.4 takes the same
+// amount, which grays out sunlit valleys.
+var AMBIENT_HIGHLIGHT_FACTOR = 1.8;
 
 export var DEFAULT_LIGHTING = 'balanced';
 
@@ -576,16 +582,24 @@ function getOpennessSteps(radius) {
 // to shading, because highlights span a much narrower range of shading than
 // shadows: darkening the shading took most of the highlights from sunlit
 // slopes in valleys, and darkened shaded slopes much less.
-// Over a tone of the same sign this is exact compositing; over the opposite
-// tone it cancels that tone first (as in applyTextureTones()).
+// Over a shadow this is exact compositing. A highlight is reduced
+// AMBIENT_HIGHLIGHT_FACTOR times as fast, and any darkening left once it is
+// gone becomes a shadow. Ridges are lightened as in applyTextureTones().
 export function applyAmbientTones(tones, openness, valid, weight, maxOpacity) {
   var scale = weight * AMBIENT_TONE_SCALE * maxOpacity;
+  var h = AMBIENT_HIGHLIGHT_FACTOR;
   var a, t;
   for (var i = 0; i < tones.length; i++) {
     if (valid && !valid[i]) continue;
     a = scale * (1 - openness[i]);
     t = tones[i];
-    tones[i] = a > 0 ? t - a * (1 + Math.min(t, 0)) : t - a * (1 - Math.max(t, 0));
+    if (a > 0 && t > 0) {
+      tones[i] = t >= a * h ? t - a * h : t / h - a;
+    } else if (a > 0) {
+      tones[i] = t - a * (1 + t);
+    } else {
+      tones[i] = t - a * (1 - Math.max(t, 0));
+    }
   }
   return tones;
 }

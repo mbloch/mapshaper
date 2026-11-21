@@ -649,14 +649,15 @@ describe('mapshaper-hillshade.mjs', function () {
       // weight 0.5 and max opacity 0.5 give a shadow layer of opacity 0.5 * (1 - openness)
       var tones = new Float32Array([-0.2, 0.3, 0.3, -0.4, -0.1]);
       internal.applyAmbientTones(tones, new Float32Array([1, 1, 0.5, 0.5, 1.2]), null, 0.5, 0.5);
+      // the highlight at 0.3 takes 1.8 * 0.25, which overruns it by 0.15 (0.083 as a shadow)
       assert.deepEqual(Array.from(tones).map(function(v) { return +v.toFixed(3); }),
-        [-0.2, 0.3, 0.05, -0.55, 0]);
+        [-0.2, 0.3, -0.083, -0.55, 0]);
     })
 
-    it('leaves a sunlit slope in a valley some of its highlight', function () {
-      var tones = new Float32Array([0.25]);
-      internal.applyAmbientTones(tones, new Float32Array([0.8]), null, 0.5, 0.55);
-      assert(tones[0] > 0.1);
+    it('darkens highlights 1.8 times as much as flat ground, leaving bright ones a highlight', function () {
+      var tones = new Float32Array([0.4, 0]);
+      internal.applyAmbientTones(tones, new Float32Array([0.8, 0.8]), null, 0.5, 0.55);
+      assert.deepEqual(Array.from(tones).map(function(v) { return +v.toFixed(3); }), [0.202, -0.11]);
     })
   })
 

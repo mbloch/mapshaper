@@ -768,18 +768,24 @@ good values are known.
   contrast rescaled), but that differs little from the multiplicative form,
   since sunlit slopes are at most about 1.21 times as bright as flat ground;
   it mostly darkens shaded slopes more. Darkening the tones instead
-  takes a similar amount of opacity from highlights and shadows. With the
-  scale of 2, the default gives about the same coverage of dark shadows as
-  the earlier version and two to three times its highlights (opaque,
-  `base-color=#aaa`; share of pixels at least 25 levels above the base, and
-  70 levels below it):
+  takes opacity from highlights and shadows alike. With the scale of 2, the
+  default gives about the same coverage of dark shadows as the earlier
+  version and two to three times its highlights. That left sunlit floors and
+  walls of valleys looking too bright, so highlights are now reduced 1.8
+  times as fast (`AMBIENT_HIGHLIGHT_FACTOR`), as if sky light were a larger
+  share of the light. A highlight spans less shading per unit of opacity than
+  a shadow, so a factor of 1 takes about 2.4 times less light from sunlit
+  slopes than from shaded ones, and about 2.4 takes the same amount, which
+  grays out sunlit valleys again. 1.6 and 2.4 were also rendered; the factor
+  leaves shaded slopes and open ground unchanged. Opaque, `base-color=#aaa`;
+  share of pixels at least 25 levels above the base, and 70 levels below it:
 
-  | Scene | no ambient | earlier | tones |
-  |---|---|---|---|
-  | Hood (3DEP 1 m) | 31% / 22% | 20% / 27% | 27% / 29% |
-  | Zion (Mapterhorn) | 24% / 18% | 12% / 25% | 19% / 27% |
-  | Grand Canyon (Tilezen) | 24% / 16% | 9% / 23% | 19% / 24% |
-  | Denali (Mapterhorn) | 20% / 17% | 8% / 22% | 15% / 24% |
+  | Scene | no ambient | earlier | tones, factor 1 | tones, factor 1.8 |
+  |---|---|---|---|---|
+  | Hood (3DEP 1 m) | 31% / 22% | 20% / 27% | 27% / 29% | 24% / 29% |
+  | Zion (Mapterhorn) | 24% / 18% | 12% / 25% | 19% / 27% | 15% / 28% |
+  | Grand Canyon (Tilezen) | 24% / 16% | 9% / 23% | 19% / 24% | 13% / 24% |
+  | Denali (Mapterhorn) | 20% / 17% | 8% / 22% | 15% / 24% | 11% / 25% |
 
   Narrow drainages get crisper dark lines than before, a little like
   `texture=`, where the earlier version put a gray haze over whole valleys.
