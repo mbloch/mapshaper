@@ -13,6 +13,10 @@ export var DEFAULT_ALTITUDE = 45;
 export var DEFAULT_MAX_OPACITY = 0.55;
 export var DEFAULT_GAMMA = 0.7;
 export var DEFAULT_HIGHLIGHT_RATIO = 0.5;
+// ambient= darkening per unit of weight, as a share of the max opacity;
+// chosen so that the default keeps about the valley shadows of the earlier
+// version, which darkened the shading instead of the tones
+var AMBIENT_TONE_SCALE = 2;
 
 export var DEFAULT_LIGHTING = 'balanced';
 
@@ -295,6 +299,13 @@ export function getDefaultHighlightRatio() {
   return DEFAULT_HIGHLIGHT_RATIO;
 }
 
+// Opacity of the darkest shadows, as getHillshadeTones() uses it
+export function getToneMaxOpacity(style, opts) {
+  var o = opts || {};
+  if (style == 'opaque') return 1;
+  return o.maxOpacity >= 0 ? Math.min(1, o.maxOpacity) : getDefaultMaxOpacity(style);
+}
+
 // Applies the tone curve to shading. Tones are signed opacities: negative for
 // shadows, positive for highlights, 0 on flat ground. They follow a power
 // curve: tone = t ^ gamma, where t is 0 on flat ground and 1 in full shadow
@@ -313,7 +324,7 @@ export function getHillshadeTones(shade, valid, style, opts) {
   var n = shade.length;
   var tones = new Float32Array(n);
   var opaque = style == 'opaque';
-  var maxOpacity = opaque ? 1 : o.maxOpacity >= 0 ? Math.min(1, o.maxOpacity) : getDefaultMaxOpacity(style);
+  var maxOpacity = getToneMaxOpacity(style, o);
   var ratio = opaque ? 1 : o.highlightRatio >= 0 ? o.highlightRatio : getDefaultHighlightRatio();
   var maxHighlight = Math.min(1, maxOpacity * ratio);
   var gamma = o.gamma > 0 ? o.gamma : DEFAULT_GAMMA;
@@ -558,17 +569,25 @@ function getOpennessSteps(radius) {
   return steps;
 }
 
-// Darkens directional shading where the sky is hidden: @weight 0 is
-// directional only, 1 scales shading by openness. Openness is 1 on flat ground
-// and on planar slopes, so these keep their shading; valleys darken and
-// ridges brighten. Blending the two additively instead would halve
-// directional contrast everywhere, including highlights.
-export function blendAmbientLight(shade, openness, valid, weight) {
-  for (var i = 0; i < shade.length; i++) {
+// Darkens tones where the sky is hidden, as a shadow layer of opacity
+// @weight * AMBIENT_TONE_SCALE * @maxOpacity * (1 - openness). Openness is 1
+// on flat ground and on planar slopes, so these are left alone; valleys
+// darken, and ridges (openness above 1) lighten. Applied to tones rather than
+// to shading, because highlights span a much narrower range of shading than
+// shadows: darkening the shading took most of the highlights from sunlit
+// slopes in valleys, and darkened shaded slopes much less.
+// Over a tone of the same sign this is exact compositing; over the opposite
+// tone it cancels that tone first (as in applyTextureTones()).
+export function applyAmbientTones(tones, openness, valid, weight, maxOpacity) {
+  var scale = weight * AMBIENT_TONE_SCALE * maxOpacity;
+  var a, t;
+  for (var i = 0; i < tones.length; i++) {
     if (valid && !valid[i]) continue;
-    shade[i] *= 1 - weight * (1 - openness[i]);
+    a = scale * (1 - openness[i]);
+    t = tones[i];
+    tones[i] = a > 0 ? t - a * (1 + Math.min(t, 0)) : t - a * (1 - Math.max(t, 0));
   }
-  return shade;
+  return tones;
 }
 
 // Aerial perspective, as in Swiss manual relief shading: contrast falls with

@@ -644,11 +644,19 @@ describe('mapshaper-hillshade.mjs', function () {
     })
   })
 
-  describe('blendAmbientLight()', function () {
-    it('darkens shading where the sky is hidden, and leaves open ground alone', function () {
-      var shade = new Float32Array([0.2, 1.2, 1.2, 0.8]);
-      internal.blendAmbientLight(shade, new Float32Array([1, 1, 0.5, 1.2]), null, 0.5);
-      assert.deepEqual(Array.from(shade).map(function(v) { return +v.toFixed(3); }), [0.2, 1.2, 0.9, 0.88]);
+  describe('applyAmbientTones()', function () {
+    it('darkens tones where the sky is hidden, and leaves open ground alone', function () {
+      // weight 0.5 and max opacity 0.5 give a shadow layer of opacity 0.5 * (1 - openness)
+      var tones = new Float32Array([-0.2, 0.3, 0.3, -0.4, -0.1]);
+      internal.applyAmbientTones(tones, new Float32Array([1, 1, 0.5, 0.5, 1.2]), null, 0.5, 0.5);
+      assert.deepEqual(Array.from(tones).map(function(v) { return +v.toFixed(3); }),
+        [-0.2, 0.3, 0.05, -0.55, 0]);
+    })
+
+    it('leaves a sunlit slope in a valley some of its highlight', function () {
+      var tones = new Float32Array([0.25]);
+      internal.applyAmbientTones(tones, new Float32Array([0.8]), null, 0.5, 0.55);
+      assert(tones[0] > 0.1);
     })
   })
 

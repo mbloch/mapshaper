@@ -561,9 +561,10 @@ map units are assumed to be meters, with a warning.
    by the center value, so shading stops cleanly at nodata.
 5. Accumulate weighted Lambertian shading for each light, normalized by the
    value of flat ground.
-6. Optionally blend in ambient light (`ambient=`) and apply aerial perspective
-   (`aerial=`).
-7. Write RGBA (`uint8`). Invalid pixels are transparent.
+6. Optionally apply aerial perspective (`aerial=`).
+7. Apply the tone curve, then optionally darken where the sky is hidden
+   (`ambient=`) and add texture shading (`texture=`).
+8. Write RGBA (`uint8`). Invalid pixels are transparent.
 
 The output is a 4-band RGBA image (`interpretation: 'image'`, display scaling
 `none`), which uses the raster renderer's fast 8-bit path and keeps
@@ -747,12 +748,43 @@ good values are known.
   turning either way is equally valid, so the turn fades to 0 there to keep
   neighboring pixels consistent. Works best with `lighting=hard`, since the
   multi-light schemes already reduce the problem.
-- `ambient=w` darkens shading where the sky is hidden, with weight `w` (0-1):
-  `shade = shade * (1 - w * (1 - openness))`, where openness is
+- `ambient=w` darkens tones where the sky is hidden, with weight `w` (0-1),
+  as a shadow layer of opacity `2 * w * max-opacity * (1 - openness)` over
+  the tones (`applyAmbientTones()`; opaque shading uses 1 for max-opacity),
+  where openness is
   `1 - mean(sin(horizon angle))` over 8 directions within about 24 pixels.
   Openness is 1 on flat ground and on planar slopes (uphill and downhill
   horizons cancel), below 1 in valleys and above 1 on ridges, so deep valleys
-  darken and crests brighten. The first version blended additively,
+  darken and crests brighten.
+
+  Until this version, `ambient=` darkened the shading before the tone curve,
+  `shade = shade * (1 - w * (1 - openness))`. That treated sunlight as if
+  the terrain blocked it too, and it took most of the highlights from sunlit
+  slopes in valleys: highlights span only the shading from flat ground (1) to
+  the brightest slope (about 1.21), so a loss of 0.1 is half their range,
+  while shadows span 0 to 1. Physically, a hidden part of the sky takes the
+  same amount of light from a slope however much sun the slope gets, i.e.
+  `shade - w * (1 - openness)` (sky and direct light added, with directional
+  contrast rescaled), but that differs little from the multiplicative form,
+  since sunlit slopes are at most about 1.21 times as bright as flat ground;
+  it mostly darkens shaded slopes more. Darkening the tones instead
+  takes a similar amount of opacity from highlights and shadows. With the
+  scale of 2, the default gives about the same coverage of dark shadows as
+  the earlier version and two to three times its highlights (opaque,
+  `base-color=#aaa`; share of pixels at least 25 levels above the base, and
+  70 levels below it):
+
+  | Scene | no ambient | earlier | tones |
+  |---|---|---|---|
+  | Hood (3DEP 1 m) | 31% / 22% | 20% / 27% | 27% / 29% |
+  | Zion (Mapterhorn) | 24% / 18% | 12% / 25% | 19% / 27% |
+  | Grand Canyon (Tilezen) | 24% / 16% | 9% / 23% | 19% / 24% |
+  | Denali (Mapterhorn) | 20% / 17% | 8% / 22% | 15% / 24% |
+
+  Narrow drainages get crisper dark lines than before, a little like
+  `texture=`, where the earlier version put a gray haze over whole valleys.
+
+  Before the multiplicative form, the first version blended additively,
   `(1 - w) * shade + w * openness`, which pulls every pixel toward flat
   brightness: at `w=0.5` it halved directional contrast everywhere, cutting
   highlight coverage in the Alps (France, zoom 7) from 7.8% to 1.1% and
@@ -789,7 +821,7 @@ good values are known.
   needs no FFT and reuses the nodata-aware box blur. `texture-detail=` is α
   (default 0.5); higher values favor smaller landforms. Compared with
   ambient, it carves the whole valley hierarchy. Alps (France, zoom 7), with
-  default ambient: 14.8% shadow and 2.9% highlight; adding `texture=0.5`
+  default ambient (the earlier, multiplicative version): 14.8% shadow and 2.9% highlight; adding `texture=0.5`
   gives 19.8% and 2.7%; `texture=0.5 max-opacity=0.3` gives 13.9% and 1.4%;
   the texture alone (`max-opacity=0`) is 6.9% shadow.
   - Brown's scales are unbounded, so a plain ringed by mountains reads as a

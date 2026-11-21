@@ -1,7 +1,7 @@
 import {
   applyAerialPerspective,
+  applyAmbientTones,
   applyTextureTones,
-  blendAmbientLight,
   computeHillshade,
   computeLightAdjustment,
   computeOpenness,
@@ -10,6 +10,7 @@ import {
   getLightAdjustmentReach,
   getOpennessReach,
   getTextureShadingReach,
+  getToneMaxOpacity,
   restoreLowElevations
 } from './mapshaper-hillshade';
 import {
@@ -113,14 +114,15 @@ export function shadeTerrain(grid, s) {
   // a flattened sea stays flat, rather than shading along the coast
   land = s.minElevation != null && (s.ambient > 0 || s.texture > 0) ?
     getAboveMinimumMask(elev, valid, s.minElevation) : valid;
-  if (s.ambient > 0) {
-    blendAmbientLight(shade, computeOpenness(elev, valid, w, h, grid.cellWidths,
-      grid.cellHeights, s.exaggeration, OPENNESS_RADIUS), land, s.ambient);
-  }
   if (s.aerial > 0) {
     applyAerialPerspective(shade, elev, valid, s.aerial, s.aerialRange);
   }
   tones = getHillshadeTones(shade, valid, s.style, s.toneOpts);
+  if (s.ambient > 0) {
+    applyAmbientTones(tones, computeOpenness(elev, valid, w, h, grid.cellWidths,
+      grid.cellHeights, s.exaggeration, OPENNESS_RADIUS), land, s.ambient,
+      getToneMaxOpacity(s.style, s.toneOpts));
+  }
   // after the tone curve, so max-opacity= and gamma= don't affect it
   if (s.texture > 0) {
     applyTextureTones(tones, computeTextureShading(elev, land, w, h, getRowCellSizes(grid),
