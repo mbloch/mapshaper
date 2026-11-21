@@ -1,6 +1,6 @@
 {
   "name": "mapshaper",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "description": "A tool for editing geospatial data for mapping and GIS.",
   "keywords": [
     "shapefile",
