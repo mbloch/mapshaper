@@ -80,6 +80,7 @@ import '../commands/mapshaper-help';
 import '../commands/mapshaper-blend';
 import '../commands/mapshaper-deshadow';
 import '../commands/mapshaper-hillshade';
+import '../commands/mapshaper-smooth-terrain';
 import '../commands/mapshaper-tone';
 import { skipCommand } from '../commands/mapshaper-if-elif-else-endif';
 import '../commands/mapshaper-ignore';
@@ -152,7 +153,7 @@ function commandRunsPerTargetDataset(name, opts) {
     'filter-islands2', 'filter-points', 'filter-slivers', 'grid', 'grid2',
     'fuzzy-join', 'hillshade', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
     'lines', 'mosaic', 'points', 'polygons', 'rectangles', 'rename-fields',
-    'repel', 'shapes', 'sharpen', 'simplify', 'slice', 'smooth', 'sort', 'split',
+    'repel', 'shapes', 'sharpen', 'simplify', 'slice', 'smooth', 'smooth-terrain', 'sort', 'split',
     'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'tone', 'uniq'
   ].indexOf(name) > -1;
 }
@@ -398,6 +399,13 @@ export async function runCommand(command, job) {
       outputLayers = [];
       for (let lyr of targetLayers) {
         outputLayers = outputLayers.concat(await cmd.hillshade(lyr, targetDataset, opts, job.resumeCommand));
+      }
+      job.resumeCommand();
+
+    } else if (name == 'smooth-terrain') {
+      outputLayers = [];
+      for (let lyr of targetLayers) {
+        outputLayers = outputLayers.concat(await cmd.smoothTerrain(lyr, targetDataset, opts, job.resumeCommand));
       }
       job.resumeCommand();
 

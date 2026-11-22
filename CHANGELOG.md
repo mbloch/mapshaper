@@ -1,4 +1,7 @@
 v0.8.8
+* New -smooth-terrain command, which generalizes an elevation raster the way -hillshade `smoothing=` does, for making contours or tints from the same terrain as a hillshade.
+* -hillshade no longer smooths terrain by default. Use `smoothing=1` for the previous default.
+* The experimental FPS settings (`fps-*=`, `maximum-change=`) moved from -hillshade to -smooth-terrain.
 * -hillshade `exaggeration=` no longer changes how much detail terrain smoothing keeps. Previously, higher exaggeration smoothed less.
 
 v0.8.7

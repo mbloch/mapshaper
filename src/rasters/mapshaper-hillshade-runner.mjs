@@ -57,6 +57,24 @@ export function getHillshadeWorkerCount(requested, pixels) {
   return n > 1 ? n : 0;
 }
 
+// Runs only the smoothing stage (for -smooth-terrain)
+// Returns {elev, thresholds, workers}
+export async function runSmoothingStage(grid, smoothing, opts) {
+  var maxWorkers = getHillshadeWorkerCount(opts.workers, grid.width * grid.height);
+  var tiles = getTileLayout(grid.width, grid.height, maxWorkers, getSmoothingReach(smoothing), true);
+  var pool = maxWorkers > 0 ? await startWorkerPool(HILLSHADE_WORKER_SCRIPT, tiles.length) : null;
+  var resume = opts.resume || function() {};
+  var smoothed;
+  resume();
+  try {
+    smoothed = await runStage(pool, 'smooth', grid, smoothing, tiles, ['elev', 'thresholds']);
+    resume();
+  } finally {
+    if (pool) pool.close();
+  }
+  return {elev: smoothed.elev, thresholds: smoothed.thresholds, workers: pool ? pool.size : 0};
+}
+
 // @keys the arrays of the stage's result, which are assembled from the cores
 //   of the tiles (a null array in the result stays null)
 async function runStage(pool, stage, grid, settings, tiles, keys) {

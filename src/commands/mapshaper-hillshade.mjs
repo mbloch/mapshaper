@@ -19,159 +19,15 @@ import {
   raiseLowElevations
 } from '../rasters/mapshaper-hillshade';
 import { runHillshadeStages } from '../rasters/mapshaper-hillshade-runner';
+import { formatThresholdRange, getSmoothingSettings, parseSmoothingLevel } from '../rasters/mapshaper-terrain-smoothing-options';
 import { formatVerticalUnits, getVerticalUnitMeters } from '../rasters/mapshaper-vertical-units';
 import { formatColor, parseColor } from '../color/color-utils';
 import { getHillshadeBasePosition, getHillshadeColorRamp, getHillshadeRampColors } from '../rasters/mapshaper-raster-color';
 import { runningInBrowser } from '../mapshaper-env';
 import { message, stop, verbose, warnOnce } from '../utils/mapshaper-logging';
-// Smoothing levels 1-4 (smoothing=0 is off). Each uses dynamic smoothing:
-// the FPS threshold rises from DEFAULT_FPS_MIN_THRESHOLD in flat terrain to
-// the preset's threshold on steep slopes, by slopeFactor degrees per degree of
-// mean slope. More passes don't generalize much more: beyond three or four, FPS
-// facets slopes instead of removing small landforms.
-var FPS_PRESETS = {
-  1: {rounds: 1, threshold: 10, radius: 3, levels: 1, slopeFactor: 0.6},
-  2: {rounds: 2, threshold: 15, radius: 4, levels: 1, slopeFactor: 1},
-  3: {rounds: 3, threshold: 20, radius: 6, levels: 1, slopeFactor: 1.4},
-  4: {rounds: 3, threshold: 25, radius: 8, levels: 1, slopeFactor: 1.9}
-};
-var DEFAULT_SMOOTHING = 1;
-// the full-resolution pass of two-level smoothing (fps-levels=2)
-var FPS_REFINEMENT = {rounds: 1, threshold: 20, radius: 4};
-// dynamic smoothing
-var DEFAULT_FPS_MIN_THRESHOLD = 1;
-var DEFAULT_FPS_SLOPE_FACTOR = 1;
-var DEFAULT_FPS_SLOPE_RADIUS = 10;
-var DEFAULT_FPS_BLEND = [5, 15];
-// spread-based dynamic smoothing (fps-spread=)
-var DEFAULT_FPS_SPREAD_RADIUS = 3;
 var METERS_PER_DEGREE = 6371008.8 * Math.PI / 180;
 var DEFAULT_AMBIENT = 0.5;
 var DEFAULT_TEXTURE_DETAIL = 0.5;
-
-// Returns a smoothing level, from 0 (off) to 4
-function getSmoothingLevel(opts) {
-  var str = opts.smoothing == null ? String(DEFAULT_SMOOTHING) : String(opts.smoothing).toLowerCase();
-  var level;
-  if (str == 'off') str = '0';
-  if (!/^[0-4]$/.test(str)) {
-    stop('smoothing= should be a level from 0 (off) to 4');
-  }
-  level = Number(str);
-  // fps-passes=0 or fps-threshold=0 turns smoothing off, like smoothing=0
-  if (opts.fps_passes === 0 || opts.fps_threshold === 0) {
-    return 0;
-  }
-  if (level === 0 && (opts.fps_passes != null || opts.fps_radius != null ||
-      opts.fps_threshold != null || opts.fps_levels != null || opts.maximum_change != null ||
-      opts.fps_min_threshold != null || opts.fps_slope_factor != null ||
-      opts.fps_slope_radius != null || opts.fps_blend != null || opts.fps_spread != null ||
-      opts.fps_spread_radius != null)) {
-    stop('FPS settings do not apply with smoothing=0');
-  }
-  if (opts.fps_spread != null && (opts.fps_slope_factor != null || opts.fps_slope_radius != null)) {
-    stop('fps-slope-factor= and fps-slope-radius= do not apply with fps-spread=');
-  }
-  if (opts.fps_spread_radius != null && opts.fps_spread == null) {
-    stop('fps-spread-radius= needs fps-spread=');
-  }
-  return level;
-}
-
-// Settings for smoothTerrain(), or null for no smoothing
-// Smoothing uses the automatic exaggeration even when exaggeration= is given,
-// so that exaggeration= styles the shading without changing how much detail
-// smoothing keeps (FPS thresholds are angles on the exaggerated surface).
-// @metersPerPixel median ground size of a pixel
-// @minElevation: min-elevation= in meters, or null
-export function getSmoothingSettings(level, opts, metersPerPixel, minElevation) {
-  if (level === 0) return null;
-  return {
-    fps: getFpsOptions(level, opts),
-    refinement: FPS_REFINEMENT,
-    exaggeration: getAutoExaggeration(metersPerPixel),
-    minElevation: minElevation
-  };
-}
-
-// e.g. "2.1 (10th percentile), 3.4 (median), 11.3 (90th percentile) degrees"
-function formatThresholdRange(thresholds, valid) {
-  var stride = Math.max(1, Math.floor(thresholds.length / 100000));
-  var values = [];
-  for (var i = 0; i < thresholds.length; i += stride) {
-    if (!valid || valid[i]) values.push(thresholds[i]);
-  }
-  if (values.length === 0) return 'none';
-  values.sort(function(a, b) { return a - b; });
-  return [[0.1, '10th percentile'], [0.5, 'median'], [0.9, '90th percentile']].map(function(o) {
-    return values[Math.floor(o[0] * (values.length - 1))].toFixed(1) + ' (' + o[1] + ')';
-  }).join(', ') + ' degrees';
-}
-
-// A minimum threshold equal to the threshold gives a fixed threshold, without
-// dynamic smoothing
-function getFpsOptions(level, opts) {
-  var preset = FPS_PRESETS[level];
-  var levels = opts.fps_levels || preset.levels;
-  var threshold = opts.fps_threshold || preset.threshold;
-  var spread = opts.fps_spread > 0;
-  var minThreshold = opts.fps_min_threshold > 0 ? opts.fps_min_threshold :
-    Math.min(DEFAULT_FPS_MIN_THRESHOLD, threshold);
-  var dynamic = minThreshold < threshold;
-  var slopeFactor = opts.fps_slope_factor >= 0 ? opts.fps_slope_factor :
-    preset.slopeFactor >= 0 ? preset.slopeFactor : DEFAULT_FPS_SLOPE_FACTOR;
-  if (minThreshold > threshold) {
-    stop('fps-min-threshold= should not be larger than the FPS threshold (' + threshold + ' degrees)');
-  }
-  if (opts.fps_blend != null && levels != 2) {
-    stop('fps-blend= applies to two-level smoothing (fps-levels=2)');
-  }
-  return {
-    rounds: opts.fps_passes || preset.rounds,
-    radius: opts.fps_radius || preset.radius,
-    threshold: threshold,
-    maxChange: opts.maximum_change || null,
-    levels: levels,
-    minThreshold: dynamic ? minThreshold : null,
-    spread: dynamic && spread ? opts.fps_spread : null,
-    spreadRadius: dynamic && spread ? (opts.fps_spread_radius > 0 ? opts.fps_spread_radius : DEFAULT_FPS_SPREAD_RADIUS) : null,
-    slopeFactor: dynamic && !spread ? slopeFactor : null,
-    slopeRadius: dynamic && !spread ? (opts.fps_slope_radius >= 0 ? opts.fps_slope_radius : DEFAULT_FPS_SLOPE_RADIUS) : null,
-    blendRange: dynamic && levels == 2 ? parseFpsBlend(opts.fps_blend) : null
-  };
-}
-
-// Returns [lo, hi] in degrees, or null for off
-function parseFpsBlend(str) {
-  var range;
-  if (str == null) return DEFAULT_FPS_BLEND.concat();
-  if (String(str).toLowerCase() == 'off') return null;
-  range = String(str).split(',').map(Number);
-  if (range.length != 2 || !(range[0] >= 0 && range[1] >= range[0] && range[1] < 90)) {
-    stop('fps-blend= takes two angles, low to high (e.g. 5,15), or off');
-  }
-  return range;
-}
-
-function getSmoothingParams(level, opts) {
-  var fps = level > 0 ? getFpsOptions(level, opts) : null;
-  var dynamic = fps && fps.minThreshold > 0;
-  return {
-    smoothing: level,
-    fps_levels: fps ? fps.levels : null,
-    fps_passes: fps ? fps.rounds : null,
-    fps_radius: fps ? fps.radius : null,
-    fps_threshold: fps ? fps.threshold : null,
-    // the threshold itself, for a fixed threshold
-    fps_min_threshold: dynamic ? fps.minThreshold : fps ? fps.threshold : null,
-    fps_spread: dynamic ? fps.spread : null,
-    fps_spread_radius: dynamic ? fps.spreadRadius : null,
-    fps_slope_factor: dynamic ? fps.slopeFactor : null,
-    fps_slope_radius: dynamic ? fps.slopeRadius : null,
-    fps_blend: dynamic && fps.levels == 2 ? (fps.blendRange ? fps.blendRange.join(',') : 'off') : null,
-    maximum_change: fps ? fps.maxChange : null
-  };
-}
 
 // Returns a new layer; -hillshade replaces the target unless + is used
 // @resume optional function to call after each wait for workers
@@ -187,7 +43,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
   validateHillshadeGrid(grid, opts);
   band = getRasterGridBandIndex(grid, opts.band);
   style = getHillshadeStyle(opts);
-  smoothing = getSmoothingLevel(opts);
+  smoothing = opts.smoothing == null ? 0 : parseSmoothingLevel(opts.smoothing, 'smoothing=', 0);
   altitude = opts.altitude >= 0 ? opts.altitude : DEFAULT_ALTITUDE;
   if (altitude > 90) stop('altitude= should be from 0 to 90 degrees');
   colors = {
@@ -221,11 +77,8 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
   };
   hasMin = opts.min_elevation != null;
   valid = getRasterValidityMask(grid);
-  // In pixel coordinates, the ratio of a DEM's values to its pixel size is
-  // unknown, whatever units the values are in, so the ratio is fitted instead.
-  unitMeters = cells.unknown ?
-    getFittedElevationScale(lyr, grid, band, valid, cells) :
-    getElevationUnitMeters(grid);
+  unitMeters = getElevationScale(lyr, grid, band, valid, cells,
+    'its relief was scaled to a typical steepness', 'To adjust it, use exaggeration=. To shade it to scale');
   // min-elevation= is in the raster's own units, like the values -info shows
   minElevation = hasMin ? opts.min_elevation * unitMeters : null;
   params = Object.assign({opaque: style == 'opaque', azimuth: azimuth, altitude: altitude,
@@ -237,8 +90,8 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     shadow_color: stops ? opts.shadow_color || formatColor(stops.shadow) : opts.shadow_color || null,
     highlight_color: stops ? opts.highlight_color || formatColor(stops.highlight) : opts.highlight_color || null,
     base_color: stops ? opts.base_color || formatColor(stops.base) : null,
-    min_elevation: hasMin ? opts.min_elevation : null},
-  getSmoothingParams(smoothing, opts), {
+    min_elevation: hasMin ? opts.min_elevation : null,
+    smoothing: smoothing,
     light_adjust: opts.light_adjust || 0, ambient: ambient,
     texture: opts.texture || 0,
     texture_detail: opts.texture > 0 ? opts.texture_detail || DEFAULT_TEXTURE_DETAIL : null,
@@ -263,7 +116,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     height: grid.height,
     cellWidths: cells.widths,
     cellHeights: cells.heights
-  }, getSmoothingSettings(smoothing, opts, cells.median, minElevation), {
+  }, getSmoothingSettings(smoothing, {}, cells.median, minElevation), {
     lights: lights,
     azimuth: azimuth,
     exaggeration: exaggeration,
@@ -337,30 +190,6 @@ function validateHillshadeGrid(grid, opts) {
   if (opts.light_adjust != null && !(opts.light_adjust >= 0 && opts.light_adjust <= 60)) {
     stop('light-adjust= should be from 0 to 60 degrees');
   }
-  if (opts.fps_threshold != null && !(opts.fps_threshold >= 0 && opts.fps_threshold < 90)) {
-    stop('fps-threshold= should be an angle from 0 (off) to 90 degrees');
-  }
-  if (opts.fps_min_threshold != null && !(opts.fps_min_threshold > 0 && opts.fps_min_threshold < 90)) {
-    stop('fps-min-threshold= should be an angle between 0 and 90 degrees');
-  }
-  if (opts.fps_slope_factor != null && !(opts.fps_slope_factor >= 0 && opts.fps_slope_factor <= 20)) {
-    stop('fps-slope-factor= should be from 0 to 20');
-  }
-  if (opts.fps_slope_radius != null && !(opts.fps_slope_radius >= 0 && opts.fps_slope_radius <= 50)) {
-    stop('fps-slope-radius= should be from 0 to 50 pixels');
-  }
-  if (opts.fps_passes != null && !(opts.fps_passes >= 0 && opts.fps_passes <= 20)) {
-    stop('fps-passes= should be from 0 (off) to 20');
-  }
-  if (opts.fps_levels != null && opts.fps_levels != 1 && opts.fps_levels != 2) {
-    stop('fps-levels= should be 1 or 2');
-  }
-  if (opts.fps_radius != null && !(opts.fps_radius >= 1 && opts.fps_radius <= 20)) {
-    stop('fps-radius= should be from 1 to 20 pixels');
-  }
-  if (opts.maximum_change != null && !(opts.maximum_change > 0)) {
-    stop('maximum-change= should be a positive number');
-  }
   if (opts.texture_detail != null && !(opts.texture_detail > 0 && opts.texture_detail <= 2)) {
     stop('texture-detail= should be from 0 to 2');
   }
@@ -399,7 +228,7 @@ function readToneColor(str, optionName) {
 
 // Returns elevations in meters
 // @metersPerUnit: the length of the raster's vertical unit in meters
-function readElevationBand(grid, band, metersPerUnit) {
+export function readElevationBand(grid, band, metersPerUnit) {
   var n = grid.width * grid.height;
   var out = new Float32Array(n);
   for (var i = 0, j = band; i < n; i++, j += grid.bands) {
@@ -408,15 +237,21 @@ function readElevationBand(grid, band, metersPerUnit) {
   return out;
 }
 
-// The factor that scales a DEM in pixel coordinates to a typical steepness,
-// with pixels taken to be 1 m across
-function getFittedElevationScale(lyr, grid, band, valid, cells) {
-  var raw = readElevationBand(grid, band, 1);
-  var scale = getFittedVerticalScale(raw, valid, grid.width, grid.height, cells.widths, cells.heights);
+// Meters per unit of the raster's values. In pixel coordinates, the ratio of
+// a DEM's values to its pixel size is unknown, whatever units the values are
+// in, so the ratio is fitted instead, with a message.
+// @what, @advice parts of the message, e.g. 'its relief was scaled to a
+//   typical steepness', 'To shade it to scale'
+// @cells from getHillshadeCellSizes()
+export function getElevationScale(lyr, grid, band, valid, cells, what, advice) {
+  var scale;
+  if (!cells.unknown) return getElevationUnitMeters(grid);
+  // pixels are taken to be 1 m across
+  scale = getFittedVerticalScale(readElevationBand(grid, band, 1), valid, grid.width, grid.height,
+    cells.widths, cells.heights);
   message((lyr.name || 'This raster') + ' has no ground scale (it is in pixel' +
-    ' coordinates), so its relief was scaled to a typical steepness (vertical scale ' +
-    +scale.toPrecision(3) + '). To adjust it, use exaggeration=. To shade it to' +
-    ' scale, import it with pixel-size= (and vertical-units=, if not meters).');
+    ' coordinates), so ' + what + ' (vertical scale ' + +scale.toPrecision(3) + '). ' +
+    advice + ', import it with pixel-size= (and vertical-units=, if not meters).');
   return scale;
 }
 

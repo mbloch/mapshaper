@@ -118,6 +118,7 @@ mapshaper states.geojson \
 [-fetch](#-fetch)
 [-hillshade](#-hillshade)
 [-sharpen](#-sharpen)
+[-smooth-terrain](#-smooth-terrain)
 [-tone](#-tone)
 
 **Experimental**
@@ -2193,7 +2194,7 @@ Convert an elevation raster to shaded relief. By default, the shading is transpa
 
 `exaggeration=`  Vertical exaggeration (default depends on the map scale).
 
-`smoothing=`  Terrain smoothing level, from 0 (off) to 4 (default is 1). Higher levels remove larger landforms.
+`smoothing=`  Terrain smoothing level, from 0 (off) to 4 (default is 0). Smoothing removes small landforms and noise while keeping ridges and valleys sharp; higher levels remove larger landforms. Level 1 often looks a little cleaner than no smoothing, especially with high-resolution elevation data. To use the same smoothed terrain for other purposes, such as contours, use [`-smooth-terrain`](#-smooth-terrain) instead.
 
 `ambient=`  Darkening of terrain with a partial view of the sky, 0-1 (default is 0.5).
 
@@ -2227,6 +2228,26 @@ Common options: `name=` `target=` `+`
 ```bash
 # Shaded relief, lightly sharpened
 mapshaper dem.tif -hillshade -sharpen -o hillshade.png
+```
+
+### -smooth-terrain
+
+Generalize an elevation raster, as `-hillshade smoothing=` does before shading: slopes are smoothed, while ridges and valleys stay sharp. Use it to make contours or hypsometric tints from the same generalized terrain as a hillshade. The output is a float32 elevation raster. Smoothing works at the scale of the raster's pixels, so run it after [`-proj`](#-proj).
+
+`<level>` or `level=`  Smoothing level, from 1 to 4 (default is 1). Higher levels remove larger landforms; each level matches `-hillshade smoothing=`.
+
+`min-elevation=`  Leave terrain below this elevation unchanged, and out of the smoothing of the terrain around it. 0 keeps a coastline in place.
+
+`band=`  Band containing elevation values, numbered from 1 (default is 1).
+
+`verbose`  Print the settings used.
+
+Common options: `name=` `target=` `+`
+
+#### Example
+```bash
+# Contours and shaded relief from the same generalized terrain
+mapshaper dem.tif -proj EPSG:5070 -smooth-terrain 2 -hillshade + -contours target=dem interval=100 -o
 ```
 
 ### -tone

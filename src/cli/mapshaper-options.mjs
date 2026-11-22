@@ -2847,53 +2847,10 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('smoothing', {
-      describe: 'terrain smoothing level, from 0 (off) to 4 (default is 1)'
+      describe: 'terrain smoothing level, from 0 (off) to 4 (default is 0)'
     })
     .option('ambient', {
       describe: 'darkening of terrain with a partial view of the sky, 0-1 (default is 0.5)',
-      type: 'number'
-    })
-    .option('fps-passes', {
-      // describe: 'passes of feature-preserving smoothing (FPS), overriding the level (0 is off)',
-      type: 'integer'
-    })
-    .option('fps-levels', {
-      // describe: '1 or 2; if 2, run FPS on a downsampled copy, then once at full resolution',
-      type: 'integer'
-    })
-    .option('fps-threshold', {
-      // describe: 'FPS keeps slope changes sharper than this angle, on steep slopes (0 is off)',
-      type: 'number'
-    })
-    .option('fps-radius', {
-      // describe: 'FPS smoothing window radius, in pixels (overrides the level)',
-      type: 'integer'
-    })
-    .option('fps-min-threshold', {
-      // describe: 'FPS threshold in flat terrain, rising with slope to fps-threshold (default is 1)',
-      type: 'number'
-    })
-    .option('fps-slope-factor', {
-      // describe: 'threshold degrees per degree of mean slope (default depends on the level)',
-      type: 'number'
-    })
-    .option('fps-slope-radius', {
-      // describe: 'dynamic smoothing: radius for averaging slope, in pixels (default is 10)',
-      type: 'number'
-    })
-    .option('fps-blend', {
-      // describe: 'dynamic two-level smoothing: thresholds blending one level into two (default is 5,15)'
-    })
-    .option('fps-spread', {
-      // describe: '(experimental) FPS threshold as this multiple of the local spread of slope directions',
-      type: 'number'
-    })
-    .option('fps-spread-radius', {
-      // describe: '(experimental) radius for measuring the spread, in pixels (default is 3)',
-      type: 'number'
-    })
-    .option('maximum-change', {
-      // describe: 'limit how far FPS can move an elevation, in meters (off by default)',
       type: 'number'
     })
     .option('light-adjust', {
@@ -2971,6 +2928,75 @@ export function getOptionParser() {
     .option('threshold', {
       describe: 'skip differences in lightness smaller than this, 0-1 (default is 0)',
       type: 'number'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
+  parser.command('smooth-terrain')
+    .describe('generalize an elevation raster, keeping ridges and valleys sharp (like -hillshade smoothing=)')
+    .option('level', {
+      DEFAULT: true,
+      describe: 'smoothing level, from 1 to 4 (default is 1)'
+    })
+    .option('min-elevation', {
+      describe: 'leave terrain below this elevation unchanged (0 keeps the coastline in place)',
+      type: 'number'
+    })
+    .option('fps-passes', {
+      // describe: 'passes of feature-preserving smoothing (FPS), overriding the level',
+      type: 'integer'
+    })
+    .option('fps-levels', {
+      // describe: '1 or 2; if 2, run FPS on a downsampled copy, then once at full resolution',
+      type: 'integer'
+    })
+    .option('fps-threshold', {
+      // describe: 'FPS keeps slope changes sharper than this angle, on steep slopes',
+      type: 'number'
+    })
+    .option('fps-radius', {
+      // describe: 'FPS smoothing window radius, in pixels (overrides the level)',
+      type: 'integer'
+    })
+    .option('fps-min-threshold', {
+      // describe: 'FPS threshold in flat terrain, rising with slope to fps-threshold (default is 1)',
+      type: 'number'
+    })
+    .option('fps-slope-factor', {
+      // describe: 'threshold degrees per degree of mean slope (default depends on the level)',
+      type: 'number'
+    })
+    .option('fps-slope-radius', {
+      // describe: 'dynamic smoothing: radius for averaging slope, in pixels (default is 10)',
+      type: 'number'
+    })
+    .option('fps-blend', {
+      // describe: 'dynamic two-level smoothing: thresholds blending one level into two (default is 5,15)'
+    })
+    .option('fps-spread', {
+      // describe: '(experimental) FPS threshold as this multiple of the local spread of slope directions',
+      type: 'number'
+    })
+    .option('fps-spread-radius', {
+      // describe: '(experimental) radius for measuring the spread, in pixels (default is 3)',
+      type: 'number'
+    })
+    .option('maximum-change', {
+      // describe: 'limit how far FPS can move an elevation, in meters (off by default)',
+      type: 'number'
+    })
+    .option('band', {
+      describe: 'band containing elevation values (default is 1)',
+      type: 'integer'
+    })
+    .option('workers', {
+      // describe: 'number of worker threads (default depends on raster size and CPU; 0 is off)',
+      type: 'integer'
+    })
+    .option('verbose', {
+      describe: 'print the settings used',
+      type: 'flag'
     })
     .option('name', nameOpt)
     .option('target', targetOpt)

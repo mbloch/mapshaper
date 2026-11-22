@@ -926,7 +926,7 @@ describe('mapshaper-hillshade.mjs', function () {
         return Buffer.from(catalog.getLayers()[0].layer.raster.grid.samples);
       }
 
-      ['', 'smoothing=3 fps-levels=2 texture=0.5 aerial=0.4 min-elevation=0',
+      ['', 'smoothing=3 texture=0.5 aerial=0.4 min-elevation=0',
         'smoothing=4 light-adjust=20 lighting=hard opaque'].forEach(function(options) {
         it('workers give the same output as the main thread: ' + (options || 'defaults'), async function () {
           var main = await hillshadeSamples(options + ' workers=0');
@@ -1018,18 +1018,11 @@ describe('mapshaper-hillshade.mjs', function () {
       await assert.rejects(runOnDataset(dem(), '-hillshade smoothing=bogus'), /smoothing/);
     })
 
-    it('accepts FPS settings and rejects out-of-range values', async function () {
+    it('FPS settings are -smooth-terrain options, not -hillshade options', async function () {
       var dem = function() { return makeElevationDataset(20, 20, slope); };
-      var catalog = await runOnDataset(dem(), '-hillshade fps-threshold=10 fps-radius=2 maximum-change=50');
-      var d = catalog.getLayers()[0].layer.raster.derivation;
-      assert.equal(d.fps_threshold, 10);
-      assert.equal(d.fps_radius, 2);
-      assert.equal(d.maximum_change, 50);
-      await assert.rejects(runOnDataset(dem(), '-hillshade fps-threshold=90'), /fps-threshold/);
-      await assert.rejects(runOnDataset(dem(), '-hillshade fps-radius=0'), /fps-radius/);
-      await assert.rejects(runOnDataset(dem(), '-hillshade maximum-change=-5'), /maximum-change/);
-      await assert.rejects(runOnDataset(dem(), '-hillshade fps-passes=-1'), /fps-passes/);
-      await assert.rejects(runOnDataset(dem(), '-hillshade fps-threshold=-1'), /fps-threshold/);
+      for (var opt of ['fps-threshold=10', 'fps-radius=2', 'fps-passes=2', 'fps-levels=2', 'maximum-change=50']) {
+        await assert.rejects(runOnDataset(dem(), '-hillshade ' + opt), new RegExp(opt.split('=')[0]), opt);
+      }
     })
 
     describe('smoothing=', function () {
@@ -1046,17 +1039,11 @@ describe('mapshaper-hillshade.mjs', function () {
         });
       }
 
-      function presetSettings(d) {
-        return [d.fps_passes, d.fps_threshold, d.fps_radius, d.fps_levels, d.fps_min_threshold,
-          d.fps_slope_factor, d.fps_slope_radius];
-      }
-
-      it('the default is level 1: one pass of dynamic FPS', async function () {
+      it('the default is no smoothing', async function () {
         var d = await getDerivation('-hillshade');
-        assert.strictEqual(d.smoothing, 1);
-        assert.deepEqual(presetSettings(d), [1, 10, 3, 1, 1, 0.6, 10]);
+        assert.strictEqual(d.smoothing, 0);
         assert.deepEqual(getAlpha(await runOnDataset(dem(), '-hillshade')),
-          getAlpha(await runOnDataset(dem(), '-hillshade smoothing=1')));
+          getAlpha(await runOnDataset(dem(), '-hillshade smoothing=0')));
       })
 
       it('smoothing uses the automatic exaggeration, whatever exaggeration= is', async function () {
@@ -1071,10 +1058,9 @@ describe('mapshaper-hillshade.mjs', function () {
           getAlpha(await runOnDataset(presmoothed, '-hillshade smoothing=0 exaggeration=3')));
       })
 
-      it('levels set FPS passes, thresholds, radius and slope factor', async function () {
-        assert.deepEqual(presetSettings(await getDerivation('-hillshade smoothing=2')), [2, 15, 4, 1, 1, 1, 10]);
-        assert.deepEqual(presetSettings(await getDerivation('-hillshade smoothing=3')), [3, 20, 6, 1, 1, 1.4, 10]);
-        assert.deepEqual(presetSettings(await getDerivation('-hillshade smoothing=4')), [3, 25, 8, 1, 1, 1.9, 10]);
+      it('-smooth-terrain then -hillshade is the same as smoothing=', async function () {
+        assert.deepEqual(getAlpha(await runOnDataset(dem(), '-smooth-terrain 2 -hillshade')),
+          getAlpha(await runOnDataset(dem(), '-hillshade smoothing=2')));
       })
 
       describe('generalization of landforms of different sizes', function () {
@@ -1149,25 +1135,8 @@ describe('mapshaper-hillshade.mjs', function () {
         })
       })
 
-      it('FPS settings override the level', async function () {
-        var d = await getDerivation('-hillshade smoothing=3 fps-passes=2 fps-threshold=25');
-        assert.strictEqual(d.smoothing, 3);
-        assert.deepEqual(presetSettings(d), [2, 25, 6, 1, 1, 1.4, 10]);
-        assert.deepEqual(getAlpha(await runOnDataset(dem(), '-hillshade fps-passes=2 fps-threshold=15 fps-radius=4 fps-slope-factor=1')),
-          getAlpha(await runOnDataset(dem(), '-hillshade smoothing=2')));
-      })
-
-      it('fps-levels=2 turns on two-level smoothing', async function () {
-        var d = await getDerivation('-hillshade smoothing=3 fps-levels=2');
-        assert.equal(d.fps_levels, 2);
-        assert.equal(d.fps_blend, '5,15');
-        assert.notDeepEqual(getAlpha(await runOnDataset(dem(), '-hillshade smoothing=3 fps-levels=2')),
-          getAlpha(await runOnDataset(dem(), '-hillshade smoothing=3')));
-        await assert.rejects(runOnDataset(dem(), '-hillshade fps-levels=3'), /fps-levels/);
-      })
-
       it('pasting the printed settings reproduces the result', async function () {
-        var cmd = '-hillshade smoothing=3 fps-passes=2 highlight-color=#fff0b4';
+        var cmd = '-hillshade smoothing=3 highlight-color=#fff0b4';
         var first = await runOnDataset(dem(), cmd);
         var settings = internal.formatHillshadeSettings(first.getLayers()[0].layer.raster.derivation);
         var second = await runOnDataset(dem(), '-hillshade ' + settings);
@@ -1181,24 +1150,8 @@ describe('mapshaper-hillshade.mjs', function () {
         var zero = await runOnDataset(dem(), '-hillshade smoothing=0');
         var d = off.getLayers()[0].layer.raster.derivation;
         assert.strictEqual(d.smoothing, 0);
-        assert.equal(d.fps_passes, null);
-        assert.equal(d.fps_min_threshold, null);
         assert.deepEqual(getAlpha(off), getAlpha(zero));
-        assert.notDeepEqual(getAlpha(off), getAlpha(await runOnDataset(dem(), '-hillshade')));
-        assert.equal(internal.formatHillshadeSettings(d).indexOf('fps-'), -1);
-      })
-
-      it('fps-passes=0 and fps-threshold=0 are like smoothing=0', async function () {
-        var off = getAlpha(await runOnDataset(dem(), '-hillshade smoothing=0'));
-        var cmds = ['-hillshade fps-passes=0', '-hillshade fps-threshold=0',
-          '-hillshade smoothing=4 fps-passes=0 fps-radius=3'];
-        for (var cmd of cmds) {
-          var catalog = await runOnDataset(dem(), cmd);
-          var d = catalog.getLayers()[0].layer.raster.derivation;
-          assert.strictEqual(d.smoothing, 0, cmd);
-          assert.equal(d.fps_passes, null, cmd);
-          assert.deepEqual(getAlpha(catalog), off, cmd);
-        }
+        assert.notDeepEqual(getAlpha(off), getAlpha(await runOnDataset(dem(), '-hillshade smoothing=1')));
       })
 
       it('rejects other smoothing values', async function () {
@@ -1208,53 +1161,159 @@ describe('mapshaper-hillshade.mjs', function () {
         await assert.rejects(runOnDataset(dem(), '-hillshade lowpass-radius=2'), /lowpass-radius/);
       })
 
-      it('rejects FPS settings with smoothing=0', async function () {
-        await assert.rejects(runOnDataset(dem(), '-hillshade smoothing=off fps-radius=3'), /FPS settings/);
-        await assert.rejects(runOnDataset(dem(), '-hillshade smoothing=0 fps-slope-factor=1'), /FPS settings/);
+      it('generalize= is no longer an option', async function () {
+        await assert.rejects(runOnDataset(dem(), '-hillshade generalize=2'), /generalize/);
+      })
+    })
+
+    describe('-smooth-terrain', function () {
+      var dem = function() {
+        return makeElevationDataset(20, 20, function(x, y) { return 50 * Math.sin(x / 2) + y * 5; });
+      };
+      async function getLayer(cmd, ds) {
+        return (await runOnDataset(ds || dem(), cmd)).getLayers()[0].layer;
+      }
+      async function getSettings(cmd) {
+        return (await getLayer(cmd)).raster.derivation.terrain_smoothing;
+      }
+      async function getElevation(cmd, ds) {
+        return Array.from((await getLayer(cmd, ds)).raster.grid.samples);
+      }
+      function presetSettings(d) {
+        return [d.fps_passes, d.fps_threshold, d.fps_radius, d.fps_levels, d.fps_min_threshold,
+          d.fps_slope_factor, d.fps_slope_radius];
+      }
+
+      it('smooths like -hillshade smoothing=, into a float32 elevation layer', async function () {
+        var lyr = await getLayer('-smooth-terrain 2');
+        var src = dem().layers[0].raster.grid.samples;
+        assert.equal(lyr.name, 'dem');
+        assert.equal(lyr.raster.grid.pixelType, 'float32');
+        assert(lyr.raster.grid.samples instanceof Float32Array);
+        assert.notDeepEqual(Array.from(lyr.raster.grid.samples), Array.from(src));
+        assert.strictEqual(lyr.raster.interpretation, 'continuous');
+        assert.equal(lyr.raster.derivation.type, 'gray');
+      })
+
+      it('+ keeps the original layer', async function () {
+        var catalog = await runOnDataset(dem(), '-smooth-terrain + name=smoothed');
+        assert.deepEqual(catalog.getLayers().map(function(o) { return o.layer.name; }), ['dem', 'smoothed']);
+      })
+
+      it('the default is level 1: one pass of dynamic FPS', async function () {
+        var d = await getSettings('-smooth-terrain');
+        assert.strictEqual(d.level, 1);
+        assert.deepEqual(presetSettings(d), [1, 10, 3, 1, 1, 0.6, 10]);
+        assert.deepEqual(await getElevation('-smooth-terrain'), await getElevation('-smooth-terrain 1'));
+      })
+
+      it('levels set FPS passes, thresholds, radius and slope factor', async function () {
+        assert.deepEqual(presetSettings(await getSettings('-smooth-terrain 2')), [2, 15, 4, 1, 1, 1, 10]);
+        assert.deepEqual(presetSettings(await getSettings('-smooth-terrain level=3')), [3, 20, 6, 1, 1, 1.4, 10]);
+        assert.deepEqual(presetSettings(await getSettings('-smooth-terrain 4')), [3, 25, 8, 1, 1, 1.9, 10]);
+      })
+
+      it('rejects levels other than 1-4', async function () {
+        for (var val of ['0', 'off', '5', '1.5', 'high']) {
+          await assert.rejects(runOnDataset(dem(), '-smooth-terrain ' + val), /smoothing level/, val);
+        }
+      })
+
+      it('rejects images', async function () {
+        var ds = dem();
+        ds.layers[0].raster.interpretation = 'image';
+        await assert.rejects(runOnDataset(ds, '-smooth-terrain'), /elevation raster/);
+      })
+
+      it('min-elevation= leaves terrain below it unchanged', async function () {
+        function coast(x) { return x < 10 ? -100 - x * 100 : 200 + (x - 10) * 10 + 30 * Math.sin(x); }
+        var ds = function() { return makeElevationDataset(20, 20, coast); };
+        var src = Array.from(ds().layers[0].raster.grid.samples);
+        var out = await getElevation('-smooth-terrain 3 min-elevation=0', ds());
+        out.forEach(function(v, i) {
+          if (src[i] < 0) assert.equal(v, src[i]);
+        });
+        assert.notDeepEqual(out, src);
+        assert.strictEqual((await getLayer('-smooth-terrain min-elevation=0', ds())).raster.derivation.terrain_smoothing.min_elevation, 0);
+      })
+
+      it('FPS settings override the level', async function () {
+        var d = await getSettings('-smooth-terrain 3 fps-passes=2 fps-threshold=25');
+        assert.strictEqual(d.level, 3);
+        assert.deepEqual(presetSettings(d), [2, 25, 6, 1, 1, 1.4, 10]);
+        assert.deepEqual(await getElevation('-smooth-terrain fps-passes=2 fps-threshold=15 fps-radius=4 fps-slope-factor=1'),
+          await getElevation('-smooth-terrain 2'));
+      })
+
+      it('accepts FPS settings and rejects out-of-range values', async function () {
+        var d = await getSettings('-smooth-terrain fps-threshold=10 fps-radius=2 maximum-change=50');
+        assert.equal(d.fps_threshold, 10);
+        assert.equal(d.fps_radius, 2);
+        assert.equal(d.maximum_change, 50);
+        for (var opt of ['fps-threshold=90', 'fps-threshold=0', 'fps-radius=0', 'maximum-change=-5',
+            'fps-passes=0', 'fps-levels=3', 'workers=-1']) {
+          await assert.rejects(runOnDataset(dem(), '-smooth-terrain ' + opt), new RegExp(opt.split('=')[0]), opt);
+        }
+      })
+
+      it('fps-levels=2 turns on two-level smoothing', async function () {
+        var d = await getSettings('-smooth-terrain 3 fps-levels=2');
+        assert.equal(d.fps_levels, 2);
+        assert.equal(d.fps_blend, '5,15');
+        assert.notDeepEqual(await getElevation('-smooth-terrain 3 fps-levels=2'), await getElevation('-smooth-terrain 3'));
       })
 
       it('dynamic smoothing changes gentle terrain more than steep terrain', async function () {
         var gentle = function() {
           return makeElevationDataset(20, 20, function(x, y) { return 2 * Math.sin(x / 2) + y * 0.5; });
         };
-        // fps-min-threshold= equal to fps-threshold= fixes the threshold
-        assert.notDeepEqual(getAlpha(await runOnDataset(gentle(), '-hillshade')),
-          getAlpha(await runOnDataset(gentle(), '-hillshade fps-min-threshold=10')));
         var steep = function() {
           return makeElevationDataset(20, 20, function(x, y) { return 200 * Math.sin(x / 2) + y * 20; });
         };
-        assert.deepEqual(getAlpha(await runOnDataset(steep(), '-hillshade')),
-          getAlpha(await runOnDataset(steep(), '-hillshade fps-min-threshold=10')));
+        async function maxDifference(ds) {
+          // fps-min-threshold= equal to fps-threshold= fixes the threshold
+          var a = await getElevation('-smooth-terrain', ds());
+          var b = await getElevation('-smooth-terrain fps-min-threshold=10', ds());
+          return Math.max.apply(null, a.map(function(v, i) { return Math.abs(v - b[i]); }));
+        }
+        var g = await maxDifference(gentle), s = await maxDifference(steep);
+        assert(g > 0.01 && s < 0.001, g + ', ' + s);
       })
 
       it('a fixed threshold is recorded as fps-min-threshold= equal to fps-threshold=', async function () {
-        var d = await getDerivation('-hillshade smoothing=2 fps-min-threshold=15');
+        var d = await getSettings('-smooth-terrain 2 fps-min-threshold=15');
         assert.deepEqual(presetSettings(d), [2, 15, 4, 1, 15, null, null]);
-        d = await getDerivation('-hillshade fps-threshold=0.5');
+        d = await getSettings('-smooth-terrain fps-threshold=0.5');
         assert.deepEqual([d.fps_threshold, d.fps_min_threshold], [0.5, 0.5]);
       })
 
-      it('dynamic smoothing settings can be set, and pasted', async function () {
-        var cmd = '-hillshade smoothing=3 fps-levels=2 fps-min-threshold=2 fps-slope-factor=4 fps-slope-radius=5 fps-blend=3,12';
-        var first = await runOnDataset(dem(), cmd);
-        var d = first.getLayers()[0].layer.raster.derivation;
-        var second = await runOnDataset(dem(), '-hillshade ' + internal.formatHillshadeSettings(d));
+      it('the recorded settings can be pasted, and reproduce the result', async function () {
+        var cmd = '-smooth-terrain 3 fps-levels=2 fps-min-threshold=2 fps-slope-factor=4 fps-slope-radius=5 fps-blend=3,12';
+        var d = await getSettings(cmd);
+        var str = internal.formatSmoothingSettings(d);
         assert.deepEqual([d.fps_min_threshold, d.fps_slope_factor, d.fps_slope_radius, d.fps_blend],
           [2, 4, 5, '3,12']);
-        assert.deepEqual(getAlpha(second), getAlpha(first));
-        assert.equal((await getDerivation('-hillshade fps-levels=2 fps-blend=off')).fps_blend, 'off');
+        assert.deepEqual(await getElevation('-smooth-terrain ' + str), await getElevation(cmd));
+        assert.equal((await getSettings('-smooth-terrain fps-levels=2 fps-blend=off')).fps_blend, 'off');
       })
 
       it('rejects dynamic smoothing settings that don\'t apply', async function () {
-        await assert.rejects(runOnDataset(dem(), '-hillshade fps-min-threshold=25'), /not be larger/);
-        await assert.rejects(runOnDataset(dem(), '-hillshade fps-blend=5,15'), /two-level/);
-        await assert.rejects(runOnDataset(dem(), '-hillshade fps-levels=2 fps-blend=15,5'), /fps-blend/);
-        await assert.rejects(runOnDataset(dem(), '-hillshade fps-min-threshold=0'), /fps-min-threshold/);
-        await assert.rejects(runOnDataset(dem(), '-hillshade fps-spread=2 fps-slope-factor=1'), /fps-spread/);
+        await assert.rejects(runOnDataset(dem(), '-smooth-terrain fps-min-threshold=25'), /not be larger/);
+        await assert.rejects(runOnDataset(dem(), '-smooth-terrain fps-blend=5,15'), /two-level/);
+        await assert.rejects(runOnDataset(dem(), '-smooth-terrain fps-levels=2 fps-blend=15,5'), /fps-blend/);
+        await assert.rejects(runOnDataset(dem(), '-smooth-terrain fps-min-threshold=0'), /fps-min-threshold/);
+        await assert.rejects(runOnDataset(dem(), '-smooth-terrain fps-spread=2 fps-slope-factor=1'), /fps-spread/);
       })
 
-      it('generalize= is no longer an option', async function () {
-        await assert.rejects(runOnDataset(dem(), '-hillshade generalize=2'), /generalize/);
+      it('workers give the same output as the main thread', async function () {
+        this.timeout(20000);
+        var big = function() {
+          return makeElevationDataset(240, 180, function(x, y) {
+            return 300 * Math.sin(x / 9) * Math.cos(y / 13) + 80 * Math.sin((x * 3 + y) / 4) - 60;
+          });
+        };
+        var cmd = '-smooth-terrain 3 fps-levels=2 min-elevation=0';
+        assert.deepEqual(await getElevation(cmd + ' workers=3', big()), await getElevation(cmd + ' workers=0', big()));
       })
     })
 
@@ -1292,9 +1351,8 @@ describe('mapshaper-hillshade.mjs', function () {
       var str = internal.formatHillshadeSettings(d);
       assert.equal(d.exaggeration, 1.5); // automatic, from about 111 m pixels
       assert.equal(str, 'azimuth=315 altitude=45 lighting=hard exaggeration=1.5' +
-        ' max-opacity=0.55 highlights=1 gamma=0.7 highlight-color=#fff0b4 smoothing=1' +
-        ' fps-levels=1 fps-passes=1 fps-radius=3 fps-threshold=10 fps-min-threshold=1 fps-slope-factor=0.6' +
-        ' fps-slope-radius=10 light-adjust=0 ambient=0.5 texture=0 aerial=0');
+        ' max-opacity=0.55 highlights=1 gamma=0.7 highlight-color=#fff0b4 smoothing=0' +
+        ' light-adjust=0 ambient=0.5 texture=0 aerial=0');
     })
 
     it('rejects an invalid lighting= value', async function () {

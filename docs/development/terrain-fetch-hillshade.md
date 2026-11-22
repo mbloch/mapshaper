@@ -384,7 +384,7 @@ same pattern as other mapshaper commands.
   `Exaggeration: 4.25 (automatic)`; `-info` shows the pixel size). Smoothing
   always uses the automatic value, so `exaggeration=` changes the shading but
   not how much detail smoothing keeps (see Generalization).
-- `smoothing=` terrain smoothing level, from 0 to 4 (default 1), described
+- `smoothing=` terrain smoothing level, from 0 to 4 (default 0), described
   under Generalization. 0 (or `off`) is no smoothing; levels 1-4 are
   feature-preserving smoothing (FPS) presets, all using dynamic smoothing:
 
@@ -399,22 +399,14 @@ same pattern as other mapshaper commands.
   `fps-levels=1`. They were chosen by comparing test renderings of several
   example datasets. Earlier names (`low`, `medium`, `high`, `auto`) and the
   experimental `lowpass` method (with `lowpass-radius=`) were removed.
-- `fps-passes=` (1-20) overrides the level's number of FPS passes.
-- `fps-passes=0` or `fps-threshold=0` turns smoothing off, like
-  `smoothing=0`; other FPS settings are then ignored.
-- `fps-levels=` 1 (single-level FPS, the default) or 2 (two-level smoothing;
-  see Generalization). With 2, `fps-passes=`, `fps-threshold=` and
-  `fps-radius=` apply to the downsampled level; the full-resolution pass that
-  follows always uses 1 pass, 20° and radius 4.
-- `fps-threshold=`, `fps-radius=`, `maximum-change=` (experimental) FPS
-  settings, described under Generalization. They refine any level.
-- `fps-min-threshold=` (default 1), `fps-slope-factor=` (default from the
-  level; 1 otherwise), `fps-slope-radius=` and, for two-level smoothing,
-  `fps-blend=` control dynamic smoothing; see Dynamic smoothing under
-  Generalization. `fps-min-threshold=` equal to `fps-threshold=` gives a fixed
-  threshold, and is how the settings record one.
-- FPS settings with `smoothing=0` are errors rather than being silently
-  ignored.
+  The default was level 1 until v0.8.8. It became 0 when `-smooth-terrain`
+  was added: level 1 usually looks a little better, but that was the only
+  argument for it, and with smoothing on by default, `-hillshade` would have
+  needed a special rule not to smooth the output of `-smooth-terrain` again.
+  Now `-hillshade` shades the elevations it is given unless asked to smooth
+  them.
+- The FPS settings that refine a level (`fps-*=`, `maximum-change=`) were
+  `-hillshade` options until `-smooth-terrain` took them over.
 - `light-adjust=`, `ambient=`, `texture=`, `aerial=` (experimental) lighting refinements,
   described under Lighting experiments. `ambient=` defaults to 0.5, the
   others to 0 (off).
@@ -625,7 +617,7 @@ slope (about 34 degrees with the default lights), the blend is closer to the
 brightest slope than either face. `ambient=` adds to it: the crest's horizon
 drops away on both sides, so it is lightened, and the pixels just below it are
 darkened, because their uphill horizon is the crest. On the Glacier National
-Park 3DEP 1 m frame (default settings), pixels at least 16 gray levels brighter
+Park 3DEP 1 m frame (default settings, which then included `smoothing=1`), pixels at least 16 gray levels brighter
 than both neighbors across some direction fell from 0.56% to 0.13%; 90% of
 pixels are unchanged, and the image darkens by 0.3 gray levels on average.
 Rejected alternatives: lowering pixels brighter than both neighbors across one
@@ -639,7 +631,7 @@ transparency in SVG export (PNG is chosen automatically for images with alpha).
 
 ### Generalization
 
-The default is feature-preserving smoothing (FPS; Sun et al. 2007, as adapted
+Smoothing (`smoothing=` and `-smooth-terrain`) is feature-preserving smoothing (FPS; Sun et al. 2007, as adapted
 for DEMs by Lindsay et al. 2019), in `src/rasters/mapshaper-terrain-smoothing.mjs`.
 Each pass (called a round in the code):
 
@@ -653,12 +645,12 @@ Each pass (called a round in the code):
 
 Settings:
 
-- `fps-threshold=` (10° at the default level 1): lower values preserve more slope changes as
+- `fps-threshold=` (10° at level 1): lower values preserve more slope changes as
   features, keeping ridges sharper but also more small-scale texture; higher
   values approach a blur. Normals are measured on the surface exaggerated by
   the automatic exaggeration, so a larger automatic value has a similar effect
   to lowering the threshold.
-- `fps-radius=` (3 at the default level 1, a 7x7 window): the size of bumps averaged away.
+- `fps-radius=` (3 at level 1, a 7x7 window): the size of bumps averaged away.
   Cost per round grows with the square of the window width.
 - `maximum-change=` (default off): after each round, elevations are clamped
   to within this many meters of their original values, protecting summits and
@@ -957,7 +949,7 @@ round trip to the workers, because the reach of the whole pipeline in one
 stage (about 100 pixels with `medium` smoothing and `texture=`) would mean
 much more duplicated work. Margins, including 2 spare pixels:
 
-1. Smoothing (`smoothTerrain()`): 40 pixels at the default level 1, 51, 67
+1. Smoothing (`smoothTerrain()`; skipped at `smoothing=0`): 40 pixels at level 1, 51, 67
    and 73 at levels 2-4 (29 of each for the dynamic thresholds), and more with
    `fps-levels=2`. Two-level smoothing works on 2x2 blocks, so its tiles start
    on even rows and columns.
@@ -987,7 +979,7 @@ duplicated 51% of the pixels and 4 x 4 tiles 18%. The shape of the tile
 made no difference to the speed of the algorithms themselves.
 
 On that grid (an 18-core Mac, 16 workers), the whole command took 0.8 s
-instead of 5.9 s with default settings, 0.7 s instead of 4.9 s with
+instead of 5.9 s with the default settings of the time (which smoothed), 0.7 s instead of 4.9 s with
 `smoothing=high`, and 1.0 s instead of 7.8 s with `texture=0.5`. In the GUI,
 the main thread also stays responsive while workers run.
 
@@ -1007,6 +999,51 @@ worker sends `{progress}` messages (the share of the work done) before its
 result. The command prints a dot each second, and if the work looks long
 after 7 seconds, some percentages as they're reached
 (`src/utils/mapshaper-progress-meter.mjs`).
+
+## -smooth-terrain
+
+```
+-smooth-terrain [level] [options]
+```
+
+Replaces the target elevation raster with a float32 copy smoothed the way
+`-hillshade smoothing=` smooths it (`src/commands/mapshaper-smooth-terrain.mjs`),
+so that contours and tints can use the same generalized terrain as the
+hillshade. `-smooth-terrain N` followed by `-hillshade` gives the same image,
+byte for byte, as `-hillshade smoothing=N`. Smoothing used to happen only inside
+`-hillshade`, whose output is an image; a separate command was simpler than a
+`-hillshade` option that would also replace the elevation layer.
+
+The output raster's derivation records the settings (`terrain_smoothing`, in
+the form `verbose` prints them). Smoothing measures slopes with the automatic vertical
+exaggeration (see Generalization) and divides it back out, so the output is in
+the input's elevation units. Values below `min-elevation=` and invalid pixels
+are copied unchanged. Other bands are copied as they are.
+
+### Options
+
+- `level=` (or the first argument) 1-4, default 1: the presets listed under
+  `-hillshade`. 0 is an error, since the command has nothing else to do.
+- `min-elevation=` as in `-hillshade`, in the raster's elevation units.
+- `fps-passes=` (1-20) overrides the level's number of FPS passes.
+- `fps-levels=` 1 (single-level FPS, the default) or 2 (two-level smoothing;
+  see Generalization). With 2, `fps-passes=`, `fps-threshold=` and
+  `fps-radius=` apply to the downsampled level; the full-resolution pass that
+  follows always uses 1 pass, 20° and radius 4.
+- `fps-threshold=` (above 0 and below 90), `fps-radius=`, `maximum-change=`
+  (experimental) FPS settings, described under Generalization. They refine any
+  level.
+- `fps-min-threshold=` (default 1), `fps-slope-factor=` (default from the
+  level; 1 otherwise), `fps-slope-radius=` and, for two-level smoothing,
+  `fps-blend=` control dynamic smoothing; see Dynamic smoothing under
+  Generalization. `fps-min-threshold=` equal to `fps-threshold=` gives a fixed
+  threshold, and is how the settings record one.
+- `band=`, `verbose`, `workers=` (hidden; 0 runs in the main thread), `name=`,
+  `target=`, `+`.
+
+The FPS options are hidden from the help, as they were in `-hillshade`.
+Smoothing runs in tiles on the worker pool, like the smoothing stage of
+`-hillshade` (see Workers).
 
 ## Implementation layout
 
