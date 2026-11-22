@@ -25,7 +25,6 @@ var MAX_LAT = 84;
 
 //   opts.query: text typed by the user
 //   opts.token: Mapbox access token
-//   opts.proximity: optional [lon, lat] to rank nearby results first
 //   opts.limit: optional maximum number of results
 //   opts.language: optional language of the results (see getSearchLanguage());
 //     without it, Mapbox gives English names where it has them
@@ -37,10 +36,6 @@ export function buildGeocodeUrl(opts) {
     'limit=' + (opts.limit || 5),
     'types=' + PLACE_TYPES.join(',')
   ];
-  var p = opts.proximity;
-  if (p && isFinite(p[0]) && isFinite(p[1])) {
-    params.push('proximity=' + round(p[0]) + ',' + round(p[1]));
-  }
   if (opts.language) {
     params.push('language=' + encodeURIComponent(opts.language));
   }
@@ -113,10 +108,6 @@ function findPreferred(prefs, languages) {
 
 function getPrimaryLanguage(tag) {
   return tag.split(/[-_]/)[0].toLowerCase();
-}
-
-function round(n) {
-  return Math.round(n * 1e4) / 1e4;
 }
 
 // Converts a Geocoding v6 response into a list of places:

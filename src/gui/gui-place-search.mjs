@@ -1,7 +1,7 @@
 import { Bounds } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
-import { toWebMercator, fromWebMercator } from './gui-dynamic-crs';
+import { toWebMercator } from './gui-dynamic-crs';
 import {
   buildGeocodeUrl, parseGeocodeResponse, getPlaceBBox, getPlaceZoom,
   getSearchLanguage, zoomToMetersPerPixel, clampLat
@@ -182,7 +182,7 @@ export function PlaceSearch(gui, parent, getToken) {
     var opts, json, resp;
     timer = null;
     if (query.length < MIN_CHARS) return;
-    opts = {query, token: getToken(), proximity: getMapCenter(), language: language};
+    opts = {query, token: getToken(), language: language};
     controller = typeof AbortController == 'function' ? new AbortController() : null;
     try {
       resp = await fetchPlaces(opts);
@@ -293,14 +293,6 @@ export function PlaceSearch(gui, parent, getToken) {
       bounds = new Bounds(c[0] - w, c[1] - h, c[0] + w, c[1] + h);
     }
     ext.zoomToBounds(bounds);
-  }
-
-  function getMapCenter() {
-    var b = gui.map.getExtent().getBounds();
-    if (!b.hasBounds()) return null;
-    var p = fromWebMercator(b.centerX(), b.centerY());
-    p[0] = ((p[0] + 180) % 360 + 360) % 360 - 180; // the view may be over a world copy
-    return p;
   }
 
   return {setEnabled};

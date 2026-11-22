@@ -1059,6 +1059,18 @@ describe('mapshaper-hillshade.mjs', function () {
           getAlpha(await runOnDataset(dem(), '-hillshade smoothing=1')));
       })
 
+      it('smoothing uses the automatic exaggeration, whatever exaggeration= is', async function () {
+        // pixels are about 111 m, so the automatic exaggeration is 1.5
+        var src = dem(), grid = src.layers[0].raster.grid;
+        var cells = internal.getHillshadeCellSizes(grid, internal.getDatasetCRS(src));
+        var smoothed = internal.smoothTerrain({elev: Float32Array.from(grid.samples), valid: null,
+          width: 20, height: 20, cellWidths: cells.widths, cellHeights: cells.heights},
+          internal.getSmoothingSettings(2, {}, cells.median, null)).elev;
+        var presmoothed = makeElevationDataset(20, 20, function(x, y) { return smoothed[y * 20 + x]; });
+        assert.deepEqual(getAlpha(await runOnDataset(dem(), '-hillshade smoothing=2 exaggeration=3')),
+          getAlpha(await runOnDataset(presmoothed, '-hillshade smoothing=0 exaggeration=3')));
+      })
+
       it('levels set FPS passes, thresholds, radius and slope factor', async function () {
         assert.deepEqual(presetSettings(await getDerivation('-hillshade smoothing=2')), [2, 15, 4, 1, 1, 1, 10]);
         assert.deepEqual(presetSettings(await getDerivation('-hillshade smoothing=3')), [3, 20, 6, 1, 1, 1.4, 10]);

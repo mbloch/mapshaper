@@ -79,13 +79,17 @@ function getSmoothingLevel(opts) {
 }
 
 // Settings for smoothTerrain(), or null for no smoothing
+// Smoothing uses the automatic exaggeration even when exaggeration= is given,
+// so that exaggeration= styles the shading without changing how much detail
+// smoothing keeps (FPS thresholds are angles on the exaggerated surface).
+// @metersPerPixel median ground size of a pixel
 // @minElevation: min-elevation= in meters, or null
-function getSmoothingSettings(level, opts, exaggeration, minElevation) {
+export function getSmoothingSettings(level, opts, metersPerPixel, minElevation) {
   if (level === 0) return null;
   return {
     fps: getFpsOptions(level, opts),
     refinement: FPS_REFINEMENT,
-    exaggeration: exaggeration,
+    exaggeration: getAutoExaggeration(metersPerPixel),
     minElevation: minElevation
   };
 }
@@ -259,7 +263,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     height: grid.height,
     cellWidths: cells.widths,
     cellHeights: cells.heights
-  }, getSmoothingSettings(smoothing, opts, exaggeration, minElevation), {
+  }, getSmoothingSettings(smoothing, opts, cells.median, minElevation), {
     lights: lights,
     azimuth: azimuth,
     exaggeration: exaggeration,

@@ -1,3 +1,6 @@
+v0.8.8
+* -hillshade `exaggeration=` no longer changes how much detail terrain smoothing keeps. Previously, higher exaggeration smoothed less.
+
 v0.8.7
 * New -hillshade tone curve, which softens the edge of the highlights on slopes facing the light.
 * The default base color of opaque -hillshade output is darker (#d7d7d7), for more highlight headroom.

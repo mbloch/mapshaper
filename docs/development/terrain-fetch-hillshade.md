@@ -381,7 +381,9 @@ same pattern as other mapshaper commands.
   10), because relief flattens out at small scales. It is the square root of
   the pixel size over 50 m, rounded to a multiple of 0.25 so that it is easy
   to read and adjust, and is printed when it is chosen automatically (e.g.
-  `Exaggeration: 4.25 (automatic)`; `-info` shows the pixel size).
+  `Exaggeration: 4.25 (automatic)`; `-info` shows the pixel size). Smoothing
+  always uses the automatic value, so `exaggeration=` changes the shading but
+  not how much detail smoothing keeps (see Generalization).
 - `smoothing=` terrain smoothing level, from 0 to 4 (default 1), described
   under Generalization. 0 (or `off`) is no smoothing; levels 1-4 are
   feature-preserving smoothing (FPS) presets, all using dynamic smoothing:
@@ -653,8 +655,9 @@ Settings:
 
 - `fps-threshold=` (10° at the default level 1): lower values preserve more slope changes as
   features, keeping ridges sharper but also more small-scale texture; higher
-  values approach a blur. Normals are measured on the exaggerated surface, so
-  higher exaggeration has a similar effect to lowering the threshold.
+  values approach a blur. Normals are measured on the surface exaggerated by
+  the automatic exaggeration, so a larger automatic value has a similar effect
+  to lowering the threshold.
 - `fps-radius=` (3 at the default level 1, a 7x7 window): the size of bumps averaged away.
   Cost per round grows with the square of the window width.
 - `maximum-change=` (default off): after each round, elevations are clamped
@@ -720,6 +723,16 @@ refit then tilted whole planes by up to half a meter in tests.
 Normals are measured on the exaggerated surface, so automatic exaggeration
 effectively lowers the threshold at small scales, where more generalization is
 wanted. A scale-aware `auto` could raise the threshold with exaggeration.
+
+Smoothing always uses the automatic exaggeration, even when `exaggeration=` is
+given: users treat `exaggeration=` as styling (more or less dramatic shading),
+not as a setting for how much detail is kept. Smoothing with the given value,
+as before, kept more detail at higher exaggeration, since slope changes looked
+sharper to the thresholds. On the Glacier National Park 3DEP 1 m frame
+(automatic exaggeration 1) at `exaggeration=3`, the two differ by 1.4 gray
+levels on average (1.5% of pixels by 10 or more): fine facets on slopes are
+softer, crests and drainages the same. This also lets smoothing run apart from
+shading, on an elevation layer.
 
 Windows of entirely flat ground are skipped. On a 1600x1436 map of France,
 each pass takes about a second. FPS must run on unblurred data: low-pass

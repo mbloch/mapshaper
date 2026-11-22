@@ -22,16 +22,6 @@ describe('gui-place-search-utils', function() {
       assert(!url.includes('proximity'));
     });
 
-    it('adds a rounded proximity point', function() {
-      var url = buildGeocodeUrl({query: 'x', token: 't', proximity: [-73.987654321, 40.123456789]});
-      assert(url.includes('proximity=-73.9877,40.1235'));
-    });
-
-    it('skips an invalid proximity point', function() {
-      var url = buildGeocodeUrl({query: 'x', token: 't', proximity: [NaN, 3]});
-      assert(!url.includes('proximity'));
-    });
-
     it('adds a language if given', function() {
       assert(buildGeocodeUrl({query: 'x', token: 't', language: 'zh-Hans'}).includes('&language=zh-Hans'));
       assert(!buildGeocodeUrl({query: 'x', token: 't', language: null}).includes('language'));
