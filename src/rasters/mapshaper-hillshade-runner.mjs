@@ -75,6 +75,20 @@ export async function runSmoothingStage(grid, smoothing, opts) {
   return {elev: smoothed.elev, thresholds: smoothed.thresholds, workers: pool ? pool.size : 0};
 }
 
+// Computes the fields that shading combines (see computeShadingFields()), for
+// the hillshade panel, which recombines them as other settings change
+// Returns {shade, openness, texture}
+export async function runShadingFieldsStage(grid, shading, opts) {
+  var maxWorkers = getHillshadeWorkerCount(opts.workers, grid.width * grid.height);
+  var tiles = getTileLayout(grid.width, grid.height, maxWorkers, getShadingReach(shading), false);
+  var pool = maxWorkers > 0 ? await startWorkerPool(HILLSHADE_WORKER_SCRIPT, tiles.length) : null;
+  try {
+    return await runStage(pool, 'fields', grid, shading, tiles, ['shade', 'openness', 'texture']);
+  } finally {
+    if (pool) pool.close();
+  }
+}
+
 // @keys the arrays of the stage's result, which are assembled from the cores
 //   of the tiles (a null array in the result stays null)
 async function runStage(pool, stage, grid, settings, tiles, keys) {

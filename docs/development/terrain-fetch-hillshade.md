@@ -342,7 +342,29 @@ same pattern as other mapshaper commands.
 
 - `azimuth=` direction of the main light, in degrees clockwise from north
   (default 315).
-- `altitude=` light angle above the horizon, in degrees (default 45).
+- `altitude=` light angle above the horizon, in degrees (default 45). The
+  slopes brighter than flat ground are those within about 90 - altitude
+  degrees of the light: 10 degrees at an altitude of 80, 80 degrees at 10.
+  With flat ground fixed at the base color, the highlights would shrink to
+  a sharp spot under a high light and spread over most slopes facing a low
+  one. So the two styles treat altitude differently:
+  - Opaque: a slope's tone is a function of its angle to the light alone,
+    the function it has at 45 degrees (`getOpaqueShadeScale()` rescales the
+    shade to the light on flat ground at 45 degrees, and the tone curve is
+    that of 45 degrees). The highlights cover the same slopes at any
+    altitude, and the shadow and highlight colors stay at the ends of the
+    ramp, while flat ground moves along it: lighter as the light rises,
+    darker as it falls, and the base color only at 45 degrees. That's also
+    what real light does. `-blend` reads the base color as no change, so a
+    blend lightens or darkens flat ground in the same way.
+  - Transparent: flat ground stays clear, since the hillshade is an overlay
+    and a veil would change every tint color under it. Above 45 degrees the
+    highlights are scaled down by the angle between flat ground and the
+    brightest slope over its value at 45 degrees with the same lighting
+    (10/45 at 80 degrees with `lighting=hard`;
+    `getHillshadeHighlightScale()`), so a high light looks diffuse rather
+    than focused on a spot. Below 45 degrees the highlights still spread.
+  At 45 degrees neither changes anything.
 - `lighting=` the lights around the main azimuth, as relative azimuth and
   weight. Multiple lights reduce harsh shadows and keep landforms facing away
   from the main light legible.
@@ -446,16 +468,20 @@ same pattern as other mapshaper commands.
   the shadow color to the highlight color (`getHillshadeRampColors()`). The
   highlight color defaults to white. A missing base color is 80% of the way
   from the shadow color to the highlight color (in OKLCH), or `#d7d7d7` if
-  the shadow color is missing too. A missing shadow color gets the
-  lightness that puts the base at 80%, with the base's hue and chroma
-  (reduced to fit the sRGB gamut), or black if the base is too dark for
-  that (darker than `#bebebe` with a white highlight). Extrapolating the
-  hue and chroma as well would multiply small differences between the base
-  and highlight colors into a strong, unrelated color. With all three
-  colors given nothing is derived. The defaults are `#686868` → `#d7d7d7`
-  → `#ffffff`: the shadow color that a `#dfdfdf` base gets, with the base
-  darkened to 75% of the way to white, for more highlight headroom;
-  `base-color=#e0d8c0` gives a `#514a36` shadow.
+  the shadow color is missing too. A missing shadow color has the base's
+  hue and chroma (reduced to fit the sRGB gamut), and the base's lightness
+  times the ratio of the default colors' lightness (`#686868` / `#d7d7d7`,
+  about 0.59 in OKLab), so that a lighter or darker base keeps the same
+  contrast (`getHillshadeShadowColor()`): `base-color=#e0d8c0` gives a
+  `#706853` shadow, `#808080` a `#3b3b3b` one. Until v0.8.8 the shadow got
+  the lightness that put the base at 80% of the way to the highlight
+  color, which was black for any base darker than `#bebebe` and made
+  mid-tone bases harsh. Extrapolating the hue and chroma as well would
+  multiply small differences between the base and highlight colors into a
+  strong, unrelated color. With all three colors given nothing is derived.
+  The defaults are `#686868` → `#d7d7d7` → `#ffffff`: the shadow color
+  that a `#dfdfdf` base got by the 80% rule, with the base darkened to 75%
+  of the way to white, for more highlight headroom.
   The weight 0.8 is 1 / `getHillshadeMaxShade()` with the former default
   lights (the brightest slope was 1.25 times as bright as flat ground; 1.21
   with `lighting=balanced`). It is fixed so that `altitude=` and `lighting=`
@@ -1000,6 +1026,54 @@ result. The command prints a dot each second, and if the work looks long
 after 7 seconds, some percentages as they're reached
 (`src/utils/mapshaper-progress-meter.mjs`).
 
+### The hillshade panel
+
+The GUI's hillshade panel (`src/gui/gui-hillshade-tool.mjs`, opened from a
+DEM's menus) previews `-hillshade` on the map and runs it on Apply, so the
+command is what goes into the session history and the undo stack. The
+settings and the command they make are in `gui-hillshade-settings.mjs`
+(pure, with mocha tests); the command leaves out settings at their
+defaults, so the defaults give plain `-hillshade`.
+
+To follow a slider, the shading stage is split in two
+(`mapshaper-hillshade-stages.mjs`). `computeShadingFields()` computes the
+neighborhood work: the shade (the lights and refinements), the openness of
+`ambient=` and the texture field of `texture=`. These depend only on the
+smoothed terrain, the light (`azimuth=`, `altitude=`, `lighting=`,
+`light-adjust=`) and the exaggeration. `combineShadingFields()` then turns
+them into signed tones pixel by pixel: `aerial=`, the tone curve
+(`gamma=`, `max-opacity=`, `highlights=`, the colors' base position), the
+strengths of ambient and texture, and the 1-pixel thin-highlight filter.
+`shadeTerrain()` is the two in a row, so the command is unchanged. The
+fields can be computed on the worker pool (`runShadingFieldsStage()`, a
+`fields` stage) and combined on the whole grid, which gives the same result
+as combining in tiles.
+
+The panel reads the elevations once (`readHillshadeTerrain()`) and gets the
+command's settings from its options (`getHillshadeShading()`), so it shades
+exactly as the command would. It keeps the smoothed terrain for each
+smoothing level and the fields with the settings they were computed for.
+A setting that only recombines (colors, strengths, gamma, aerial) redraws
+at once. While a light or exaggeration slider is dragged on a raster
+larger than 1 million pixels, the preview is made from every k-th pixel
+of the terrain: the shade is recomputed on that, and the latest openness
+and texture fields are reduced and reused, even if they were computed for
+another exaggeration. When the slider is let go of, or a button is
+clicked, the missing fields are computed at full size, on workers, and the
+preview is the same image that Apply makes (a browser test checks this).
+Only one full-size computation runs at a time; changes in the meantime
+start another when it is done.
+
+The preview is drawn in place of the elevation layer (a stand-in layer from
+`gui-hillshade-preview.mjs`, which `drawRasterLayer()` uses), so the
+elevation layer is not changed until Apply.
+
+Some options are left out of the panel: `light-adjust=`, `texture-detail=`,
+`texture-highlights=`, `min-elevation=`, `band=`, and explicit opaque
+shadow and highlight colors (the panel sets them from the base color and
+two strengths, with `getHillshadeShadowColor()` and
+`getHillshadeHighlightColor()`).
+
 ## -smooth-terrain
 
 ```
@@ -1072,6 +1146,8 @@ Smoothing runs in tiles on the worker pool, like the smoothing stage of
 - `src/mapshaper-hillshade-worker.mjs` — entry point of
   `www/hillshade-worker.js`.
 - `src/commands/mapshaper-hillshade.mjs` — the command.
+- `src/gui/gui-hillshade-tool.mjs`, `gui-hillshade-settings.mjs`,
+  `gui-hillshade-preview.mjs` — the GUI's hillshade panel.
 
 ## Testing
 

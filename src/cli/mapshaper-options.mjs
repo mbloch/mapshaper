@@ -2878,7 +2878,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('base-color', {
-      describe: 'color of flat ground, for opaque shading (default is #d7d7d7); implies opaque'
+      describe: 'color of flat ground lit from 45 degrees, for opaque shading (default is #d7d7d7); implies opaque'
     })
     .option('max-opacity', {
       describe: 'opacity of the darkest shadows, if not opaque; 0-1 (default is 0.55)',

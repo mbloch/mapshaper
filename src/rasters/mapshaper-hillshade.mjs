@@ -90,6 +90,35 @@ export function getHillshadeMaxShade(lights) {
   return Math.max(getBlendedMaxShade(lights), getSearchedMaxShade(lights));
 }
 
+// For the shadow style, whose flat ground is clear at any altitude: the share
+// of the full highlight that the brightest slope gets. The slopes brighter
+// than flat ground are those within about 90 - altitude degrees of the light,
+// so a light higher than DEFAULT_ALTITUDE would put the full highlight on a
+// small, sharp spot. Scaling it down by that angle keeps the highlights'
+// falloff as gradual as at DEFAULT_ALTITUDE.
+// @maxShade getHillshadeMaxShade() of the lights
+// @refMaxShade the same, with the lights at DEFAULT_ALTITUDE
+export function getHillshadeHighlightScale(maxShade, refMaxShade) {
+  var angle = Math.acos(1 / Math.max(1, maxShade));
+  var ref = Math.acos(1 / Math.max(1, refMaxShade));
+  return ref > 0 && angle < ref ? angle / ref : 1;
+}
+
+// For the opaque style: the factor that makes a slope's tone a function of
+// its angle to the light alone, the same function at every altitude, so that
+// the highlights cover the same range of slopes. computeHillshade() divides
+// by the light on flat ground; this rescales it to the light on flat ground
+// at DEFAULT_ALTITUDE, relative to the brightest slope. So flat ground gets
+// the base color at DEFAULT_ALTITUDE, and moves along the ramp from the
+// shadow color to the highlight color as the light rises: a high light
+// lights flat ground nearly as well as the slope facing it.
+// Use with the tone curve of @refMaxShade.
+// @maxShade getHillshadeMaxShade() of the lights
+// @refMaxShade the same, with the lights at DEFAULT_ALTITUDE
+export function getOpaqueShadeScale(maxShade, refMaxShade) {
+  return maxShade > 0 ? refMaxShade / maxShade : 1;
+}
+
 // Searches slopes and aspects in 1 degree steps, then 0.05 degree steps
 // around the brightest
 function getSearchedMaxShade(lights) {
@@ -310,6 +339,10 @@ export function getToneMaxOpacity(style, opts) {
 // @opts.gamma steepness of the tone curve at flat ground
 // @opts.maxShade shade of the brightest slope, which gets the full highlight
 //   (see getHillshadeMaxShade()); without it there are no highlights
+// @opts.highlightScale optional share of the full highlight that the
+//   brightest slope gets instead (see getHillshadeHighlightScale())
+// @opts.shadeScale optional factor applied to @shade first (see
+//   getOpaqueShadeScale())
 // @opts.basePosition for the opaque style: where the base color is on the
 //   ramp, as a share of its lightness (see getHillshadeBasePosition())
 export function getHillshadeTones(shade, valid, style, opts) {
@@ -319,17 +352,18 @@ export function getHillshadeTones(shade, valid, style, opts) {
   var opaque = style == 'opaque';
   var maxOpacity = getToneMaxOpacity(style, o);
   var ratio = opaque ? 1 : o.highlightRatio >= 0 ? o.highlightRatio : getDefaultHighlightRatio();
-  var maxHighlight = Math.min(1, maxOpacity * ratio);
+  var maxHighlight = Math.min(1, maxOpacity * ratio) * (o.highlightScale >= 0 ? o.highlightScale : 1);
   var gamma = o.gamma > 0 ? o.gamma : DEFAULT_GAMMA;
   var litRange = o.maxShade > 1 ? o.maxShade - 1 : 0;
   var curves = getToneCurves(o.maxShade > 1 ? o.maxShade : 1, gamma,
     opaque ? o.basePosition : SHADOW_STYLE_BASE_POSITION);
   var shadowCurve = curves.shadow;
   var highlightCurve = curves.highlight;
+  var shadeScale = o.shadeScale > 0 ? o.shadeScale : 1;
   var i, s;
   for (i = 0; i < n; i++) {
     if (valid && !valid[i]) continue;
-    s = shade[i];
+    s = shade[i] * shadeScale;
     if (s < 1) {
       tones[i] = -shadowCurve(1 - s) * maxOpacity;
     } else if (s > 1 && litRange > 0) {

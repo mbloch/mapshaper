@@ -3,6 +3,10 @@ v0.8.8
 * -hillshade no longer smooths terrain by default. Use `smoothing=1` for the previous default.
 * The experimental FPS settings (`fps-*=`, `maximum-change=`) moved from -hillshade to -smooth-terrain.
 * -hillshade `exaggeration=` no longer changes how much detail terrain smoothing keeps. Previously, higher exaggeration smoothed less.
+* Opaque -hillshade output keeps highlights the same size at any `altitude=`. Flat ground gets lighter as the light rises and darker as it falls, and has the base color at 45 degrees. Previously, highlights shrank to a sharp spot under a high light and spread over most slopes under a low one.
+* Transparent -hillshade output with `altitude=` above 45 has weaker, more diffuse highlights.
+* New hillshade panel in the web UI, for styling a hillshade with a live preview. Open it from the menu of an elevation raster.
+* An opaque -hillshade with only `base-color=` gets a shadow color with the same contrast for light and dark base colors. Previously, mid-tone base colors got black shadows.
 
 v0.8.7
 * New -hillshade tone curve, which softens the edge of the highlights on slopes facing the light.

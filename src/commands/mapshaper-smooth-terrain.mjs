@@ -13,7 +13,7 @@ import {
   parseSmoothingLevel,
   validateFpsOptions
 } from '../rasters/mapshaper-terrain-smoothing-options';
-import { getElevationScale, getHillshadeCellSizes, readElevationBand } from './mapshaper-hillshade';
+import { getElevationScale, getHillshadeCellSizes, rasterMayBeTerrain, readElevationBand } from './mapshaper-hillshade';
 import { runningInBrowser } from '../mapshaper-env';
 import { stop, verbose } from '../utils/mapshaper-logging';
 
@@ -77,7 +77,7 @@ function validateTerrainGrid(raster, grid) {
   if (!grid || !grid.samples || !grid.bbox) {
     stop('Raster layer is missing the data needed for smoothing');
   }
-  if (raster.interpretation == 'image' || raster.interpretation == 'categorical') {
+  if (!rasterMayBeTerrain(raster, grid)) {
     stop('-smooth-terrain needs an elevation raster');
   }
   if (rasterGridIsRotated(grid)) {

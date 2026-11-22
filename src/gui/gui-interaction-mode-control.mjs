@@ -43,12 +43,13 @@ export function InteractionMode(gui) {
     lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],
     table: ['info', 'selection'],
     // 'blend' is offered only where there is a hillshade to blend, and not on
-    // a hillshade (see getRasterModes())
-    raster: ['blend', 'box', 'ruler'],
+    // a hillshade, and 'hillshade' only on a raster that can be shaded as
+    // terrain (see getRasterModes())
+    raster: ['hillshade', 'blend', 'box', 'ruler'],
     // an RGB image, which -tone can adjust
     image: ['tone', 'blend', 'box', 'ruler'],
     // a data raster (a DEM, land cover...), which -classify can color
-    dataRaster: ['palette', 'blend', 'box', 'ruler'],
+    dataRaster: ['hillshade', 'palette', 'blend', 'box', 'ruler'],
     // a grayscale image, which -tone can adjust (apart from its colors) and
     // -classify can color
     grayImage: ['tone', 'palette', 'blend', 'box', 'ruler'],
@@ -88,6 +89,7 @@ export function InteractionMode(gui) {
     tone: 'adjust colors',
     palette: 'color palette',
     blend: 'blend hillshade',
+    hillshade: 'hillshade',
     edit_points: 'style/edit points',
     edit_lines: 'draw lines',
     edit_polygons: 'draw polygons',
@@ -314,8 +316,10 @@ export function InteractionMode(gui) {
     var modes = internal.rasterCanBeToned(lyr.raster) ? menus.image :
       internal.rasterIsGrayImage(lyr.raster) ? menus.grayImage :
       layerHasPaletteRaster(lyr) ? menus.dataRaster : menus.raster;
-    return blendIsAvailable(gui.model, lyr) ? modes : modes.filter(function(mode) {
-      return mode != 'blend';
+    var blend = blendIsAvailable(gui.model, lyr);
+    var hillshade = internal.rasterCanBeHillshaded(lyr.raster);
+    return modes.filter(function(mode) {
+      return (mode != 'blend' || blend) && (mode != 'hillshade' || hillshade);
     });
   }
 

@@ -13,6 +13,7 @@ import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns
 import { compositeGlows, getGlowMargin, getGlowSourceCanvas, MAX_GLOW_MARGIN } from './gui-canvas-glow';
 import { getHighlightWidth, getHandleRadius } from './gui-highlight-width';
 import { getRasterTonePreview, getTonedRasterCanvas } from './gui-raster-tone-preview';
+import { getRasterHillshadeStandIn } from './gui-hillshade-preview';
 import {
   getBlendedRasterCanvas, getRasterBlendPreview, rasterIsHiddenByBlendPreview
 } from './gui-raster-blend-preview';
@@ -191,7 +192,8 @@ export function DisplayCanvas() {
     _ext = extent;
   };
 
-  _self.drawRasterLayer = function(layer, opts) {
+  _self.drawRasterLayer = function(layerArg, opts) {
+    var layer = getRasterHillshadeStandIn(layerArg) || layerArg;
     var raster = layer.raster;
     var options = opts || {};
     var preview = null;

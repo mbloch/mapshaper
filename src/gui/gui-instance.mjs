@@ -13,6 +13,7 @@ import { PointStyleTool } from './gui-point-style-tool';
 import { RasterToneTool } from './gui-raster-tone-tool';
 import { RasterPaletteTool } from './gui-raster-palette-tool';
 import { RasterBlendTool } from './gui-raster-blend-tool';
+import { HillshadeTool } from './gui-hillshade-tool';
 import { SessionSnapshots } from './gui-session-snapshot-control';
 import { Model } from './gui-model';
 import { MshpMap } from './gui-map';
@@ -101,6 +102,7 @@ export function GuiInstance(container, opts) {
   gui.rasterToneTool = new RasterToneTool(gui);
   gui.rasterBlendTool = new RasterBlendTool(gui);
   gui.rasterPaletteTool = new RasterPaletteTool(gui);
+  gui.hillshadeTool = new HillshadeTool(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

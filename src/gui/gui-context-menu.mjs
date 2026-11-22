@@ -181,6 +181,9 @@ export function ContextMenu(parentArg) {
     if (e.styleLayer) {
      addMenuItem(e.styleLayerName || 'style/edit layer', e.styleLayer, '');
     }
+    if (e.hillshadeLayer) {
+     addMenuItem('hillshade', e.hillshadeLayer, '');
+    }
     if (e.blendLayer) {
      addMenuItem('blend hillshade', e.blendLayer, '');
     }

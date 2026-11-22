@@ -759,6 +759,17 @@ export function LayerControl(gui) {
       gui.interaction.setMode('blend');
     }
 
+    // Likewise the hillshade panel
+    function hillshadeLayer() {
+      var target = findLayerById(id);
+      if (!target) return;
+      if (!map.isActiveLayer(target.layer)) {
+        target.layer.hidden = false;
+        model.selectLayer(target.layer, target.dataset);
+      }
+      gui.interaction.setMode('hillshade');
+    }
+
     function openLayerMenu(e) {
       var menuEvent = e;
       var target = findLayerById(id);
@@ -812,6 +823,10 @@ export function LayerControl(gui) {
       // where the arrow menu would offer it, with the layer active
       if (!isFrame && target && blendIsAvailable(model, target.layer)) {
         menuEvent.blendLayer = blendLayer;
+      }
+      if (!isFrame && target && internal.layerHasRaster(target.layer) &&
+          internal.rasterCanBeHillshaded(target.layer.raster)) {
+        menuEvent.hillshadeLayer = hillshadeLayer;
       }
       menuEvent.contextMenuId = 'layer-' + id;
       openContextMenu(menuEvent, null, null);

@@ -2,6 +2,7 @@ import cmd from '../mapshaper-cmd';
 import { getDatasetCRS, getScaleFactorAtXY, isLatLngCRS } from '../crs/mapshaper-projections';
 import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
+import { rasterGridDisplaysColor } from '../rasters/mapshaper-raster-display-bands';
 import { createRasterPreview, getRasterGrid, getRasterGridBandIndex, getRasterViewRecipe, rasterGridIsRotated } from '../rasters/mapshaper-raster-utils';
 import {
   getDefaultHighlightRatio,
@@ -13,9 +14,11 @@ import {
   DEFAULT_LIGHTING,
   getAutoExaggeration,
   getFittedVerticalScale,
+  getHillshadeHighlightScale,
   getHillshadeLights,
   getHillshadeMaxShade,
   getLightingSchemeNames,
+  getOpaqueShadeScale,
   raiseLowElevations
 } from '../rasters/mapshaper-hillshade';
 import { runHillshadeStages } from '../rasters/mapshaper-hillshade-runner';
@@ -33,18 +36,103 @@ var DEFAULT_TEXTURE_DETAIL = 0.5;
 // @resume optional function to call after each wait for workers
 //   (job.resumeCommand())
 cmd.hillshade = async function(lyr, dataset, opts, resume) {
-  var grid, cells, elev, valid, altitude, exaggeration, style, out, result;
-  var hasMin, toneOpts, azimuth, colors, smoothing, params, ambient, lighting, lights, stops = null;
-  var unitMeters, minElevation, band;
+  var terrain = readHillshadeTerrain(lyr, dataset, opts);
+  var shading = getHillshadeShading(opts, terrain);
+  var cells = terrain.cells, source = terrain.source;
+  var result, out;
+  if (!(opts.exaggeration > 0)) {
+    message('Exaggeration:', formatExaggeration(shading.settings.exaggeration) + ' (automatic)');
+  }
+  verbose('Settings:', formatHillshadeSettings(shading.params));
+  if (!cells.unknown) {
+    verbose('Ground pixel size:', formatPixelSize(cells.median));
+    if (source.verticalUnits) {
+      verbose('Elevation units:', formatVerticalUnits(source.verticalUnits));
+    }
+  }
+  result = await runHillshadeStages(terrain.grid,
+    getSmoothingSettings(shading.smoothing, {}, cells.median, terrain.minElevation),
+    shading.settings, {workers: opts.workers, resume: resume});
+  if (result.workers > 0) {
+    verbose('Workers:', result.workers);
+  }
+  if (result.thresholds) {
+    verbose('FPS thresholds:', formatThresholdRange(result.thresholds, terrain.grid.valid));
+  }
+  out = {
+    raster_type: 'grid',
+    raster: getHillshadeRaster(lyr.raster, source,
+      writeHillshadeRgba(result.tones, terrain.grid.valid, shading.style, shading.colors), shading.params)
+  };
+  setOutputLayerName(out, lyr, 'hillshade', opts);
+  return [out];
+};
+
+// Reads the elevations that -hillshade shades (in meters, raised to
+// min-elevation= if given), with the options that affect them: band= and
+// min-elevation=. Checks the other options too.
+// Returns {source, grid, cells, minElevation}: source is the raster's grid,
+//   and grid the input of the stages of mapshaper-hillshade-stages.mjs
+export function readHillshadeTerrain(lyr, dataset, opts) {
+  var source, band, cells, valid, unitMeters, elev, minElevation = null;
   if (!layerHasRaster(lyr)) {
     stop('Command requires a raster layer');
   }
-  grid = getRasterGrid(lyr.raster);
-  validateHillshadeGrid(grid, opts);
-  band = getRasterGridBandIndex(grid, opts.band);
-  style = getHillshadeStyle(opts);
-  smoothing = opts.smoothing == null ? 0 : parseSmoothingLevel(opts.smoothing, 'smoothing=', 0);
-  altitude = opts.altitude >= 0 ? opts.altitude : DEFAULT_ALTITUDE;
+  source = getRasterGrid(lyr.raster);
+  validateHillshadeGrid(source, opts);
+  band = getRasterGridBandIndex(source, opts.band);
+  cells = getHillshadeCellSizes(source, getDatasetCRS(dataset));
+  valid = getRasterValidityMask(source);
+  unitMeters = getElevationScale(lyr, source, band, valid, cells,
+    'its relief was scaled to a typical steepness', 'To adjust it, use exaggeration=. To shade it to scale');
+  elev = readElevationBand(source, band, unitMeters);
+  if (opts.min_elevation != null) {
+    // min-elevation= is in the raster's own units, like the values -info shows
+    minElevation = opts.min_elevation * unitMeters;
+    raiseLowElevations(elev, valid, minElevation);
+  }
+  return {
+    source: source,
+    cells: cells,
+    minElevation: minElevation,
+    grid: {
+      elev: elev,
+      valid: valid,
+      width: source.width,
+      height: source.height,
+      cellWidths: cells.widths,
+      cellHeights: cells.heights
+    }
+  };
+}
+
+// How altitude= changes the tones, away from DEFAULT_ALTITUDE. An opaque
+// hillshade keeps the highlights the same size, and flat ground's color
+// follows the light (see getOpaqueShadeScale()); a transparent one keeps flat
+// ground clear, and dims the highlights of a high light (see
+// getHillshadeHighlightScale()).
+// @refMaxShade getHillshadeMaxShade() of the lights at DEFAULT_ALTITUDE, or
+//   null at DEFAULT_ALTITUDE
+function setAltitudeToneOpts(toneOpts, style, refMaxShade) {
+  if (!refMaxShade) return;
+  if (style == 'opaque') {
+    toneOpts.shadeScale = getOpaqueShadeScale(toneOpts.maxShade, refMaxShade);
+    toneOpts.maxShade = refMaxShade;
+  } else {
+    toneOpts.highlightScale = getHillshadeHighlightScale(toneOpts.maxShade, refMaxShade);
+  }
+}
+
+// The settings of -hillshade, apart from those of readHillshadeTerrain()
+// @terrain from readHillshadeTerrain()
+// Returns {style, smoothing, colors, settings, params}: smoothing is the
+//   smoothing level, colors the colors of writeHillshadeRgba(), settings those
+//   of shadeTerrain() and params those recorded in the hillshade's derivation
+export function getHillshadeShading(opts, terrain) {
+  var style = getHillshadeStyle(opts);
+  var smoothing = opts.smoothing == null ? 0 : parseSmoothingLevel(opts.smoothing, 'smoothing=', 0);
+  var altitude = opts.altitude >= 0 ? opts.altitude : DEFAULT_ALTITUDE;
+  var stops = null, colors, exaggeration, azimuth, ambient, lighting, lights, toneOpts, params;
   if (altitude > 90) stop('altitude= should be from 0 to 90 degrees');
   colors = {
     shadow: readToneColor(opts.shadow_color, 'shadow-color'),
@@ -56,11 +144,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
       colors.highlight);
     colors.ramp = getHillshadeColorRamp(stops);
   }
-  cells = getHillshadeCellSizes(grid, getDatasetCRS(dataset));
-  exaggeration = opts.exaggeration > 0 ? opts.exaggeration : getAutoExaggeration(cells.median);
-  if (!(opts.exaggeration > 0)) {
-    message('Exaggeration:', formatExaggeration(exaggeration) + ' (automatic)');
-  }
+  exaggeration = opts.exaggeration > 0 ? opts.exaggeration : getAutoExaggeration(terrain.cells.median);
   azimuth = opts.azimuth == null ? DEFAULT_AZIMUTH : opts.azimuth;
   ambient = opts.ambient >= 0 ? opts.ambient : DEFAULT_AMBIENT;
   lighting = opts.lighting || DEFAULT_LIGHTING;
@@ -75,12 +159,8 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     maxShade: getHillshadeMaxShade(lights),
     basePosition: stops ? getHillshadeBasePosition(stops) : null
   };
-  hasMin = opts.min_elevation != null;
-  valid = getRasterValidityMask(grid);
-  unitMeters = getElevationScale(lyr, grid, band, valid, cells,
-    'its relief was scaled to a typical steepness', 'To adjust it, use exaggeration=. To shade it to scale');
-  // min-elevation= is in the raster's own units, like the values -info shows
-  minElevation = hasMin ? opts.min_elevation * unitMeters : null;
+  setAltitudeToneOpts(toneOpts, style, altitude == DEFAULT_ALTITUDE ? null :
+    getHillshadeMaxShade(getHillshadeLights(azimuth, DEFAULT_ALTITUDE, lighting)));
   params = Object.assign({opaque: style == 'opaque', azimuth: azimuth, altitude: altitude,
     lighting: lighting, exaggeration: exaggeration,
     max_opacity: stops ? null : toneOpts.maxOpacity,
@@ -90,7 +170,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     shadow_color: stops ? opts.shadow_color || formatColor(stops.shadow) : opts.shadow_color || null,
     highlight_color: stops ? opts.highlight_color || formatColor(stops.highlight) : opts.highlight_color || null,
     base_color: stops ? opts.base_color || formatColor(stops.base) : null,
-    min_elevation: hasMin ? opts.min_elevation : null,
+    min_elevation: opts.min_elevation != null ? opts.min_elevation : null,
     smoothing: smoothing,
     light_adjust: opts.light_adjust || 0, ambient: ambient,
     texture: opts.texture || 0,
@@ -98,52 +178,27 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     texture_highlights: opts.texture > 0 ? opts.texture_highlights || 0 : null,
     aerial: opts.aerial || 0,
     band: opts.band || null});
-  verbose('Settings:', formatHillshadeSettings(params));
-  if (!cells.unknown) {
-    verbose('Ground pixel size:', formatPixelSize(cells.median));
-    if (grid.verticalUnits) {
-      verbose('Elevation units:', formatVerticalUnits(grid.verticalUnits));
-    }
-  }
-  elev = readElevationBand(grid, band, unitMeters);
-  if (hasMin) {
-    raiseLowElevations(elev, valid, minElevation);
-  }
-  result = await runHillshadeStages({
-    elev: elev,
-    valid: valid,
-    width: grid.width,
-    height: grid.height,
-    cellWidths: cells.widths,
-    cellHeights: cells.heights
-  }, getSmoothingSettings(smoothing, {}, cells.median, minElevation), {
-    lights: lights,
-    azimuth: azimuth,
-    exaggeration: exaggeration,
-    lightAdjust: opts.light_adjust || 0,
-    ambient: ambient,
-    aerial: opts.aerial || 0,
-    texture: opts.texture || 0,
-    textureDetail: params.texture_detail,
-    textureHighlights: params.texture_highlights,
-    minElevation: hasMin ? minElevation : null,
+  return {
     style: style,
-    toneOpts: toneOpts
-  }, {workers: opts.workers, resume: resume});
-  if (result.workers > 0) {
-    verbose('Workers:', result.workers);
-  }
-  if (result.thresholds) {
-    verbose('FPS thresholds:', formatThresholdRange(result.thresholds, valid));
-  }
-  out = {
-    raster_type: 'grid',
-    raster: getHillshadeRaster(lyr.raster, grid,
-      writeHillshadeRgba(result.tones, valid, style, colors), params)
+    smoothing: smoothing,
+    colors: colors,
+    params: params,
+    settings: {
+      lights: lights,
+      azimuth: azimuth,
+      exaggeration: exaggeration,
+      lightAdjust: opts.light_adjust || 0,
+      ambient: ambient,
+      aerial: opts.aerial || 0,
+      texture: opts.texture || 0,
+      textureDetail: params.texture_detail,
+      textureHighlights: params.texture_highlights,
+      minElevation: terrain.minElevation,
+      style: style,
+      toneOpts: toneOpts
+    }
   };
-  setOutputLayerName(out, lyr, 'hillshade', opts);
-  return [out];
-};
+}
 
 // derivation entries that aren't options
 var UNFORMATTED_PARAMS = ['type', 'sourceId'];
@@ -169,6 +224,21 @@ function formatExaggeration(val) {
 
 function formatPixelSize(meters) {
   return meters >= 100 ? Math.round(meters) + ' m' : +meters.toFixed(1) + ' m';
+}
+
+// A raster that can be shaded as terrain (the GUI offers its hillshade panel
+// for these)
+export function rasterCanBeHillshaded(raster) {
+  var grid = raster && getRasterGrid(raster);
+  if (!grid || !grid.samples || !grid.bbox || rasterGridIsRotated(grid)) return false;
+  return rasterMayBeTerrain(raster, grid);
+}
+
+// A raster imported without interpretation= is an 'image', which includes a
+// DEM, so only an image displayed in color is ruled out
+export function rasterMayBeTerrain(raster, grid) {
+  return raster.interpretation != 'categorical' &&
+    !(raster.interpretation == 'image' && rasterGridDisplaysColor(grid));
 }
 
 function validateHillshadeGrid(grid, opts) {

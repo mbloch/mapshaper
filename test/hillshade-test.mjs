@@ -145,6 +145,82 @@ describe('mapshaper-hillshade.mjs', function () {
     })
   })
 
+  describe('getHillshadeHighlightScale()', function () {
+    function scale(alt, lighting) {
+      return internal.getHillshadeHighlightScale(
+        internal.getHillshadeMaxShade(internal.getHillshadeLights(315, alt, lighting)),
+        internal.getHillshadeMaxShade(internal.getHillshadeLights(315, 45, lighting)));
+    }
+
+    it('scales highlights by the angle from flat ground to the brightest slope, above 45 degrees', function () {
+      assert.equal(scale(45, 'hard'), 1);
+      assert.equal(scale(20, 'hard'), 1);
+      assert(Math.abs(scale(80, 'hard') - 10 / 45) < 1e-9);
+      assert(Math.abs(scale(60, 'hard') - 30 / 45) < 1e-9);
+      assert.equal(scale(45), 1);
+      assert(scale(80) < scale(70) && scale(70) < scale(60) && scale(60) < 1);
+    })
+
+    it('transparent -hillshade altitude= above 45 dims the strongest highlight; lower altitudes are unchanged', async function () {
+      // the highest opacity of a highlight (a white pixel) on a dome
+      async function strongest(cmd) {
+        var catalog = await runOnDataset(makeElevationDataset(41, 41, function(x, y) {
+          var r2 = (x - 20) * (x - 20) + (y - 20) * (y - 20);
+          return r2 < 400 ? Math.sqrt(400 - r2) * 300 : 0;
+        }), cmd);
+        var samples = catalog.getLayers()[0].layer.raster.grid.samples;
+        var max = 0;
+        for (var i = 0; i < samples.length; i += 4) {
+          if (samples[i] == 255) max = Math.max(max, samples[i + 3]);
+        }
+        return max;
+      }
+      var at45 = await strongest('-hillshade lighting=hard');
+      assert(at45 > 135);
+      assert(await strongest('-hillshade lighting=hard altitude=20') >= at45);
+      assert(await strongest('-hillshade lighting=hard altitude=80') < at45 * 0.5);
+    })
+  })
+
+  describe('opaque -hillshade altitude=', function () {
+    // the tone of a plane rising @slopeDeg toward the southeast, facing a
+    // northwest light
+    function planeTone(slopeDeg, opts) {
+      var s = internal.getHillshadeShading(Object.assign({opaque: true}, opts),
+        {cells: {median: 1}, minElevation: null}).settings;
+      var t = Math.tan(slopeDeg * Math.PI / 180);
+      var elev = makeElevation(5, 5, function(x, y) { return (x + y) * Math.SQRT1_2 * t; });
+      var shade = internal.computeHillshade(elev, null, 5, 5, constantCells(5, 1), constantCells(5, 1), s.lights, 1);
+      return internal.getHillshadeTones(shade.subarray(12, 13), null, s.style, s.toneOpts)[0];
+    }
+
+    it('gives a slope the same tone at any altitude, for the same angle to the light', function () {
+      [70, 30].forEach(function(alt) {
+        [0, 10, 20, 25].forEach(function(angle) {
+          // tilted toward the light, @angle beyond the slope facing it
+          var tone = planeTone(90 - alt + angle, {lighting: 'hard', altitude: alt});
+          var at45 = planeTone(45 + angle, {lighting: 'hard'});
+          assert(Math.abs(tone - at45) < 1e-4, alt + ' ' + angle + ': ' + tone + ' ' + at45);
+        });
+      });
+      // flat ground is 20 degrees from a light at 70 degrees
+      assert(Math.abs(planeTone(0, {lighting: 'hard', altitude: 70}) - planeTone(25, {lighting: 'hard'})) < 1e-4);
+    })
+
+    it('makes flat ground lighter than the base color under a higher light, and darker under a lower one', function () {
+      assert.equal(planeTone(0, {}), 0);
+      assert(planeTone(0, {altitude: 60}) > 0.2);
+      assert(planeTone(0, {altitude: 30}) < -0.2);
+      assert(planeTone(0, {altitude: 60}) < planeTone(0, {altitude: 80}));
+    })
+
+    it('still gives the slope facing the light the highlight color', function () {
+      [20, 80].forEach(function(alt) {
+        assert(planeTone(90 - alt, {lighting: 'hard', altitude: alt}) > 0.99);
+      });
+    })
+  })
+
   describe('getAutoExaggeration()', function () {
     it('is 1 at large scales and grows with pixel size, up to 10', function () {
       assert.equal(internal.getAutoExaggeration(10), 1);
@@ -354,17 +430,32 @@ describe('mapshaper-hillshade.mjs', function () {
       assert.equal(hex(rampColors('#000000').base), hex(rampColors('#000000', '#ffffff').base));
     })
 
-    it('opaque colors: a missing shadow puts the base 80% of the way to the highlight, with the base\'s hue', function () {
+    it('opaque colors: a missing shadow has the base\'s hue, and the default colors\' ratio of lightness to the base', function () {
       var l = function(rgb) { return internal.rgbToOklab(rgb).l; };
-      [['#e0d8c0', null], ['#c8dcc0', '#fcffe7'], ['#c8d8e8', '#fff8e0']].forEach(function(pair) {
+      var ratio = l(internal.parseColor('#686868')) / l(internal.parseColor('#d7d7d7'));
+      [['#e0d8c0', null], ['#c8dcc0', '#fcffe7'], ['#c8d8e8', '#fff8e0'], ['#808080', null]].forEach(function(pair) {
         var stops = rampColors(null, pair[1], pair[0]);
         var base = internal.oklabToOklch(internal.rgbToOklab(stops.base));
         var shadow = internal.oklabToOklch(internal.rgbToOklab(stops.shadow));
-        assert(Math.abs(l(stops.base) - (0.2 * l(stops.shadow) + 0.8 * l(stops.highlight))) < 0.005, pair);
+        assert(Math.abs(l(stops.shadow) / l(stops.base) - ratio) < 0.01, pair);
         if (base.c > 0.02) assert(Math.abs(shadow.h - base.h) < 3, pair);
       });
-      // too dark a base for the extrapolation gives black
-      assert.equal(hex(rampColors(null, null, '#808080').shadow), '#000000');
+      assert.equal(hex(rampColors(null, null, '#d7d7d7').shadow), '#686868');
+    })
+
+    it('opaque colors: shadow and highlight strengths derive colors from the base', function () {
+      var base = internal.parseColor('#e0d6c4');
+      var l = function(rgb) { return internal.rgbToOklab(rgb).l; };
+      assert.equal(hex(internal.getHillshadeShadowColor(base, 1)), hex(rampColors(null, null, '#e0d6c4').shadow));
+      assert.equal(hex(internal.getHillshadeShadowColor(base, 0)), '#e0d6c4');
+      assert(l(internal.getHillshadeShadowColor(base, 2)) < l(internal.getHillshadeShadowColor(base, 1)));
+      assert.equal(hex(internal.getHillshadeHighlightColor(base, 1)), '#ffffff');
+      assert.equal(hex(internal.getHillshadeHighlightColor(base, 0)), '#e0d6c4');
+      [0.3, 1, 1.7].forEach(function(s) {
+        var shadow = internal.getHillshadeShadowColor(base, s);
+        assert(Math.abs(internal.getHillshadeShadowStrength(base, shadow) - s) < 0.02, s);
+      });
+      assert(Math.abs(internal.getHillshadeHighlightStrength(base, internal.getHillshadeHighlightColor(base, 0.4)) - 0.4) < 0.02);
     })
 
     it('opaque style: invalid pixels are clear', function () {
@@ -376,7 +467,7 @@ describe('mapshaper-hillshade.mjs', function () {
       assert.deepEqual(Array.from(rgba.subarray(12, 16)), [0, 0, 0, 0]);
     })
 
-    it('without base-color, flat ground is #d7d7d7, or 80% of the way from shadow to highlight, at any altitude', async function () {
+    it('without base-color, flat ground is #d7d7d7, or 80% of the way from shadow to highlight, at the default altitude', async function () {
       function flatPixel(catalog) {
         return Array.from(catalog.getLayers()[0].layer.raster.grid.samples.subarray(0, 4));
       }
@@ -384,7 +475,8 @@ describe('mapshaper-hillshade.mjs', function () {
       var gray = flatPixel(await runOnDataset(flat(), '-hillshade opaque'));
       var base = rampColors('#305440', '#fcffe7').base;
       assert.deepEqual(gray, [215, 215, 215, 255]);
-      assert.deepEqual(flatPixel(await runOnDataset(flat(), '-hillshade opaque altitude=20')), gray);
+      assert(flatPixel(await runOnDataset(flat(), '-hillshade opaque altitude=20'))[0] < 215);
+      assert(flatPixel(await runOnDataset(flat(), '-hillshade opaque altitude=70'))[0] > 215);
       assert.deepEqual(flatPixel(await runOnDataset(flat(), '-hillshade opaque shadow-color=#305440 highlight-color=#fcffe7')),
         [base.r, base.g, base.b, 255]);
     })
@@ -1219,10 +1311,10 @@ describe('mapshaper-hillshade.mjs', function () {
         }
       })
 
-      it('rejects images', async function () {
-        var ds = dem();
-        ds.layers[0].raster.interpretation = 'image';
-        await assert.rejects(runOnDataset(ds, '-smooth-terrain'), /elevation raster/);
+      it('rejects color images, but not a DEM imported as an image', async function () {
+        await api.applyCommands('-i test/data/geotiff/sedona-elev.tif -smooth-terrain');
+        await assert.rejects(api.applyCommands('-i test/data/geotiff/sedona-naip.tif -smooth-terrain'),
+          /elevation raster/);
       })
 
       it('min-elevation= leaves terrain below it unchanged', async function () {
@@ -1414,6 +1506,61 @@ describe('mapshaper-hillshade.mjs', function () {
     it('style= is no longer an option', async function () {
       await assert.rejects(runOnDataset(makeElevationDataset(5, 5, slope), '-hillshade style=opaque'),
         /style/);
+    })
+  })
+
+  // The hillshade panel reads the terrain once, keeps the fields of shading,
+  // and recombines them as settings change
+  describe('shading from kept fields, as the hillshade panel does', function () {
+    this.timeout(20000);
+    function terrain(x, y) {
+      return 300 * Math.sin(x / 9) * Math.cos(y / 13) + 80 * Math.sin((x * 3 + y) / 4) - 60;
+    }
+
+    async function getPanelPixels(dataset, opts) {
+      var lyr = dataset.layers[0];
+      var t = internal.readHillshadeTerrain(lyr, dataset, opts);
+      var shading = internal.getHillshadeShading(opts, t);
+      var grid = t.grid;
+      var fields;
+      if (shading.smoothing > 0) {
+        grid = Object.assign({}, grid, {elev: (await internal.runSmoothingStage(grid,
+          internal.getSmoothingSettings(shading.smoothing, {}, t.cells.median, t.minElevation), opts)).elev});
+      }
+      fields = await internal.runShadingFieldsStage(grid, shading.settings, opts);
+      return Array.from(internal.writeHillshadeRgba(internal.combineShadingFields(fields, grid, shading.settings),
+        grid.valid, shading.style, shading.colors));
+    }
+
+    async function getCommandPixels(dataset, str) {
+      var catalog = await runOnDataset(dataset, '-hillshade ' + str);
+      return Array.from(catalog.getLayers()[0].layer.raster.grid.samples);
+    }
+
+    [
+      '',
+      'opaque ambient=0 aerial=0.6',
+      'base-color=#e0d6c4 texture=0.5 min-elevation=0 smoothing=2 azimuth=200 lighting=soft',
+      'max-opacity=0.8 highlights=0.4 gamma=1.2 exaggeration=3 texture=0.3 texture-highlights=0.5 workers=3'
+    ].forEach(function(str) {
+      it('gives the same image as -hillshade ' + str, async function () {
+        var opts = internal.parseCommands('-hillshade ' + str)[0].options;
+        assert.deepEqual(await getPanelPixels(makeElevationDataset(240, 180, terrain), opts),
+          await getCommandPixels(makeElevationDataset(240, 180, terrain), str));
+      })
+    });
+
+    it('the fields don\'t change when they are combined', function () {
+      var grid = {elev: makeElevation(20, 20, terrain), valid: null, width: 20, height: 20,
+        cellWidths: constantCells(20, 100), cellHeights: constantCells(20, 100)};
+      var s = {lights: internal.getHillshadeLights(315, 45, 'balanced'), exaggeration: 1.5, ambient: 0.5,
+        aerial: 0.5, texture: 0.5, textureDetail: 0.5, textureHighlights: 0, minElevation: null,
+        style: 'shadow', toneOpts: {gamma: 0.7, maxShade: 1.2}};
+      var fields = internal.computeShadingFields(grid, s);
+      var copies = {shade: Float32Array.from(fields.shade), openness: Float32Array.from(fields.openness),
+        texture: Float32Array.from(fields.texture)};
+      internal.combineShadingFields(fields, grid, s);
+      assert.deepEqual(fields, copies);
     })
   })
 })

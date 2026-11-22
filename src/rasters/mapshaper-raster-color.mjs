@@ -486,7 +486,7 @@ export function getHillshadeColorRamp(stops) {
 }
 
 // Where the base color is on the ramp from the shadow color to the
-// highlight color, when one of them is derived. A slope tilted a little
+// highlight color, when it is derived from them. A slope tilted a little
 // toward the light then gets as much lighter as one tilted away gets darker:
 // the brightest slope was 1.25 times as bright as flat ground under the
 // former default lights (1.21 under the current ones), so highlight tones
@@ -504,8 +504,8 @@ var DEFAULT_HILLSHADE_HIGHLIGHT = {r: 255, g: 255, b: 255};
 // The three colors of opaque shading. The highlight color defaults to white.
 // A missing base color is HILLSHADE_BASE_WEIGHT of the way from the shadow
 // color to the highlight color, or #d7d7d7 if the shadow color is missing
-// too. A missing shadow color is extrapolated from the base and highlight
-// colors (see getDerivedShadowColor()), or #686868 if all three are missing.
+// too. A missing shadow color is derived from the base color (see
+// getHillshadeShadowColor()), or #686868 if all three are missing.
 // @shadow, @base, @highlight {r, g, b} or null
 // Returns {shadow, base, highlight}, as {r, g, b} objects
 export function getHillshadeRampColors(shadow, base, highlight) {
@@ -514,8 +514,51 @@ export function getHillshadeRampColors(shadow, base, highlight) {
     parseColor(getOklchInterpolator(formatRgb(shadow), formatRgb(light))(HILLSHADE_BASE_WEIGHT).color) :
     toRgb(DEFAULT_HILLSHADE_BASE);
   var dark = shadow ? toRgb(shadow) : !base && !highlight ? toRgb(DEFAULT_HILLSHADE_SHADOW) :
-    getDerivedShadowColor(mid, light);
+    getHillshadeShadowColor(mid, 1);
   return {shadow: dark, base: mid, highlight: light};
+}
+
+// The shadow color of opaque shading derived from the base color: the base's
+// hue and chroma (as much as the gamut has room for), and a lightness in the
+// same ratio to the base's as the default colors have, so that shading has
+// the same contrast whatever the base color. (Extrapolating hue and chroma
+// from the base and highlight colors as well would multiply small
+// differences between them into a strong, unrelated color.)
+// @base {r, g, b}
+// @strength 0 (flat: the base color) to 2; 1 is the default shadow
+export function getHillshadeShadowColor(base, strength) {
+  var lch = oklabToOklch(rgbToOklab(base));
+  var l = lch.l * Math.max(0, 1 - strength * (1 - getDefaultShadowRatio()));
+  return toRgb(oklchToRgb({l: l, c: lch.c, h: lch.h}));
+}
+
+// The highlight color of opaque shading derived from the base color: the
+// base's hue, toward white
+// @base {r, g, b}
+// @strength 0 (flat: the base color) to 1 (white, the default)
+export function getHillshadeHighlightColor(base, strength) {
+  var lch = oklabToOklch(rgbToOklab(base));
+  var s = Math.max(0, Math.min(1, strength));
+  return toRgb(oklchToRgb({l: lch.l + s * (1 - lch.l), c: lch.c * (1 - s), h: lch.h}));
+}
+
+// The inverses of getHillshadeShadowColor() and getHillshadeHighlightColor(),
+// for showing the strengths of given colors (approximately, if their hue isn't
+// the base's)
+export function getHillshadeShadowStrength(base, shadow) {
+  var b = rgbToOklab(base).l;
+  if (!(b > 0)) return 1;
+  return (1 - rgbToOklab(shadow).l / b) / (1 - getDefaultShadowRatio());
+}
+
+export function getHillshadeHighlightStrength(base, highlight) {
+  var b = rgbToOklab(base).l;
+  return b < 1 ? (rgbToOklab(highlight).l - b) / (1 - b) : 1;
+}
+
+// lightness of the default shadow color as a share of the default base color's
+function getDefaultShadowRatio() {
+  return rgbToOklab(DEFAULT_HILLSHADE_SHADOW).l / rgbToOklab(DEFAULT_HILLSHADE_BASE).l;
 }
 
 // Where the base color is on the ramp from the shadow color to the highlight
@@ -525,19 +568,6 @@ export function getHillshadeBasePosition(stops) {
   var dark = rgbToOklab(stops.shadow).l;
   var range = rgbToOklab(stops.highlight).l - dark;
   return range > 0 ? (rgbToOklab(stops.base).l - dark) / range : 0.5;
-}
-
-// The shadow color that puts @base HILLSHADE_BASE_WEIGHT of the way to
-// @highlight in lightness. It has the base color's hue and chroma (as much
-// as the gamut has room for): extrapolating them as well would multiply
-// small differences between the base and highlight colors into a strong,
-// unrelated color. Black if the base is too dark for the extrapolation.
-function getDerivedShadowColor(base, highlight) {
-  var lch = oklabToOklch(rgbToOklab(base));
-  var w = HILLSHADE_BASE_WEIGHT;
-  var l = (lch.l - w * rgbToOklab(highlight).l) / (1 - w);
-  if (l <= 0) return {r: 0, g: 0, b: 0};
-  return toRgb(oklchToRgb({l: l, c: lch.c, h: lch.h}));
 }
 
 function toRgb(o) {
