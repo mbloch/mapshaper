@@ -6,6 +6,7 @@ import os from 'os';
 import path from 'path';
 import { PNG } from 'pngjs';
 import zlib from 'zlib';
+import { blurChannelGaussian, getDiscreteGaussianKernel } from '../src/rasters/mapshaper-box-blur';
 import { downsampleRgba, readImageSize } from '../src/rasters/mapshaper-image-import';
 import { getRasterImportSize, parseImportResolution } from '../src/rasters/mapshaper-raster-import-size';
 
@@ -662,6 +663,68 @@ describe('raster layers', function () {
     assert.deepEqual(
       Array.from(byDistance.raster.grid.samples),
       Array.from(byPixels.raster.grid.samples));
+  });
+
+  describe('small blurs', function () {
+    function getSpread(values, width, cx, cy) {
+      var sum = 0, sumSq = 0;
+      for (var i = 0; i < values.length; i++) {
+        var dx = i % width - cx;
+        sum += values[i];
+        sumSq += values[i] * dx * dx;
+      }
+      return {sum: sum, sigma: Math.sqrt(sumSq / sum)};
+    }
+
+    function blurImpulse(sigma, weights) {
+      var size = 41;
+      var channel = new Float32Array(size * size);
+      channel[20 * size + 20] = 1;
+      blurChannelGaussian(channel, new Float32Array(size * size), weights || null, size, size, sigma);
+      return channel;
+    }
+
+    it('blurs at a radius of 1px', function () {
+      var lyr = getProjectedBlurDataset().layers[0];
+      api.internal.blurRasterLayers([lyr], getProjectedBlurDataset(), {radius: '1px'});
+      var samples = lyr.raster.grid.samples;
+      assert(samples[6] < 255);
+      assert(samples[3] > 0 && samples[9] > 0);
+      assert.equal(samples[3], samples[9]);
+    });
+
+    it('spreads a point by the requested sigma', function () {
+      [0.25, 0.5, 1, 2, 3].forEach(function(sigma) {
+        var spread = getSpread(blurImpulse(sigma), 41, 20, 20);
+        assert(Math.abs(spread.sum - 1) < 1e-5);
+        assert(Math.abs(spread.sigma - sigma) / sigma < 0.002, 'sigma ' + sigma + ': ' + spread.sigma);
+      });
+    });
+
+    it('builds a normalized kernel with the requested variance', function () {
+      [0.1, 0.5, 1.5, 3].forEach(function(sigma) {
+        var kernel = getDiscreteGaussianKernel(sigma);
+        var sum = kernel[0], variance = 0;
+        for (var i = 1; i < kernel.length; i++) {
+          sum += kernel[i] * 2;
+          variance += kernel[i] * 2 * i * i;
+        }
+        assert(Math.abs(sum - 1) < 1e-12);
+        assert(Math.abs(Math.sqrt(variance) - sigma) / sigma < 0.001);
+      });
+    });
+
+    it('leaves invalid pixels out of the average', function () {
+      var size = 41;
+      var weights = new Float32Array(size * size).fill(1);
+      assert.deepEqual(Array.from(blurImpulse(1, weights)), Array.from(blurImpulse(1)));
+      var channel = new Float32Array(size * size).fill(5);
+      channel[10 * size + 10] = NaN;
+      weights[10 * size + 10] = 0;
+      blurChannelGaussian(channel, new Float32Array(size * size), weights, size, size, 1);
+      assert(Math.abs(channel[10 * size + 11] - 5) < 1e-5);
+      assert(Math.abs(channel[10 * size + 10] - 5) < 1e-5);
+    });
   });
 
   describe('blur radius parsing', function () {

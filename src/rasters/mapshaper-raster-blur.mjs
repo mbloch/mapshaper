@@ -7,7 +7,7 @@ import {
 } from './mapshaper-raster-grid';
 import { convertIntervalParam, parseMeasure } from '../geom/mapshaper-units';
 import { stop } from '../utils/mapshaper-logging';
-import { BOX_BLUR_PASSES, blurChannel, getGaussianBoxWidths } from './mapshaper-box-blur';
+import { blurChannelGaussian } from './mapshaper-box-blur';
 
 export { blurFloatChannel } from './mapshaper-box-blur';
 
@@ -16,21 +16,20 @@ export function blurRasterGrid(raster, optsArg, crs) {
   var grid = getRasterGrid(raster);
   var radius = getBlurRadius(grid, opts, crs);
   var sigma = radius / 2;
-  var boxes = getGaussianBoxWidths(sigma, BOX_BLUR_PASSES);
   var samples = new grid.samples.constructor(grid.samples.length);
   var tmp = new Float32Array(grid.width * grid.height);
   var channel = new Float32Array(grid.width * grid.height);
   var weights = getRasterBlurWeights(grid);
   validateBlurGrid(grid);
   if (grid.bands == 4) {
-    blurRgbaGrid(grid, samples, channel, tmp, weights, boxes);
+    blurRgbaGrid(grid, samples, channel, tmp, weights, sigma);
     return Object.assign({}, grid, {
       samples: samples
     });
   }
   for (var band = 0; band < grid.bands; band++) {
     copyBandToChannel(grid, band, channel);
-    blurChannel(channel, tmp, weights, grid.width, grid.height, boxes);
+    blurChannelGaussian(channel, tmp, weights, grid.width, grid.height, sigma);
     copyChannelToBand(channel, samples, grid, band);
   }
   return Object.assign({}, grid, {
@@ -86,14 +85,14 @@ function validateBlurGrid(grid) {
   }
 }
 
-function blurRgbaGrid(grid, samples, channel, tmp, weights, boxes) {
+function blurRgbaGrid(grid, samples, channel, tmp, weights, sigma) {
   var alpha = new Float32Array(grid.width * grid.height);
   copyBandToChannel(grid, 3, alpha);
-  blurChannel(alpha, tmp, weights, grid.width, grid.height, boxes);
+  blurChannelGaussian(alpha, tmp, weights, grid.width, grid.height, sigma);
   for (var band = 0; band < grid.bands; band++) {
     if (band < 3) {
       copyPremultipliedBandToChannel(grid, band, channel);
-      blurChannel(channel, tmp, weights, grid.width, grid.height, boxes);
+      blurChannelGaussian(channel, tmp, weights, grid.width, grid.height, sigma);
       copyUnpremultipliedChannelToBand(channel, alpha, samples, grid, band);
     } else {
       copyChannelToBand(alpha, samples, grid, 3);

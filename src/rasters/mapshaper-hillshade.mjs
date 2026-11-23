@@ -196,6 +196,18 @@ var FIT_SAMPLES = 1e6;
 // steeper slopes than a smoother one, so the relief still looks like its own.
 // @cellWidths, @cellHeights per-row size of a pixel, in any unit
 export function getFittedVerticalScale(elev, valid, width, height, cellWidths, cellHeights) {
+  var grads = getSampledGradients(elev, valid, width, height, cellWidths, cellHeights);
+  var g;
+  if (grads.length === 0) return 1;
+  // the median of a DEM with large flat areas is 0; a higher percentile still
+  // describes its slopes
+  g = grads[Math.floor(grads.length / 2)] || grads[Math.floor(grads.length * 0.9)];
+  return g > 0 ? Math.tan(FITTED_MEDIAN_SLOPE * Math.PI / 180) / g : 1;
+}
+
+// Gradients (rise over run) of up to about FIT_SAMPLES pixels spread over the
+// grid, sorted
+function getSampledGradients(elev, valid, width, height, cellWidths, cellHeights) {
   var step = Math.max(1, Math.ceil(Math.sqrt(width * height / FIT_SAMPLES)));
   var grads = [];
   var x, y, i, dx, dy, g;
@@ -211,12 +223,7 @@ export function getFittedVerticalScale(elev, valid, width, height, cellWidths, c
       if (isFinite(g)) grads.push(g);
     }
   }
-  if (grads.length === 0) return 1;
-  grads = Float64Array.from(grads).sort();
-  // the median of a DEM with large flat areas is 0; a higher percentile still
-  // describes its slopes
-  g = grads[Math.floor(grads.length / 2)] || grads[Math.floor(grads.length * 0.9)];
-  return g > 0 ? Math.tan(FITTED_MEDIAN_SLOPE * Math.PI / 180) / g : 1;
+  return Float64Array.from(grads).sort();
 }
 
 // Returns brightness values, scaled so that flat ground is 1, lit slopes are
@@ -715,8 +722,9 @@ export function getAerialRange(elev, valid) {
 // Brown filters in the frequency domain (spectrum times |k|^alpha); this
 // approximates it as a sum of differences of Gaussians, using
 // |k|^a = C * integral (1 - exp(-t k^2)) t^(-1-a/2) dt, sampled at
-// half-octave scales up to @maxSigma pixels. Brown's unbounded scales make
-// plains ringed by mountains read as giant drainages.
+// half-octave scales up to @maxSigma pixels (see getTextureMaxScale()).
+// Brown's unbounded scales make plains ringed by mountains read as giant
+// drainages.
 // Elevation differences are divided by the pixel size, like a slope, so the
 // result does not depend on the extent or (with automatic exaggeration) the
 // zoom level.
@@ -754,6 +762,43 @@ export function getTextureShadingReach(maxSigma) {
 var TEXTURE_MIN_SCALE = 0.7;
 // brings typical relief (France at zoom 7) to about 1 at the 98th percentile
 var TEXTURE_SCALE = 0.125;
+
+// The largest scale of texture shading, in pixels: a fraction of the size of
+// the whole grid (not of a tile of it), so that the texture shows the
+// landforms that fill the map at any resolution. At a fixed size, the
+// valleys of detailed DEMs were left out: the texture of a 3.9 m lidar DEM of
+// a volcano still grew at 24 pixels.
+export function getTextureMaxScale(width, height) {
+  return Math.max(TEXTURE_MIN_MAX_SCALE, Math.sqrt(width * height) * TEXTURE_MAX_SCALE_FRACTION);
+}
+
+var TEXTURE_MIN_MAX_SCALE = 24;
+var TEXTURE_MAX_SCALE_FRACTION = 1 / 16;
+
+// Multiplier of texture shading for terrain gentler than mountains, which
+// otherwise gets little texture at any texture= (4% median opacity on a
+// rolling plain at texture=1, against 40-50% in mountains). Mountains get 1.
+// @medianSlope from getTextureMedianSlope()
+// @autoExaggeration getAutoExaggeration() of the DEM; the exaggeration in use
+//   isn't included, so that exaggeration= still scales the texture
+export function getTextureGain(medianSlope, autoExaggeration) {
+  var slope = medianSlope * autoExaggeration;
+  if (!(slope > 0)) return TEXTURE_MAX_GAIN;
+  return Math.max(1, Math.min(TEXTURE_MAX_GAIN, TEXTURE_GAIN_SLOPE / slope));
+}
+
+// an exaggerated median gradient below this gets a gain above 1
+var TEXTURE_GAIN_SLOPE = 0.25;
+var TEXTURE_MAX_GAIN = 8;
+
+// Median gradient (rise over run) of a DEM, leaving out flat pixels, so that
+// a sea flattened to one elevation doesn't count as gentle terrain
+export function getTextureMedianSlope(elev, valid, width, height, cellWidths, cellHeights) {
+  var grads = getSampledGradients(elev, valid, width, height, cellWidths, cellHeights);
+  var first = 0;
+  while (first < grads.length && grads[first] === 0) first++;
+  return first < grads.length ? grads[first + Math.floor((grads.length - first) / 2)] : 0;
+}
 
 // Removes bright lines one pixel wide from signed tones, in place: a
 // morphological opening with a 2x2 square (each pixel gets the brightest of

@@ -790,6 +790,46 @@ describe('mapshaper-hillshade.mjs', function () {
     })
   })
 
+  describe('texture scale and gain', function () {
+    it('the largest scale is a fraction of the grid, and at least 24 pixels', function () {
+      assert.equal(internal.getTextureMaxScale(100, 100), 24);
+      assert.equal(internal.getTextureMaxScale(1600, 1600), 100);
+      assert.equal(internal.getTextureMaxScale(3200, 800), 100);
+    });
+
+    it('boosts gentle terrain, up to a limit, and leaves mountains alone', function () {
+      assert.equal(internal.getTextureGain(0.5, 1), 1);
+      assert.equal(internal.getTextureGain(0.1, 2.5), 1);
+      assert.equal(internal.getTextureGain(0.05, 1), 5);
+      assert.equal(internal.getTextureGain(0.001, 1), 8);
+      assert.equal(internal.getTextureGain(0, 1), 8);
+    });
+
+    it('the median slope leaves out flat pixels, such as a flattened sea', function () {
+      var w = 40, h = 40;
+      var cells = constantCells(h, 10);
+      // a slope of 0.2 on the east half, a sea at 0 on the west half and beyond
+      var elev = makeElevation(w, h, function(x) { return x < 25 ? 0 : (x - 25) * 2; });
+      assert(Math.abs(internal.getTextureMedianSlope(elev, null, w, h, cells, cells) - 0.2) < 1e-6);
+      assert.equal(internal.getTextureMedianSlope(new Float32Array(w * h), null, w, h, cells, cells), 0);
+    });
+
+    it('-hillshade texture= gets more texture from gentle terrain', async function () {
+      function rolling(x, y) {
+        return 4 * Math.sin(x / 5) * Math.cos(y / 7);
+      }
+      var dataset = makeElevationDataset(60, 60, rolling);
+      var opts = internal.parseCommands('-hillshade texture=1 exaggeration=1')[0].options;
+      var terrain = internal.readHillshadeTerrain(dataset.layers[0], dataset, opts);
+      var s = internal.getHillshadeShading(opts, terrain).settings;
+      var plain = internal.computeTextureField(terrain.grid, Object.assign({}, s, {textureGain: 1}));
+      var boosted = internal.computeTextureField(terrain.grid, s);
+      assert(s.textureGain > 1);
+      assert.equal(s.textureMaxScale, 24);
+      assert(Math.abs(boosted[30 * 60 + 30] - plain[30 * 60 + 30] * s.textureGain) < 1e-4);
+    });
+  })
+
   describe('applyTextureTones()', function () {
     it('darkens drainages up to its opacity and leaves ridges alone', function () {
       var a = 0.5 * Math.tanh(1);

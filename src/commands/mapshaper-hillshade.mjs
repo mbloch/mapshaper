@@ -19,6 +19,9 @@ import {
   getHillshadeMaxShade,
   getLightingSchemeNames,
   getOpaqueShadeScale,
+  getTextureGain,
+  getTextureMaxScale,
+  getTextureMedianSlope,
   raiseLowElevations
 } from '../rasters/mapshaper-hillshade';
 import { runHillshadeStages } from '../rasters/mapshaper-hillshade-runner';
@@ -197,11 +200,25 @@ export function getHillshadeShading(opts, terrain) {
       texture: opts.texture || 0,
       textureDetail: params.texture_detail,
       textureHighlights: params.texture_highlights,
+      textureMaxScale: opts.texture > 0 ? getTextureMaxScale(terrain.grid.width, terrain.grid.height) : null,
+      textureGain: opts.texture > 0 ? getTerrainTextureGain(terrain) : null,
       minElevation: terrain.minElevation,
       style: style,
       toneOpts: toneOpts
     }
   };
+}
+
+// The hillshade panel gets the shading settings for every frame of a drag,
+// so the slope statistics are kept with the terrain
+function getTerrainTextureGain(terrain) {
+  var g = terrain.grid;
+  if (terrain.textureGain == null) {
+    terrain.textureGain = getTextureGain(
+      getTextureMedianSlope(g.elev, g.valid, g.width, g.height, g.cellWidths, g.cellHeights),
+      getAutoExaggeration(terrain.cells.median));
+  }
+  return terrain.textureGain;
 }
 
 // derivation entries that aren't options

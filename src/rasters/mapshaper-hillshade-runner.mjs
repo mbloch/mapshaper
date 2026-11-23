@@ -1,5 +1,5 @@
 import { getAerialRange } from './mapshaper-hillshade';
-import { getShadingReach, getSmoothingReach, runHillshadeStage } from './mapshaper-hillshade-stages';
+import { getShadingReach, getSmoothingReach, getTextureReach, runHillshadeStage } from './mapshaper-hillshade-stages';
 import { copyTile, getTileLayout, pasteTileCore } from './mapshaper-raster-tiles';
 import { getProcessorCount, startWorkerPool } from '../utils/mapshaper-worker-pool';
 
@@ -24,8 +24,10 @@ export async function runHillshadeStages(grid, smoothing, shading, opts) {
   var maxWorkers = getHillshadeWorkerCount(opts.workers, grid.width * grid.height);
   var smoothTiles = smoothing ?
     getTileLayout(grid.width, grid.height, maxWorkers, getSmoothingReach(smoothing), true) : [];
-  var shadeTiles = getTileLayout(grid.width, grid.height, maxWorkers, getShadingReach(shading), false);
-  var poolSize = maxWorkers > 0 ? Math.max(smoothTiles.length, shadeTiles.length) : 0;
+  var textureTiles = getTextureTiles(grid, shading, maxWorkers);
+  var shadeTiles = getTileLayout(grid.width, grid.height, maxWorkers,
+    getShadingReach(Object.assign({}, shading, {texture: 0})), false);
+  var poolSize = maxWorkers > 0 ? Math.max(smoothTiles.length, textureTiles.length, shadeTiles.length) : 0;
   var pool = poolSize > 0 ? await startWorkerPool(HILLSHADE_WORKER_SCRIPT, poolSize) : null;
   var resume = opts.resume || function() {};
   var thresholds = null, smoothed, shaded;
@@ -39,6 +41,12 @@ export async function runHillshadeStages(grid, smoothing, shading, opts) {
     }
     if (shading.aerial > 0) {
       shading = Object.assign({}, shading, {aerialRange: getAerialRange(grid.elev, grid.valid)});
+    }
+    if (shading.texture > 0) {
+      grid = Object.assign({}, grid, {
+        texture: (await runStage(pool, 'texture', grid, shading, textureTiles, ['texture'])).texture
+      });
+      resume();
     }
     shaded = await runStage(pool, 'shade', grid, shading, shadeTiles, ['tones']);
     resume();
@@ -80,13 +88,28 @@ export async function runSmoothingStage(grid, smoothing, opts) {
 // Returns {shade, openness, texture}
 export async function runShadingFieldsStage(grid, shading, opts) {
   var maxWorkers = getHillshadeWorkerCount(opts.workers, grid.width * grid.height);
-  var tiles = getTileLayout(grid.width, grid.height, maxWorkers, getShadingReach(shading), false);
-  var pool = maxWorkers > 0 ? await startWorkerPool(HILLSHADE_WORKER_SCRIPT, tiles.length) : null;
+  var others = Object.assign({}, shading, {texture: 0});
+  var tiles = getTileLayout(grid.width, grid.height, maxWorkers, getShadingReach(others), false);
+  var textureTiles = getTextureTiles(grid, shading, maxWorkers);
+  var poolSize = maxWorkers > 0 ? Math.max(tiles.length, textureTiles.length) : 0;
+  var pool = poolSize > 0 ? await startWorkerPool(HILLSHADE_WORKER_SCRIPT, poolSize) : null;
+  var fields;
   try {
-    return await runStage(pool, 'fields', grid, shading, tiles, ['shade', 'openness', 'texture']);
+    fields = await runStage(pool, 'fields', grid, others, tiles, ['shade', 'openness']);
+    fields.texture = shading.texture > 0 ?
+      (await runStage(pool, 'texture', grid, shading, textureTiles, ['texture'])).texture : null;
+    return fields;
   } finally {
     if (pool) pool.close();
   }
+}
+
+// Texture shading reaches much farther than the rest of shading (see
+// getTextureMaxScale()), so it is computed on its own, larger tiles, and the
+// other stages get it as a field
+function getTextureTiles(grid, shading, maxWorkers) {
+  if (!(shading.texture > 0)) return [];
+  return getTileLayout(grid.width, grid.height, maxWorkers, getTextureReach(shading), false);
 }
 
 // @keys the arrays of the stage's result, which are assembled from the cores
@@ -116,6 +139,7 @@ function getTileGrid(grid, tile) {
   return {
     elev: copyTile(grid.elev, grid.width, tile),
     valid: grid.valid ? copyTile(grid.valid, grid.width, tile) : null,
+    texture: grid.texture ? copyTile(grid.texture, grid.width, tile) : null,
     width: tile.xb - tile.xa,
     height: tile.yb - tile.ya,
     cellWidths: grid.cellWidths.slice(tile.ya, tile.yb),

@@ -9,6 +9,8 @@ v0.8.8
 * An opaque -hillshade with only `base-color=` gets a shadow color with the same contrast for darker base colors, and a lighter shadow for light base colors, for light hillshades. Previously, mid-tone base colors got black shadows.
 * -blend uses the chosen shadow and highlight colors of opaque hillshades, as it does for transparent ones. Opaque hillshades with automatic colors blend as before. Previously, opaque hillshades always blended black shadows and white highlights.
 * -blend `chroma=` above 1 makes the image's own colors more vivid when `shadow-color=` or `highlight-color=` is a color. Previously, it pushed colors toward the opposite hue of the shading color.
+* -hillshade `texture=` works better across different kinds of terrain. Gentle terrain gets stronger texture, and large rasters show larger valleys. Previously, low hills got almost no texture, and the texture of a large raster only showed small gullies.
+* -blur uses a true Gaussian at radii up to 6px, so small blurs have the requested strength and change smoothly with the radius. Previously, `-blur 1px` had no effect and `-blur 2px` was a weaker, box-shaped blur.
 
 v0.8.7
 * New -hillshade tone curve, which softens the edge of the highlights on slopes facing the light.

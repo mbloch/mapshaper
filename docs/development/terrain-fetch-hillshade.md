@@ -944,8 +944,25 @@ good values are known.
   the texture alone (`max-opacity=0`) is 6.9% shadow.
   - Brown's scales are unbounded, so a plain ringed by mountains reads as a
     giant drainage. Uncapped, shadow on the flat Po plain rose from 3.1% to
-    11.1%. Scales are capped at 24 pixels (4.1%; a 48-pixel cap gave 5.5%,
-    96 gave 8.1%), which keeps nearly all of the ridge carving.
+    11.1%. Scales were first capped at 24 pixels (4.1%; a 48-pixel cap gave
+    5.5%, 96 gave 8.1%), which keeps nearly all of the ridge carving.
+  - A fixed cap fits a small grid but not a large one: on a 1 m DEM of
+    Mount Hood (2040 × 1824), 24 pixels is a ravine, and the texture lost the
+    larger valleys. The cap is now 1/16 of the grid's size, `sqrt(w * h) / 16`,
+    and at least 24 pixels (`getTextureMaxScale()`): 46 pixels for the Alps
+    at zoom 7, 121 for Hood. It is a fraction of the whole grid, so tiles and
+    the panel's previews use the same cap. A cap of 1/8 added more valley
+    hierarchy, but also broad gray washes over basins.
+  - Gentle terrain got almost no texture: at `texture=1`, the median opacity
+    of drainages was 0.04 in low hills against 0.42 in the Alps. A gain
+    (`getTextureGain()`) multiplies `T` by `0.25 / (m * e)`, between 1 and 8,
+    where `m` is the median slope, leaving out flat pixels so a flattened sea
+    doesn't count as gentle, and `e` is the automatic exaggeration. Mountains
+    get a gain of 1. The user's `exaggeration=` still scales `T`, since `e`
+    is the automatic value.
+  - Measured with `bench/texture/measure.mjs` (git-ignored) on five DEMs (the
+    Alps, the Dolomites, Hood, low hills and the Canyonlands): mean darkening
+    of the drainages at `texture=1` is now 0.17-0.24 on all five.
   - Brown stretches the result by percentiles of the extent, which would
     make adjacent extents render differently. Instead the differences are
     divided by the pixel size and multiplied by the exaggeration, like a
@@ -986,17 +1003,21 @@ Smoothing and shading take nearly all of the time, and every step of both
 depends only on pixels within a fixed distance (its reach). So the grid is
 split into overlapping tiles, which workers process separately: each tile's
 core gets the same values as processing the whole grid, bit for bit, as long
-as the margin around it covers the reach. There are two stages, each a
-round trip to the workers, because the reach of the whole pipeline in one
-stage (about 100 pixels with `medium` smoothing and `texture=`) would mean
-much more duplicated work. Margins, including 2 spare pixels:
+as the margin around it covers the reach. There are up to three stages, each
+a round trip to the workers, because the reach of the whole pipeline in one
+stage (hundreds of pixels with `texture=` on a large grid) would mean much
+more duplicated work. Margins, including 2 spare pixels:
 
 1. Smoothing (`smoothTerrain()`; skipped at `smoothing=0`): 40 pixels at level 1, 51, 67
    and 73 at levels 2-4 (29 of each for the dynamic thresholds), and more with
    `fps-levels=2`. Two-level smoothing works on 2x2 blocks, so its tiles start
    on even rows and columns.
-2. Shading to signed tones (`shadeTerrain()`): 28 pixels by default (openness
-   and sharpening), or 68 with `texture=`.
+2. Texture (`computeTextureField()`; only with `texture=`): the reach of the
+   largest texture scale, which grows with the grid. It has its own tiles,
+   because the layout minimizes the largest tile: with a 120-pixel margin in
+   every stage, a 2000-pixel grid would get few tiles.
+3. Shading to signed tones (`shadeTerrain()`): 28 pixels (openness and
+   sharpening), reading the texture field from the previous stage.
 
 The main thread reads the elevations, computes the two values that need the
 whole grid (the elevation range of `aerial=`), and writes
@@ -1064,8 +1085,10 @@ them into signed tones pixel by pixel: `aerial=`, the tone curve
 strengths of ambient and texture, and the 1-pixel thin-highlight filter.
 `shadeTerrain()` is the two in a row, so the command is unchanged. The
 fields can be computed on the worker pool (`runShadingFieldsStage()`, a
-`fields` stage) and combined on the whole grid, which gives the same result
-as combining in tiles.
+`fields` stage, and a `texture` stage on larger tiles) and combined on the
+whole grid, which gives the same result as combining in tiles. The texture's
+cap and gain come from the whole grid and are cached on the terrain, so a
+preview of part of the grid gets the same texture.
 
 The panel reads the elevations once (`readHillshadeTerrain()`) and gets the
 command's settings from its options (`getHillshadeShading()`), so it shades

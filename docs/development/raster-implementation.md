@@ -616,9 +616,17 @@ numerical gaps left by triangle clipping.
 
 ## Raster Blur
 
-`-blur radius=` applies a Gaussian-like blur to projected raster layers. The
-implementation uses three passes of separable box blur to approximate a Gaussian
-in linear time. The kernel is sized in pixels and corresponds to `2 * sigma`.
+`-blur radius=` applies a Gaussian blur to projected raster layers. The radius is
+in pixels and corresponds to `2 * sigma`. Up to sigma 3 (a 6px radius),
+`blurChannelGaussian()` convolves with a discrete Gaussian kernel (e^-t I_n(t),
+t = sigma^2), in separate horizontal and vertical passes. Its variance is
+exactly sigma^2 at any size, including below one pixel. Above sigma 3, three
+passes of separable box blur approximate the Gaussian in linear time. Box widths
+are odd integers, so at small sigmas the box passes miss the requested sigma by
+5-10% (`-blur 2px` used to be a single 3x3 box) or don't blur at all
+(`-blur 1px`). Hillshade, terrain smoothing and sharpening still use the box
+passes (`blurFloatChannel()`) at all sigmas, so their tuned output and their worker-tile margins
+(`getBlurReach()`) are unchanged.
 
 `getBlurRadius()` resolves the user's `radius=` into that pixel count. Plain
 numbers and `px` strings pass through unchanged; a measure with units (`500m`,

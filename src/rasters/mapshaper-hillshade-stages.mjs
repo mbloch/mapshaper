@@ -39,7 +39,8 @@ import {
 // Experimental lighting parameters, in raster pixels
 var LIGHT_ADJUSTMENT_SIGMA = 10;
 var OPENNESS_RADIUS = 24;
-var TEXTURE_MAX_SCALE = 24;
+// for settings without textureMaxScale (see getTextureMaxScale())
+var DEFAULT_TEXTURE_MAX_SCALE = 24;
 // Overlap of tiles beyond the computed reach of a stage
 export var REACH_MARGIN = 2;
 
@@ -47,6 +48,7 @@ export function runHillshadeStage(task) {
   if (task.stage == 'smooth') return smoothTerrain(task.grid, task.settings);
   if (task.stage == 'shade') return {tones: shadeTerrain(task.grid, task.settings)};
   if (task.stage == 'fields') return computeShadingFields(task.grid, task.settings);
+  if (task.stage == 'texture') return {texture: computeTextureField(task.grid, task.settings)};
   throw new Error('Unknown hillshade stage: ' + task.stage);
 }
 
@@ -103,7 +105,10 @@ export function getSmoothingReach(s) {
 // @s.aerialRange from getAerialRange() on the whole grid, if @s.aerial > 0
 // @s.minElevation optional
 // @s.style, @s.toneOpts see getHillshadeTones()
-// @s.textureDetail, @s.textureHighlights
+// @s.textureDetail, @s.textureHighlights, @s.textureMaxScale, @s.textureGain
+// @grid.texture optional texture field from computeTextureField(), which has a
+//   much longer reach than the rest of shading, so it can be computed on
+//   larger tiles
 // Returns signed tones (see getHillshadeTones())
 export function shadeTerrain(grid, s) {
   return combineShadingFields(computeShadingFields(grid, s), grid, s);
@@ -113,25 +118,40 @@ export function shadeTerrain(grid, s) {
 // of its time. They depend only on these settings, so the hillshade panel
 // computes them once and recombines them as other settings change:
 // @s.lights, @s.azimuth, @s.exaggeration, @s.lightAdjust, @s.minElevation,
-// @s.textureDetail, and whether @s.ambient and @s.texture are above 0.
+// @s.textureDetail, @s.textureMaxScale, @s.textureGain, and whether
+// @s.ambient and @s.texture are above 0.
 // Returns {shade, openness, texture}: openness is null unless @s.ambient > 0,
-//   and texture null unless @s.texture > 0
+//   and texture null unless @s.texture > 0 (@grid.texture, if given)
 export function computeShadingFields(grid, s) {
   var elev = grid.elev, valid = grid.valid, w = grid.width, h = grid.height;
-  var offsets, land;
+  var offsets;
   if (s.lightAdjust > 0) {
     offsets = computeLightAdjustment(elev, valid, w, h, s.azimuth, s.lightAdjust,
       LIGHT_ADJUSTMENT_SIGMA);
   }
-  land = s.texture > 0 ? getLandMask(grid, s) : valid;
   return {
     shade: computeHillshade(elev, valid, w, h, grid.cellWidths, grid.cellHeights,
       s.lights, s.exaggeration, offsets),
     openness: s.ambient > 0 ? computeOpenness(elev, valid, w, h, grid.cellWidths,
       grid.cellHeights, s.exaggeration, OPENNESS_RADIUS) : null,
-    texture: s.texture > 0 ? computeTextureShading(elev, land, w, h, getRowCellSizes(grid),
-      s.exaggeration, s.textureDetail, TEXTURE_MAX_SCALE) : null
+    texture: s.texture > 0 ? grid.texture || computeTextureField(grid, s) : null
   };
+}
+
+// The texture field of computeShadingFields()
+export function computeTextureField(grid, s) {
+  return computeTextureShading(grid.elev, getLandMask(grid, s), grid.width, grid.height,
+    getRowCellSizes(grid), s.exaggeration * (s.textureGain > 0 ? s.textureGain : 1),
+    s.textureDetail, getTextureScaleSetting(s));
+}
+
+// Reach of computeTextureField()
+export function getTextureReach(s) {
+  return getTextureShadingReach(getTextureScaleSetting(s)) + REACH_MARGIN;
+}
+
+function getTextureScaleSetting(s) {
+  return s.textureMaxScale > 0 ? s.textureMaxScale : DEFAULT_TEXTURE_MAX_SCALE;
 }
 
 // Combines the fields of computeShadingFields() into signed tones, pixel by
@@ -172,7 +192,7 @@ export function getShadingReach(s) {
     reach = Math.max(reach, getOpennessReach(OPENNESS_RADIUS));
   }
   if (s.texture > 0) {
-    reach = Math.max(reach, getTextureShadingReach(TEXTURE_MAX_SCALE));
+    reach = Math.max(reach, getTextureShadingReach(getTextureScaleSetting(s)));
   }
   return reach + THIN_HIGHLIGHT_REACH + REACH_MARGIN;
 }
