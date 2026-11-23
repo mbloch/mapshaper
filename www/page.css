@@ -5980,7 +5980,10 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	min-width: 0;
 }
 
+/* Sized from the label, so each button gets an equal share of the spare width
+   and labels of different lengths get the same space on either side */
 .raster-hillshade-panel .raster-hillshade-button-row .label-panel-btn {
+	flex: 1 1 auto;
 	position: relative;
 	display: flex;
 	align-items: center;

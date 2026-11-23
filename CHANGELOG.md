@@ -1,14 +1,13 @@
 v0.8.8
 * New -smooth-terrain command, which generalizes an elevation raster the way -hillshade `smoothing=` does, for making contours or tints from the same terrain as a hillshade.
 * -hillshade no longer smooths terrain by default. Use `smoothing=1` for the previous default.
-* The experimental FPS settings (`fps-*=`, `maximum-change=`) moved from -hillshade to -smooth-terrain.
+* The undocumented experimental FPS settings (`fps-*=`, `maximum-change=`) moved from -hillshade to -smooth-terrain.
 * -hillshade `exaggeration=` no longer changes how much detail terrain smoothing keeps. Previously, higher exaggeration smoothed less.
 * Opaque -hillshade output keeps highlights the same size at any `altitude=`. Flat ground gets lighter as the light rises and darker as it falls, and has the base color at 45 degrees. Previously, highlights shrank to a sharp spot under a high light and spread over most slopes under a low one.
 * Transparent -hillshade output with `altitude=` above 45 has weaker, more diffuse highlights. Below 45, highlights cover the same slopes as at 45 instead of spreading over most slopes that face the light.
 * New hillshade panel in the web UI, for styling a hillshade with a live preview. Open it from the menu of an elevation raster.
 * An opaque -hillshade with only `base-color=` gets a shadow color with the same contrast for darker base colors, and a lighter shadow for light base colors, for light hillshades. Previously, mid-tone base colors got black shadows.
 * -blend uses the chosen shadow and highlight colors of opaque hillshades, as it does for transparent ones. Opaque hillshades with automatic colors blend as before. Previously, opaque hillshades always blended black shadows and white highlights.
-* -blend `chroma=` above 1 makes the image's own colors more vivid when `shadow-color=` or `highlight-color=` is a color. Previously, it pushed colors toward the opposite hue of the shading color.
 * -hillshade `texture=` works better across different kinds of terrain. Gentle terrain gets stronger texture, and large rasters show larger valleys. Previously, low hills got almost no texture, and the texture of a large raster only showed small gullies.
 * -blur uses a true Gaussian at radii up to 6px, so small blurs have the requested strength and change smoothly with the radius. Previously, `-blur 1px` had no effect and `-blur 2px` was a weaker, box-shaped blur.
 
