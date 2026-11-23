@@ -414,6 +414,31 @@ describe('mapshaper-blend.mjs', function () {
       assert.deepEqual(Array.from(out.subarray(i * 3, i * 3 + 3)), [40, 160, 60]);
     });
 
+    it('rasters displayed in color are blend targets; gray data rasters and hillshades are not', async function () {
+      var catalog = await run(makeDataset(10, 10, ridge, [90, 110, 80]), '-hillshade target=dem + name=hs');
+      assert.equal(internal.rasterIsBlendTarget(findLayer(catalog, 'img').raster), true);
+      assert.equal(internal.rasterIsBlendTarget(findLayer(catalog, 'dem').raster), false);
+      assert.equal(internal.rasterIsBlendTarget(findLayer(catalog, 'hs').raster), false);
+      await internal.runParsedCommands(internal.parseCommands('-classify band1 colors=Greens classes=3 target=dem'),
+        new internal.Job(catalog));
+      assert.equal(internal.rasterIsBlendTarget(findLayer(catalog, 'dem').raster), true);
+    });
+
+    it('opaque hillshades blend black and white, tinted by chosen shadow and highlight colors', async function () {
+      async function colors(opts) {
+        var catalog = await run(makeDataset(10, 10, ridge, [90, 110, 80]), '-hillshade target=dem name=hs ' + opts);
+        var s = internal.getShadingAmounts(findLayer(catalog, 'hs').raster);
+        return [internal.formatColor(s.shadow), internal.formatColor(s.highlight)];
+      }
+      var tinted = await colors('base-color=#d7d7d7 shadow-color=#2a3b5c highlight-color=#fff0c0');
+      var shadow = internal.parseColor(tinted[0]), highlight = internal.parseColor(tinted[1]);
+      // auto colors, even of a colored base, are plain
+      assert.deepEqual(await colors('opaque'), ['#000000', '#ffffff']);
+      assert.deepEqual(await colors('base-color=#e0d6c4'), ['#000000', '#ffffff']);
+      assert(shadow.b > shadow.r + 30 && internal.rgbToOklab(shadow).l < 0.3, tinted[0]);
+      assert(highlight.r == 255 && highlight.b < 220, tinted[1]);
+    });
+
     it('opaque and transparent hillshades of the same terrain blend at similar strength', async function () {
       var catalog = await run(makeDataset(30, 30, ridge, [90, 110, 80]),
         '-hillshade target=dem + name=hs1 -hillshade opaque target=dem + name=hs2 ' +

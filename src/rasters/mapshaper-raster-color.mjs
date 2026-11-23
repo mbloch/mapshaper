@@ -600,6 +600,41 @@ export function getHillshadeHighlightColor(base, strength, color) {
   return mixOklab(base, color || {r: 255, g: 255, b: 255}, Math.max(0, Math.min(1, strength)));
 }
 
+// The colors -blend stacks for an opaque hillshade: black and white, tinted
+// by how the hillshade's shadow and highlight colors differ from the plain
+// ones of the same lightness (the base's hue and chroma, darker; the base
+// faded toward white), so that auto and gray colors blend black and white,
+// and a bluish shadow color blends bluish shadows. A tint is the color
+// difference as stacking would make it at the opacity of the deepest shadow
+// or brightest highlight, clipped to the 0-255 range (shifting it back into
+// range instead would lighten shadows and darken highlights).
+// @stops {shadow, base, highlight} {r, g, b}
+// @maxShadow, @maxHighlight the opacities the darkest and lightest tones
+//   blend at (see decodeOpaqueHillshadeShading())
+// Returns {shadow, highlight}, as {r, g, b} bytes
+export function getOpaqueHillshadeStackingColors(stops, maxShadow, maxHighlight) {
+  var base = oklabToOklch(rgbToOklab(stops.base));
+  var plainShadow = toRgb(oklchToRgb({l: rgbToOklab(stops.shadow).l, c: base.c, h: base.h}));
+  var t = base.l < 1 ? (rgbToOklab(stops.highlight).l - base.l) / (1 - base.l) : 1;
+  var plainHighlight = mixOklab(stops.base, {r: 255, g: 255, b: 255}, Math.max(0, Math.min(1, t)));
+  return {
+    shadow: getStackingTint(stops.shadow, plainShadow, maxShadow, 0),
+    highlight: getStackingTint(stops.highlight, plainHighlight, maxHighlight, 255)
+  };
+}
+
+// @plain the color @color would be without a tint
+// @start 0 (black) or 255 (white), the color tinted
+function getStackingTint(color, plain, opacity, start) {
+  var d = [color.r - plain.r, color.g - plain.g, color.b - plain.b];
+  // within rounding of the plain color
+  if (d.every(function(v) { return Math.abs(v) <= 2; })) {
+    return {r: start, g: start, b: start};
+  }
+  d = d.map(function(v) { return Math.round(Math.max(0, Math.min(255, start + v / opacity))); });
+  return {r: d[0], g: d[1], b: d[2]};
+}
+
 // @t 0 (@a) to 1 (@b), in Oklab
 function mixOklab(a, b, t) {
   var p = rgbToOklab(a), q = rgbToOklab(b);

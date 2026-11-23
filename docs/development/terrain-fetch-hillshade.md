@@ -363,7 +363,18 @@ same pattern as other mapshaper commands.
     brightest slope over its value at 45 degrees with the same lighting
     (10/45 at 80 degrees with `lighting=hard`;
     `getHillshadeHighlightScale()`), so a high light looks diffuse rather
-    than focused on a spot. Below 45 degrees the highlights still spread.
+    than focused on a spot. Below 45 degrees the highlights are drawn as at
+    45 degrees, on the slopes within the same angle of the light
+    (`highlightMaxShade` in `getHillshadeTones()`, which rescales the shade
+    for highlights alone, as `getOpaqueShadeScale()` does for both). On a
+    dome, the highlight keeps a radius of about 44 degrees from the light at
+    any altitude up to 45, where it grew to over 100 degrees at 10. Slopes
+    between those and flat ground, which are brighter than flat ground but
+    farther from the light, are left clear; shadows are unchanged. The
+    highlights of a high light can't be widened the same way: the slopes
+    they would need are darker than flat ground, so only a veil over flat
+    ground (as much as a 0.5-opacity white at 80 degrees) could highlight
+    them.
   At 45 degrees neither changes anything.
 - `lighting=` the lights around the main azimuth, as relative azimuth and
   weight. Multiple lights reduce harsh shadows and keep landforms facing away
@@ -1038,7 +1049,9 @@ DEM's menus) previews `-hillshade` on the map and runs it on Apply, so the
 command is what goes into the session history and the undo stack. The
 settings and the command they make are in `gui-hillshade-settings.mjs`
 (pure, with mocha tests); the command leaves out settings at their
-defaults, so the defaults give plain `-hillshade`.
+defaults. The panel starts on the opaque style, so its defaults give
+`-hillshade opaque`: the blend panel applies an opaque hillshade to imagery,
+which leaves less need for a transparent overlay.
 
 To follow a slider, the shading stage is split in two
 (`mapshaper-hillshade-stages.mjs`). `computeShadingFields()` computes the

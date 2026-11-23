@@ -2,8 +2,9 @@
 // command they add up to.
 //
 // A setting's default is the command's, so a setting left at its default is
-// left out of the command. The panel has some settings of its own, which map
-// onto options:
+// left out of the command, apart from the style: the panel starts on the
+// opaque style, and writes `opaque` for it. The panel has some settings of
+// its own, which map onto options:
 // - exaggeration is a factor of the automatic exaggeration, as a power of 2,
 //   so that the slider is centered on it whatever the map scale (0 is the
 //   automatic exaggeration, and leaves exaggeration= out)
@@ -77,8 +78,9 @@ export var HILLSHADE_COLOR_ROWS = [
 
 var COMPASS_POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 
+// The style is the exception to the command's defaults (see above)
 export function getDefaultHillshadeSettings() {
-  var settings = {style: 'shadow', lighting: 'balanced', smoothing: 0};
+  var settings = {style: 'opaque', lighting: 'balanced', smoothing: 0};
   HILLSHADE_SLIDERS.forEach(function(slider) {
     settings[slider.name] = slider.value;
   });

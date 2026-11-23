@@ -2188,7 +2188,7 @@ Convert an elevation raster to shaded relief. By default, the shading is transpa
 
 `opaque`  Opaque grayscale shading. By default, shading is transparent black and white.
 
-`azimuth=` `altitude=`  Direction and height of the main light, in degrees (defaults are 315 and 45). In opaque shading, the highlights cover the same slopes at any altitude, and flat ground gets lighter as the light rises and darker as it falls.
+`azimuth=` `altitude=`  Direction and height of the main light, in degrees (defaults are 315 and 45). In opaque shading, the highlights cover the same slopes at any altitude, and flat ground gets lighter as the light rises and darker as it falls. In transparent shading, flat ground stays clear; the highlights cover the same slopes at altitudes up to 45, and are weaker above 45.
 
 `lighting=`  How the main light is supplemented by fainter lights from other directions. `hard` uses the main light alone, for the most contrast. `balanced` (the default) softens shadows by adding fill lights from multiple angles. `soft` adds still more fill light, which brightens slopes facing away from the main light for more midtones and less contrast.
 

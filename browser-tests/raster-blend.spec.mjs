@@ -12,14 +12,23 @@ test('the blend panel previews a hillshade on a raster and applies -blend, as on
   await loadFixture(page);
   await runCommand(page, '-hillshade target=' + LAYER + ' name=relief +');
   await selectLayer(page, LAYER);
+  // a DEM displayed in gray is data, not something to blend into
+  await openLayersPanel(page);
+  await openLayerMenu(page, LAYER);
+  await expect(page.locator('.contextmenu-item').filter({hasText: 'color palette'})).toHaveCount(1);
+  await expect(page.locator('.contextmenu-item').filter({hasText: 'blend hillshade'})).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  // with a palette, it's a hypsometric tint
+  await runCommand(page, '-classify band1 colors=Greens classes=5 target=' + LAYER);
+  await selectLayer(page, LAYER);
   await expect.poll(function() { return getActiveLayerName(page); }).toBe(LAYER);
   await page.evaluate(function() {
     window.mapshaper.undoTest.clearUndoHistory();
   });
   plain = await readMapColors(page);
 
-  // opened from the layer menu, which offers it on the DEM but not on the
-  // hillshade
+  // opened from the layer menu, which offers it on the tinted DEM but not on
+  // the hillshade
   await openLayersPanel(page);
   await openLayerMenu(page, 'relief');
   await expect(page.locator('.contextmenu-item').filter({hasText: 'blend hillshade'})).toHaveCount(0);

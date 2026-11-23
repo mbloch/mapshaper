@@ -8,7 +8,7 @@ var LAYER = 'sedona-elev';
 test('the hillshade panel previews a hillshade on a DEM and applies -hillshade, as one undo state and one command', async function({page}) {
   var errors = collectPageErrors(page);
   var panel = page.locator('.raster-hillshade-panel:visible');
-  var plain, shaded, turned, opaque;
+  var plain, shaded, opaque;
   await loadFixture(page);
   await page.evaluate(function() {
     window.mapshaper.undoTest.clearUndoHistory();
@@ -20,14 +20,13 @@ test('the hillshade panel previews a hillshade on a DEM and applies -hillshade, 
   await page.locator('.contextmenu-item').filter({hasText: /^hillshade$/}).click();
   await expect(panel).toBeVisible();
   expect(await getMode(page)).toBe('hillshade');
+  // the panel starts on the opaque style
+  await expect(panel.getByRole('button', {name: 'Opaque'})).toHaveClass(/selected/);
   shaded = await waitForNewColors(page, plain);
 
   await panel.getByLabel('Azimuth').fill('200');
   await expect(panel.locator('.raster-tone-slider-value').filter({hasText: '200°'})).toHaveCount(1);
-  turned = await waitForNewColors(page, shaded);
-
-  await panel.getByRole('button', {name: 'Opaque'}).click();
-  opaque = await waitForNewColors(page, turned);
+  opaque = await waitForNewColors(page, shaded);
   // nothing has changed but the map
   expect(await getHillshadeCommands(page)).toEqual([]);
   expect(await canUndo(page)).toBe(false);

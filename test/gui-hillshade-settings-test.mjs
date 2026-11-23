@@ -17,8 +17,9 @@ var colorFns = {
   }
 };
 
+// the transparent style, unless @changes sets one
 function command(changes, keep) {
-  var settings = Object.assign(getDefaultHillshadeSettings(), changes);
+  var settings = Object.assign(getDefaultHillshadeSettings(), {style: 'shadow'}, changes);
   return getHillshadeCommand(settings, 1.5, colorFns, keep);
 }
 
@@ -50,6 +51,12 @@ describe('gui-hillshade-settings.mjs', function () {
     assert.strictEqual(d.opaque, false);
     assert.equal(command({}), '-hillshade');
     assert.equal(command({}, true), '-hillshade +');
+  })
+
+  it('the panel starts on the opaque style', function () {
+    var settings = getDefaultHillshadeSettings();
+    assert.equal(settings.style, 'opaque');
+    assert.equal(getHillshadeCommand(settings, 1.5, colorFns, false), '-hillshade opaque');
   })
 
   it('opaque defaults are -hillshade opaque\'s defaults', async function () {

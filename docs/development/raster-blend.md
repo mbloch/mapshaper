@@ -112,6 +112,22 @@ given the opacities of a transparent hillshade with the default
 brightest highlights), so that the two styles blend alike, whatever the
 opaque hillshade's colors.
 
+The colors stacked at those amounts are black and white, tinted by how the
+hillshade's shadow and highlight colors differ from plain ones of the same
+lightness: for the shadow, the base's hue and chroma, darker; for the
+highlight, the base faded toward white in OKLab. Auto colors are the plain
+ones (see `getHillshadeShadowColor()`), so they blend black and white,
+even with a colored base, and a hillshade with a beige base doesn't brown
+the image. A chosen bluish shadow color blends bluish shadows. The tint is
+the difference from the plain color divided by the amount of the deepest
+shadow or brightest highlight (0.55), which is the color stacking at that
+amount would need to make the difference, clipped to the sRGB range so that
+shadows stay dark and highlights light: `shadow-color=#2a3b5c` on `#d7d7d7`
+stacks `#00003c`, `#930606` stacks `#7f0000`
+(`getOpaqueHillshadeStackingColors()`). `-blend shadow-color=` and
+`highlight-color=` replace them, as for transparent hillshades. (Until
+v0.8.8, opaque hillshades always blended black and white.)
+
 They used to be converted to the overlay amount that takes the base to the
 pixel's lightness, the rule that is still used for opaque hillshades from
 elsewhere (below). The brightest highlights of a mapshaper hillshade are
@@ -451,6 +467,10 @@ rounding of the alpha channel.
   (`svg_image_size`) and rasterizes them (`rasterizeSVGPixels()`; resvg's
   premultiplied pixels are converted back).
 - GUI: the "blend hillshade" mode (`src/gui/gui-raster-blend-tool.mjs`),
+  offered on rasters displayed in color: color imagery, and data rasters
+  with a palette, such as a hypsometric tint (`rasterIsBlendTarget()`). A
+  data raster displayed in gray, such as a DEM before it gets a palette,
+  isn't offered it, though `-blend` will blend one as displayed. The panel is
   modeled on the Color & tone panel: a menu of hillshade layers in the
   target's frame (`gui-blend-sources.mjs`; layers made by -hillshade, or
   gray 8-bit rasters from elsewhere, as `rasterLooksLikeHillshade()`

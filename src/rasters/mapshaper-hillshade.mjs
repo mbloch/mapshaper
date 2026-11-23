@@ -343,6 +343,12 @@ export function getToneMaxOpacity(style, opts) {
 //   brightest slope gets instead (see getHillshadeHighlightScale())
 // @opts.shadeScale optional factor applied to @shade first (see
 //   getOpaqueShadeScale())
+// @opts.highlightMaxShade optional, below @opts.maxShade: highlights are drawn
+//   as under a light whose brightest slope has this shade, on the slopes as
+//   near the light as they are under that light. A low light, under which
+//   most slopes facing it are brighter than flat ground, then highlights the
+//   same range of slopes as a higher one, and slopes between those and flat
+//   ground are left clear.
 // @opts.basePosition for the opaque style: where the base color is on the
 //   ramp, as a share of its lightness (see getHillshadeBasePosition())
 export function getHillshadeTones(shade, valid, style, opts) {
@@ -360,14 +366,22 @@ export function getHillshadeTones(shade, valid, style, opts) {
   var shadowCurve = curves.shadow;
   var highlightCurve = curves.highlight;
   var shadeScale = o.shadeScale > 0 ? o.shadeScale : 1;
+  // shade as under the highlights' light, which has the same angles to slopes
+  var litScale = 1;
   var i, s;
+  if (o.highlightMaxShade > 1 && o.highlightMaxShade < o.maxShade) {
+    litScale = o.highlightMaxShade / o.maxShade;
+    litRange = o.highlightMaxShade - 1;
+    highlightCurve = getToneCurves(o.highlightMaxShade, gamma,
+      opaque ? o.basePosition : SHADOW_STYLE_BASE_POSITION).highlight;
+  }
   for (i = 0; i < n; i++) {
     if (valid && !valid[i]) continue;
     s = shade[i] * shadeScale;
     if (s < 1) {
       tones[i] = -shadowCurve(1 - s) * maxOpacity;
-    } else if (s > 1 && litRange > 0) {
-      tones[i] = highlightCurve((s - 1) / litRange) * maxHighlight;
+    } else if (s * litScale > 1 && litRange > 0) {
+      tones[i] = highlightCurve((s * litScale - 1) / litRange) * maxHighlight;
     }
   }
   return tones;

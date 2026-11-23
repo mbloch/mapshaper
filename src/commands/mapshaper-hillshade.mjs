@@ -109,8 +109,11 @@ export function readHillshadeTerrain(lyr, dataset, opts) {
 // How altitude= changes the tones, away from DEFAULT_ALTITUDE. An opaque
 // hillshade keeps the highlights the same size, and flat ground's color
 // follows the light (see getOpaqueShadeScale()); a transparent one keeps flat
-// ground clear, and dims the highlights of a high light (see
-// getHillshadeHighlightScale()).
+// ground clear, so its highlights can't cover more slopes than those brighter
+// than flat ground: it dims the highlights of a high light (see
+// getHillshadeHighlightScale()), and draws those of a low light as at
+// DEFAULT_ALTITUDE, on the slopes nearest the light (see highlightMaxShade in
+// getHillshadeTones()).
 // @refMaxShade getHillshadeMaxShade() of the lights at DEFAULT_ALTITUDE, or
 //   null at DEFAULT_ALTITUDE
 function setAltitudeToneOpts(toneOpts, style, refMaxShade) {
@@ -120,6 +123,7 @@ function setAltitudeToneOpts(toneOpts, style, refMaxShade) {
     toneOpts.maxShade = refMaxShade;
   } else {
     toneOpts.highlightScale = getHillshadeHighlightScale(toneOpts.maxShade, refMaxShade);
+    if (toneOpts.maxShade > refMaxShade) toneOpts.highlightMaxShade = refMaxShade;
   }
 }
 

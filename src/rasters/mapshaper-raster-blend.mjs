@@ -1,7 +1,8 @@
 import { parseColor } from '../color/color-utils';
 import { DEFAULT_HIGHLIGHT_RATIO, DEFAULT_MAX_OPACITY, isOpaqueHillshade } from './mapshaper-hillshade';
-import { getOklchLightnessChroma } from './mapshaper-raster-color';
+import { getOklchLightnessChroma, getOpaqueHillshadeStackingColors } from './mapshaper-raster-color';
 import { getRasterValidityMask } from './mapshaper-raster-grid';
+import { rasterGridDisplaysColor } from './mapshaper-raster-display-bands';
 import { getRasterGrid, renderRasterPreview } from './mapshaper-raster-utils';
 import { message, stop } from '../utils/mapshaper-logging';
 
@@ -10,6 +11,11 @@ import { message, stop } from '../utils/mapshaper-logging';
 
 var BLACK = {r: 0, g: 0, b: 0};
 var WHITE = {r: 255, g: 255, b: 255};
+
+// The opacities that the darkest and lightest tones of an opaque -hillshade
+// layer blend at: a transparent hillshade's, at its defaults
+var OPAQUE_MAX_SHADOW = DEFAULT_MAX_OPACITY;
+var OPAQUE_MAX_HIGHLIGHT = Math.min(1, DEFAULT_MAX_OPACITY * DEFAULT_HIGHLIGHT_RATIO);
 
 // A source not made by -hillshade is read as a transparent hillshade if at
 // least this share of its visible pixels is partly transparent
@@ -32,7 +38,7 @@ export function getShadingAmounts(raster, baseColor) {
   var params = raster.derivation || {};
   var hillshade = params.type == 'hillshade';
   var colors = {shadow: BLACK, highlight: WHITE};
-  var pixels, transparent, base, amounts;
+  var pixels, transparent, base, amounts, stops;
   if (params.type == 'blend' && params.overlay) {
     stop('The source is an overlay made by -blend, whose colors depend on the layers under it; use the hillshade it was made from');
   }
@@ -58,11 +64,13 @@ export function getShadingAmounts(raster, baseColor) {
     }
     amounts = decodeShadowStyleShading(pixels, colors.shadow, colors.highlight);
   } else if (hillshade && params.shadow_color && params.highlight_color && (baseColor || params.base_color)) {
-    amounts = decodeOpaqueHillshadeShading(pixels, {
+    stops = {
       shadow: readColor(params.shadow_color),
       base: baseColor || readColor(params.base_color),
       highlight: readColor(params.highlight_color)
-    });
+    };
+    amounts = decodeOpaqueHillshadeShading(pixels, stops);
+    colors = getOpaqueHillshadeStackingColors(stops, OPAQUE_MAX_SHADOW, OPAQUE_MAX_HIGHLIGHT);
   } else {
     base = baseColor || (hillshade ? readColor(params.base_color) : null);
     if (!base) {
@@ -96,6 +104,18 @@ export function rasterLooksLikeHillshade(raster) {
       raster.interpretation && raster.interpretation != 'image') return false;
   if (grid.bands <= 2) return true;
   return grid.bands <= 4 && samplesAreGray(grid.samples, grid.bands);
+}
+
+// Whether a raster is something to blend a hillshade into: one displayed in
+// color, as color imagery, or a data raster with a palette (e.g. a
+// hypsometric tint). A data raster displayed in gray, such as elevation data
+// before it has a palette, is not; nor is a gray image, which
+// rasterLooksLikeHillshade() takes for a hillshade.
+export function rasterIsBlendTarget(raster) {
+  var grid = getRasterGrid(raster);
+  if (!grid || rasterLooksLikeHillshade(raster)) return false;
+  return rasterGridDisplaysColor(grid) || grid.colorModel == 'palette' ||
+    !!(raster.view && raster.view.recipe && raster.view.recipe.palette);
 }
 
 // True if nearly all of a sample of the visible pixels are gray
@@ -273,8 +293,8 @@ export function decodeOpaqueHillshadeShading(pixels, stops) {
   var ls = getLightness(stops.shadow.r, stops.shadow.g, stops.shadow.b);
   var lb = getLightness(stops.base.r, stops.base.g, stops.base.b);
   var lh = getLightness(stops.highlight.r, stops.highlight.g, stops.highlight.b);
-  var maxShadow = DEFAULT_MAX_OPACITY;
-  var maxHighlight = Math.min(1, DEFAULT_MAX_OPACITY * DEFAULT_HIGHLIGHT_RATIO);
+  var maxShadow = OPAQUE_MAX_SHADOW;
+  var maxHighlight = OPAQUE_MAX_HIGHLIGHT;
   var i, j, key, a, l;
   for (i = 0, j = 0; i < n; i++, j += 4) {
     if (pixels[j + 3] === 0) continue;

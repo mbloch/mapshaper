@@ -180,6 +180,29 @@ describe('mapshaper-hillshade.mjs', function () {
       assert(await strongest('-hillshade lighting=hard altitude=20') >= at45);
       assert(await strongest('-hillshade lighting=hard altitude=80') < at45 * 0.5);
     })
+
+    it('transparent -hillshade altitude= below 45 highlights the slopes within the same angle of the light as at 45, and leaves flat ground clear', function () {
+      // the tone of a plane rising @slopeDeg toward the southeast, facing a
+      // northwest light
+      function tone(slopeDeg, opts) {
+        var s = internal.getHillshadeShading(opts, {cells: {median: 1}, minElevation: null}).settings;
+        var t = Math.tan(slopeDeg * Math.PI / 180);
+        var elev = makeElevation(5, 5, function(x, y) { return (x + y) * Math.SQRT1_2 * t; });
+        var shade = internal.computeHillshade(elev, null, 5, 5, constantCells(5, 1), constantCells(5, 1), s.lights, 1);
+        return internal.getHillshadeTones(shade.subarray(12, 13), null, s.style, s.toneOpts)[0];
+      }
+      var low = {lighting: 'hard', altitude: 20};
+      [0, 10, 30].forEach(function(angle) {
+        // tilted toward the light, @angle less than the slope facing it
+        var t = tone(70 - angle, low);
+        var at45 = tone(45 - angle, {lighting: 'hard'});
+        assert(t > 0 && Math.abs(t - at45) < 1e-4, angle + ': ' + t + ' ' + at45);
+      });
+      // 50 degrees from the light: brighter than flat ground, but outside the disc
+      assert.equal(tone(20, low), 0);
+      assert.equal(tone(0, low), 0);
+      assert(tone(-20, low) < 0);
+    })
   })
 
   describe('opaque -hillshade altitude=', function () {
