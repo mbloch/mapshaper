@@ -2542,6 +2542,7 @@ div.basemap-style-btn.active {
 
 .map-layers.add-points,
 .map-layers.draw-tool,
+.map-layers.rectangle-tool,
 .map-layers.curve-tool,
 .map-layers.label-tool,
 .map-layers.symbol-tool,
@@ -2586,7 +2587,8 @@ div.basemap-style-btn.active {
 	cursor: grabbing;
 }
 
-.map-layers.draw-tool.draw-select {
+.map-layers.draw-tool.draw-select,
+.map-layers.rectangle-tool.rectangle-select {
 	cursor: pointer;
 }
 

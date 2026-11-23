@@ -185,7 +185,7 @@ distortion</li>
 <li><code>dymaxion2</code> — a version using the gnomonic projection to project each face</li>
 </ul>
 <pre><code class="hljs language-bash">mapshaper world.geojson \
-  -proj +proj=dymaxion densify \
+  -proj +proj=dymaxion \
   -o world-dymaxion.geojson \
   -graticule outline \
   -o neatline-dymaxion.geojson
@@ -203,7 +203,7 @@ the triangular faces in a butterfly layout similar to the butterfly maps of Bern
 default central meridian of 20°W</li>
 </ul>
 <pre><code class="hljs language-bash">mapshaper world.geojson \
-  -proj +proj=butterfly densify \
+  -proj +proj=butterfly \
   -o world-butterfly.geojson \
   -graticule outline \
   -o neatline-butterfly.geojson
@@ -218,7 +218,7 @@ form a rectangular world map:</p>
 <li><code>markley</code> — F. Landis Markley&#39;s adaptation of Lee&#39;s projection</li>
 </ul>
 <pre><code class="hljs language-bash">mapshaper world.geojson \
-  -proj +proj=markley densify \
+  -proj +proj=markley \
   -o world-markley.geojson \
   -graticule outline \
   -o neatline-markley.geojson
@@ -261,8 +261,8 @@ hemisphere on the left. The right disk overlaps the left one.</li>
 </li>
 <li><p>Interrupted and polyhedral projections (<code>igh</code>, <code>imoll</code>, <code>igh_o</code>, <code>imoll_o</code>, <code>narukawa2022</code>, <code>markley</code>, <code>calm</code>, <code>dymaxion</code>, <code>dymaxion2</code>, <code>butterfly</code>, <code>butterfly2</code>, <code>cahill_keyes</code>) can be used as destinations for vector and raster layers, but cannot be used as source CRSs. The two-hemisphere projections (<code>hemispheres</code>, <code>hemispheres2</code>) can be reprojected back to other CRSs, but cannot be read from <code>.prj</code> files.</p>
 </li>
-<li><p>For projections that introduce significant curvature along straight lines, add the <code>densify</code> option to interpolate extra vertices along long segments:</p>
-<pre><code class="hljs language-bash">mapshaper data.shp -proj +proj=ortho +lat_0=45 +lon_0=-100 densify -o
+<li><p><code>-proj</code> adds vertices along long segments where the projection curves them, so that a segment along a parallel follows the parallel. Use <code>no-densify</code> to project only the existing vertices:</p>
+<pre><code class="hljs language-bash">mapshaper data.shp -proj +proj=lcc +lat_1=33 +lat_2=45 +lon_0=-96 no-densify -o
 </code></pre>
 </li>
 <li><p>When <code>-proj</code> targets a layer, all topologically related layers (those sharing the same geometry) are also reprojected. To reproject all layers, use <code>target=*</code>.</p>

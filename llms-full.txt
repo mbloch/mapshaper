@@ -1859,7 +1859,9 @@ Project a dataset using a PROJ string, EPSG code or alias. This command affects 
 
 `<crs>` or `crs=`  Target CRS, given as a Proj.4 definition or an alias. Use the [`-projections`](#-projections) command to list available projections and aliases. In some projections that require additional parameters, Mapshaper can fit parameters automatically from the data extent, for example `crs=utm` selects a UTM zone. You can also pass a Proj4 string enclosed in quotes, for example `crs='+proj=utm +zone=27'`.
 
-`densify` Interpolate vertices along long line segments as needed to approximate curved lines.
+`densify` (Deprecated) Densification is now the default, so this option is no longer needed.
+
+`no-densify` Turn off densification. By default, `-proj` adds vertices to long line segments wherever the projection would bend them. With `no-densify`, only the existing vertices are projected, and long segments stay straight.
 
 `match=` Match the projection of the given layer or .prj file.
 
@@ -1915,7 +1917,7 @@ mapshaper us_states.shp \
 # Show the world as two orthographic hemispheres, one above the other, with the
 # lower disk overlapping the upper disk
 mapshaper countries.geojson \
-  -proj hemispheres2 +lon_0=65 +lat_0=15 +lon_1=-95 +lat_1=8 +gap=-0.3 densify \
+  -proj hemispheres2 +lon_0=65 +lat_0=15 +lon_1=-95 +lat_1=8 +gap=-0.3 \
   -graticule outline name=neatline \
   -o target="*" output/
 ```
@@ -3915,7 +3917,7 @@ Difficulty: moderate
 
 ### Notes
 
-* `-proj lcc densify`: Lambert Conformal Conic requires additional parameters. When just `lcc` is given, Mapshaper calculates reasonable parameters using the bounding box of the targeted layer(s). The `densify` option adds additional vertices when the projection needs to create curved lines from long straight-line segments.
+* `-proj lcc densify`: Lambert Conformal Conic requires additional parameters. When just `lcc` is given, Mapshaper calculates reasonable parameters using the bounding box of the targeted layer(s). The `densify` option adds additional vertices when the projection needs to create curved lines from long straight-line segments. (It is the default, so it could be left out.)
 * `-each 'labelled = this.area > 1e10'`: This command creates a variable named `labelled` which is false if the area of a polygon in the states layer is less than 1e10 square meters (10,000 square kilometers).
 * `-divide NY`: this command uses the NY polygon (the N.Y. State border) to divide roads at the polygon boundary and adds the NY layer's attribute data to the roads that fall inside the polygon.
 
@@ -4961,7 +4963,7 @@ flat map according to Fuller's design:
 
 ```bash
 mapshaper world.geojson \
-  -proj +proj=dymaxion densify \
+  -proj +proj=dymaxion \
   -o world-dymaxion.geojson \
   -graticule outline \
   -o neatline-dymaxion.geojson
@@ -4983,7 +4985,7 @@ the triangular faces in a butterfly layout similar to the butterfly maps of Bern
 
 ```bash
 mapshaper world.geojson \
-  -proj +proj=butterfly densify \
+  -proj +proj=butterfly \
   -o world-butterfly.geojson \
   -graticule outline \
   -o neatline-butterfly.geojson
@@ -5002,7 +5004,7 @@ form a rectangular world map:
 
 ```bash
 mapshaper world.geojson \
-  -proj +proj=markley densify \
+  -proj +proj=markley \
   -o world-markley.geojson \
   -graticule outline \
   -o neatline-markley.geojson
@@ -5045,10 +5047,10 @@ Several websites provide PROJ strings and EPSG codes for coordinate systems worl
 - Mapshaper does not support coordinate transformations that require grid-shift files (for example, NAD27 → WGS84). If a transformation silently fails, this is the likely cause.
 - Projections that can only represent part of the globe — including orthographic (`ortho`), near-side perspective (`nsper`, `geos`), gnomonic (`gnom`), stereographic (`stere`), and Lambert Azimuthal Equal-Area (`laea`) — automatically clip input data to the projection's valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.
 - Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `markley`, `calm`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) can be used as destinations for vector and raster layers, but cannot be used as source CRSs. The two-hemisphere projections (`hemispheres`, `hemispheres2`) can be reprojected back to other CRSs, but cannot be read from `.prj` files.
-- For projections that introduce significant curvature along straight lines, add the `densify` option to interpolate extra vertices along long segments:
+- `-proj` adds vertices along long segments where the projection curves them, so that a segment along a parallel follows the parallel. Use `no-densify` to project only the existing vertices:
 
   ```bash
-  mapshaper data.shp -proj +proj=ortho +lat_0=45 +lon_0=-100 densify -o
+  mapshaper data.shp -proj +proj=lcc +lat_1=33 +lat_2=45 +lon_0=-96 no-densify -o
   ```
 
 - When `-proj` targets a layer, all topologically related layers (those sharing the same geometry) are also reprojected. To reproject all layers, use `target=*`.

@@ -8038,6 +8038,9 @@
       if (e.styleLayer) {
        addMenuItem(e.styleLayerName || 'style/edit layer', e.styleLayer, '');
       }
+      if (e.editRectangles) {
+       addMenuItem('draw/resize rectangles', e.editRectangles, '');
+      }
       if (e.hillshadeLayer) {
        addMenuItem('hillshade', e.hillshadeLayer, '');
       }
@@ -10222,6 +10225,17 @@
         gui.interaction.setMode('blend');
       }
 
+      // Likewise the rectangle tool
+      function editRectangles() {
+        var target = findLayerById(id);
+        if (!target) return;
+        if (!map.isActiveLayer(target.layer)) {
+          target.layer.hidden = false;
+          model.selectLayer(target.layer, target.dataset);
+        }
+        gui.interaction.setMode('rectangles');
+      }
+
       // Likewise the hillshade panel
       function hillshadeLayer() {
         var target = findLayerById(id);
@@ -10282,6 +10296,11 @@
           } else if (target.layer.geometry_type == 'polygon') {
             menuEvent.styleLayerName = 'style/edit polygons';
           }
+        }
+        // as in the arrow menu, which offers the tool on a layer of rectangles
+        if (!isFrame && target && target.layer.geometry_type == 'polygon' &&
+            internal.layerOnlyHasRectangles(target.layer, target.dataset.arcs)) {
+          menuEvent.editRectangles = editRectangles;
         }
         // where the arrow menu would offer it, with the layer active
         if (!isFrame && target && blendIsAvailable(model, target.layer)) {
@@ -10784,6 +10803,14 @@
     name: 'polygons',
     mode: 'edit_polygons',
     tip: 'Create a new layer and draw polygons in it'
+  }, {
+    kind: 'rectangles',
+    geometryType: 'polygon',
+    // singular, because a layer of rectangles usually holds just one -- a
+    // map frame, say
+    name: 'rectangle',
+    mode: 'rectangles',
+    tip: 'Create a new layer and draw rectangles in it'
   }];
 
   function findDrawKind(kind) {
@@ -13223,7 +13250,7 @@
       frame: 'edit map frame',
       frame_draw: 'draw map frame',
       'add-points': 'add points',
-      rectangles: 'drag-to-resize',
+      rectangles: 'draw/resize rectangles',
       off: 'turn off'
     };
     var btn, menu;
@@ -13428,8 +13455,8 @@
         return menus.lines;
       }
       if (o.layer.geometry_type == 'polygon') {
-        return internal.layerOnlyHasRectangles(o.layer, o.dataset.arcs) ?
-          menus.rectangles : menus.polygons;
+        return internal.layerOnlyHasRectangles(o.layer, o.dataset.arcs) ||
+          rectangleModeIsAvailable() ? menus.rectangles : menus.polygons;
       }
 
       return menus.standard;
@@ -13614,6 +13641,16 @@
       var o = gui.model.getActiveLayer();
       if (_editMode != 'symbols') return false;
       return !o || !o.layer || o.layer.geometry_type == 'point';
+    }
+
+    // The rectangle tool is offered on a layer of rectangles. The layer panel's
+    // "Draw" menu opens it on the empty polygon layer it creates, which is not
+    // one yet, so an empty polygon layer keeps the tool (and its menu) while the
+    // tool is open -- including once undo has emptied the layer again.
+    function rectangleModeIsAvailable() {
+      var o = gui.model.getActiveLayer();
+      return _editMode == 'rectangles' && !!o && !!o.layer &&
+        o.layer.geometry_type == 'polygon' && internal.getFeatureCount(o.layer) === 0;
     }
 
     function pointStyleModeIsAvailable() {
@@ -31972,6 +32009,12 @@
       updateSelectionState({ids: selectionIds.concat(), id: hoverId, pinned: false});
     };
 
+    // Pins feature @id, as a click on it does in a mode that pins -- the
+    // rectangle tool selecting the rectangle it has just drawn.
+    self.pinFeature = function(id) {
+      updateSelectionState({ids: [id], id: id, pinned: true});
+    };
+
     self.setPinning = function(val) {
       if (pinnedOn != val) {
         pinnedOn = val;
@@ -36066,13 +36109,18 @@
       lyr.gui.style = getOverlayStyle(activeLyr, ids, outlineStyle);
       layers.push(lyr);
     }
-    // layer containing a single hover or pinned feature
-    if (hitData.id > -1) {
+    // layer containing a single hover or pinned feature (not while a shape is
+    // being drawn, when a click does not select)
+    if (hitData.id > -1 && !hitData.pending_path) {
       ids = [hitData.id];
       lyr = getOverlayLayer(activeLyr, ids);
       outlineStyle = getSelectedFeatureStyle(displayLyr, hitData, styleOpts);
       lyr.gui.style = getOverlayStyle(activeLyr, ids, outlineStyle);
       layers.push(lyr);
+    }
+    // the rectangle being drawn (gui-rectangle-control.mjs)
+    if (hitData.pending_path) {
+      layers.push(getPendingPathLayer(activeLyr, hitData));
     }
     return layers;
   }
@@ -36473,6 +36521,19 @@
       parts.push('target=' + quoteCommandValue(o.target));
     }
     return parts.join(' ');
+  }
+
+  // The command that adds a rectangle drawn with the rectangle tool.
+  // bbox: [xmin, ymin, xmax, ymax] in the layer's CRS
+  // opts: as getAddShapeCommand(), apart from geometryType
+  //
+  // The ring is closed and clockwise, the way -rectangle writes one, so that
+  // the layer still counts as a layer of rectangles (see
+  // layerOnlyHasRectangles()), which is what keeps the tool on it.
+  function getAddRectangleCommand(bbox, opts) {
+    var ring = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
+      [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
+    return getAddShapeCommand(ring, Object.assign({}, opts, {geometryType: 'polygon'}));
   }
 
   // The command that replaces the path of line @id, as the curve tool does when
@@ -47507,10 +47568,27 @@
     return self;
   }
 
+  // The smallest rectangle a second click makes, in pixels on each side. A
+  // click closer to the first corner than this (the second click of a
+  // double-click, say) is ignored, and the rectangle goes on following the
+  // pointer.
+  var MIN_RECTANGLE_PX = 3;
+
+  // The 'rectangles' interaction mode, offered on a layer of rectangles and
+  // opened by the layer panel's Draw > rectangles. A click on a rectangle
+  // selects it, with handles for resizing it; a click on empty map starts a new
+  // rectangle, and a second click finishes it, so that a drag still pans the
+  // map. Shift makes a square.
+  //
+  // A drawn rectangle is an -add-shape command: one undo step and a line in the
+  // session history. A resize edits the vertices in place, and is an undo step
+  // of its own (see 'rectangle_dragend' in gui-undo.mjs).
   function RectangleControl(gui, hit) {
     var box = new HighlightBox(gui, {name: 'rectangle-tool', persistent: true, handles: true, classname: 'rectangles', draggable: false});
+    var mouse = gui.map.getMouse();
     var _on = false;
     var dragInfo;
+    var drawStart = null; // pixel location of the first corner, while drawing
 
     gui.addMode('rectangle_tool', turnOn, turnOff);
 
@@ -47527,6 +47605,7 @@
 
     hit.on('change', function(e) {
       if (!_on) return;
+      updateCursor(e);
       // TODO: handle multiple hits (see gui-inspection-control)
       if (e.id > -1 && e.pinned) {
         if (!dragInfo || dragInfo.id != e.id) {
@@ -47536,6 +47615,47 @@
         reset();
       }
     });
+
+    // Above the hit control, which takes a click on a rectangle, or off the
+    // selected one, and lets a click on empty map through to the map
+    mouse.on('click', function(e) {
+      if (!_on || gui.keyboard.ctrlIsPressed()) return;
+      if (drawStart) {
+        e.stopPropagation();
+        finishDrawing(e);
+      } else if (hit.getHitId() == -1) {
+        e.stopPropagation();
+        drawStart = [e.x, e.y];
+        updatePreview(e);
+      }
+    }, null, 3);
+
+    // a double-click while drawing would otherwise zoom the map
+    mouse.on('dblclick', function(e) {
+      if (_on && drawStart) e.stopPropagation();
+    }, null, 3);
+
+    mouse.on('hover', function(e) {
+      if (_on && drawStart) updatePreview(e);
+    });
+
+    gui.keyboard.on('keydown', function(e) {
+      if (_on && drawStart && e.keyName == 'esc') {
+        cancelDrawing();
+        e.stopPropagation();
+      }
+    }, null, 10);
+
+    if (gui.undo) {
+      // undo takes back the first corner of a rectangle being drawn
+      gui.undo.addInterceptor({
+        undo: function() {
+          if (!_on || !drawStart) return false;
+          cancelDrawing();
+          return true;
+        }
+      });
+    }
 
     box.on('handle_drag', function(e) {
       if (!_on || !dragInfo) return;
@@ -47557,6 +47677,87 @@
       dragInfo.points = getDataPoints(dragInfo.target, dragInfo.ids);
       dragInfo.moved = false;
     });
+
+    // The rectangle from the first corner to the pointer: {display, pixels},
+    // its bounding box in display coordinates and its size in pixels
+    function getDrawnBox(e) {
+      var ext = gui.map.getExtent();
+      var p = gui.keyboard.shiftIsPressed() ?
+        getCornerForRatio(drawStart[0], drawStart[1], e.x, e.y, 1) : [e.x, e.y];
+      var a = ext.pixCoordsToMapCoords(drawStart[0], drawStart[1]);
+      var b = ext.pixCoordsToMapCoords(p[0], p[1]);
+      return {
+        display: [Math.min(a[0], b[0]), Math.min(a[1], b[1]),
+          Math.max(a[0], b[0]), Math.max(a[1], b[1])],
+        pixels: [Math.abs(p[0] - drawStart[0]), Math.abs(p[1] - drawStart[1])]
+      };
+    }
+
+    function updatePreview(e) {
+      hit.setPendingPath(internal.bboxToCoords(getDrawnBox(e).display));
+    }
+
+    function finishDrawing(e) {
+      var drawn = getDrawnBox(e);
+      var target = hit.getHitTarget();
+      var bbox;
+      if (drawn.pixels[0] < MIN_RECTANGLE_PX || drawn.pixels[1] < MIN_RECTANGLE_PX) {
+        return;
+      }
+      cancelDrawing();
+      bbox = target && toLayerBbox(target, drawn.display);
+      if (!bbox) return;
+      runGuiEditCommand(gui, getAddRectangleCommand(bbox, {style: getNewRectangleStyle(target)}), {
+        title: 'Draw rectangle',
+        changesEditTarget: true,
+        onSuccess: selectNewRectangle
+      });
+    }
+
+    function cancelDrawing() {
+      drawStart = null;
+      hit.setPendingPath(null);
+      updateCursor(hit.getHitState());
+    }
+
+    // The new rectangle is the last feature in the layer
+    function selectNewRectangle() {
+      var target = hit.getHitTarget();
+      var n = target ? internal.getFeatureCount(target) : 0;
+      if (_on && n > 0) hit.pinFeature(n - 1);
+    }
+
+    // As the box tool does it (see translateCoordsToLayerCRS() in
+    // gui-highlight-box.mjs): a layer drawn in another CRS gets the box around
+    // the corners, which is a rectangle in the layer's own coordinates.
+    function toLayerBbox(target, bbox) {
+      var a = translateDisplayPoint(target, [bbox[0], bbox[1]]);
+      var b = translateDisplayPoint(target, [bbox[2], bbox[3]]);
+      if (!a || !b) return null;
+      return [Math.min(a[0], b[0]), Math.min(a[1], b[1]),
+        Math.max(a[0], b[0]), Math.max(a[1], b[1])];
+    }
+
+    // A layer with a style of its own draws an unstyled shape as nothing, so a
+    // new rectangle in a styled layer takes the style of the last one -- the
+    // rectangles of one layer (map frames, say) are usually styled alike.
+    function getNewRectangleStyle(target) {
+      var styled = layerHasDrawableStyle(target);
+      var records = styled && target.data ? target.data.getRecords() : [];
+      var last = records[records.length - 1] || {};
+      var style = {};
+      getNewShapeStyleFields('polygon').forEach(function(field) {
+        if (field in last) style[field] = last[field];
+      });
+      return getNewShapeCommandStyle(style, styled);
+    }
+
+    function updateCursor(e) {
+      var el = gui.container.findChild('.map-layers');
+      el.classed('rectangle-tool', _on);
+      // a click would select the rectangle under the pointer
+      el.classed('rectangle-select', _on && !drawStart && e.id > -1 && !e.pinned);
+    }
 
     function selectRectangle(id) {
       var target = hit.getHitTarget();
@@ -47587,6 +47788,7 @@
     function turnOn() {
       box.turnOn();
       _on = true;
+      updateCursor(hit.getHitState());
     }
 
     function turnOff() {
@@ -47595,7 +47797,9 @@
         // mode change was not initiated by interactive menu -- turn off interactivity
         gui.interaction.turnOff();
       }
+      if (drawStart) cancelDrawing();
       _on = false;
+      updateCursor({id: -1});
       reset();
     }
 

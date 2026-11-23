@@ -170,7 +170,7 @@ flat map according to Fuller's design:
 
 ```bash
 mapshaper world.geojson \
-  -proj +proj=dymaxion densify \
+  -proj +proj=dymaxion \
   -o world-dymaxion.geojson \
   -graticule outline \
   -o neatline-dymaxion.geojson
@@ -192,7 +192,7 @@ the triangular faces in a butterfly layout similar to the butterfly maps of Bern
 
 ```bash
 mapshaper world.geojson \
-  -proj +proj=butterfly densify \
+  -proj +proj=butterfly \
   -o world-butterfly.geojson \
   -graticule outline \
   -o neatline-butterfly.geojson
@@ -211,7 +211,7 @@ form a rectangular world map:
 
 ```bash
 mapshaper world.geojson \
-  -proj +proj=markley densify \
+  -proj +proj=markley \
   -o world-markley.geojson \
   -graticule outline \
   -o neatline-markley.geojson
@@ -254,10 +254,10 @@ Several websites provide PROJ strings and EPSG codes for coordinate systems worl
 - Mapshaper does not support coordinate transformations that require grid-shift files (for example, NAD27 → WGS84). If a transformation silently fails, this is the likely cause.
 - Projections that can only represent part of the globe — including orthographic (`ortho`), near-side perspective (`nsper`, `geos`), gnomonic (`gnom`), stereographic (`stere`), and Lambert Azimuthal Equal-Area (`laea`) — automatically clip input data to the projection's valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.
 - Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `markley`, `calm`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) can be used as destinations for vector and raster layers, but cannot be used as source CRSs. The two-hemisphere projections (`hemispheres`, `hemispheres2`) can be reprojected back to other CRSs, but cannot be read from `.prj` files.
-- For projections that introduce significant curvature along straight lines, add the `densify` option to interpolate extra vertices along long segments:
+- `-proj` adds vertices along long segments where the projection curves them, so that a segment along a parallel follows the parallel. Use `no-densify` to project only the existing vertices:
 
   ```bash
-  mapshaper data.shp -proj +proj=ortho +lat_0=45 +lon_0=-100 densify -o
+  mapshaper data.shp -proj +proj=lcc +lat_1=33 +lat_2=45 +lon_0=-96 no-densify -o
   ```
 
 - When `-proj` targets a layer, all topologically related layers (those sharing the same geometry) are also reprojected. To reproject all layers, use `target=*`.

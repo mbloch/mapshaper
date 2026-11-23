@@ -95,7 +95,7 @@
 </code></pre>
 <h3 id="notes">Notes</h3>
 <ul>
-<li><code>-proj lcc densify</code>: Lambert Conformal Conic requires additional parameters. When just <code>lcc</code> is given, Mapshaper calculates reasonable parameters using the bounding box of the targeted layer(s). The <code>densify</code> option adds additional vertices when the projection needs to create curved lines from long straight-line segments.</li>
+<li><code>-proj lcc densify</code>: Lambert Conformal Conic requires additional parameters. When just <code>lcc</code> is given, Mapshaper calculates reasonable parameters using the bounding box of the targeted layer(s). The <code>densify</code> option adds additional vertices when the projection needs to create curved lines from long straight-line segments. (It is the default, so it could be left out.)</li>
 <li><code>-each &#39;labelled = this.area &gt; 1e10&#39;</code>: This command creates a variable named <code>labelled</code> which is false if the area of a polygon in the states layer is less than 1e10 square meters (10,000 square kilometers).</li>
 <li><code>-divide NY</code>: this command uses the NY polygon (the N.Y. State border) to divide roads at the polygon boundary and adds the NY layer&#39;s attribute data to the roads that fall inside the polygon.</li>
 </ul>
