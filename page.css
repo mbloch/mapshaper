@@ -5952,6 +5952,87 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	pointer-events: none;
 }
 
+/* Hillshade panel (gui-hillshade-tool.mjs): wider than the other raster
+   panels, for captions like "Exaggeration" and readouts like "315° NW". A
+   row of buttons spans the slider and its readout. */
+.label-style-panel.raster-hillshade-panel {
+	width: 252px;
+}
+
+.raster-hillshade-panel .label-style-row .raster-tone-slider-label {
+	width: 76px;
+}
+
+.raster-hillshade-panel .label-style-row .raster-tone-slider-value {
+	width: 52px;
+}
+
+.raster-hillshade-panel .raster-blend-color-row .label-color-field {
+	margin-right: 52px;
+}
+
+.raster-hillshade-panel .raster-hillshade-button-row {
+	margin-top: 2px;
+}
+
+.raster-hillshade-panel .raster-hillshade-button-row .label-btn-group {
+	flex: 1;
+	min-width: 0;
+}
+
+/* Sized from the label, so each button gets an equal share of the spare width
+   and labels of different lengths get the same space on either side */
+.raster-hillshade-panel .raster-hillshade-button-row .label-panel-btn {
+	flex: 1 1 auto;
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* While slow work runs, a spinner takes the place of the label of the button
+   that started it (the label keeps its space), or appears after the title */
+.raster-hillshade-panel .raster-hillshade-button-row .label-panel-btn.busy {
+	color: transparent;
+}
+
+.raster-hillshade-panel .raster-hillshade-button-row .label-panel-btn.busy::after,
+.raster-hillshade-spinner.active {
+	content: '';
+	box-sizing: border-box;
+	width: 11px;
+	height: 11px;
+	border: 1.5px solid #aaa;
+	border-top-color: #333;
+	border-radius: 50%;
+	animation: raster-hillshade-spin 0.8s linear infinite;
+}
+
+.raster-hillshade-panel .raster-hillshade-button-row .label-panel-btn.busy::after {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	margin: -5.5px 0 0 -5.5px;
+}
+
+.raster-hillshade-spinner {
+	position: absolute;
+	top: 50%;
+	margin: -5.5px 0 0 8px;
+}
+
+.raster-hillshade-spinner.active {
+	display: inline-block;
+}
+
+@keyframes raster-hillshade-spin {
+	to { transform: rotate(360deg); }
+}
+
+.raster-hillshade-panel .raster-tone-buttons {
+	align-items: baseline;
+}
+
 /* Presets have only the reverse button in the vibrance row, and sequential
    and diverging presets, the range */
 .color-scheme-slider-row.preset {

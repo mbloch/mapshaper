@@ -8038,6 +8038,9 @@
       if (e.styleLayer) {
        addMenuItem(e.styleLayerName || 'style/edit layer', e.styleLayer, '');
       }
+      if (e.hillshadeLayer) {
+       addMenuItem('hillshade', e.hillshadeLayer, '');
+      }
       if (e.blendLayer) {
        addMenuItem('blend hillshade', e.blendLayer, '');
       }
@@ -9440,13 +9443,13 @@
     }));
   }
 
-  // Whether the blend panel has something to do on @lyr: a raster that -blend
-  // can blend a hillshade with (not a hillshade itself), with a hillshade to
-  // blend
+  // Whether the blend panel has something to do on @lyr: a raster displayed in
+  // color (see rasterIsBlendTarget()) that -blend can blend a hillshade with,
+  // with a hillshade to blend
   function blendIsAvailable(model, lyr) {
     var grid = lyr && internal.layerHasRaster(lyr) ? internal.getRasterGrid(lyr.raster) : null;
     if (!grid || !grid.bbox || internal.rasterGridIsRotated(grid)) return false;
-    if (internal.rasterLooksLikeHillshade(lyr.raster)) return false;
+    if (!internal.rasterIsBlendTarget(lyr.raster)) return false;
     return getBlendSourceLayers(model, lyr).length > 0;
   }
 
@@ -10219,6 +10222,17 @@
         gui.interaction.setMode('blend');
       }
 
+      // Likewise the hillshade panel
+      function hillshadeLayer() {
+        var target = findLayerById(id);
+        if (!target) return;
+        if (!map.isActiveLayer(target.layer)) {
+          target.layer.hidden = false;
+          model.selectLayer(target.layer, target.dataset);
+        }
+        gui.interaction.setMode('hillshade');
+      }
+
       function openLayerMenu(e) {
         var menuEvent = e;
         var target = findLayerById(id);
@@ -10272,6 +10286,10 @@
         // where the arrow menu would offer it, with the layer active
         if (!isFrame && target && blendIsAvailable(model, target.layer)) {
           menuEvent.blendLayer = blendLayer;
+        }
+        if (!isFrame && target && internal.layerHasRaster(target.layer) &&
+            internal.rasterCanBeHillshaded(target.layer.raster)) {
+          menuEvent.hillshadeLayer = hillshadeLayer;
         }
         menuEvent.contextMenuId = 'layer-' + id;
         openContextMenu(menuEvent, null, null);
@@ -13148,12 +13166,13 @@
       lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],
       table: ['info', 'selection'],
       // 'blend' is offered only where there is a hillshade to blend, and not on
-      // a hillshade (see getRasterModes())
-      raster: ['blend', 'box', 'ruler'],
+      // a hillshade, and 'hillshade' only on a raster that can be shaded as
+      // terrain (see getRasterModes())
+      raster: ['hillshade', 'blend', 'box', 'ruler'],
       // an RGB image, which -tone can adjust
       image: ['tone', 'blend', 'box', 'ruler'],
       // a data raster (a DEM, land cover...), which -classify can color
-      dataRaster: ['palette', 'blend', 'box', 'ruler'],
+      dataRaster: ['hillshade', 'palette', 'blend', 'box', 'ruler'],
       // a grayscale image, which -tone can adjust (apart from its colors) and
       // -classify can color
       grayImage: ['tone', 'palette', 'blend', 'box', 'ruler'],
@@ -13193,6 +13212,7 @@
       tone: 'adjust colors',
       palette: 'color palette',
       blend: 'blend hillshade',
+      hillshade: 'hillshade',
       edit_points: 'style/edit points',
       edit_lines: 'draw lines',
       edit_polygons: 'draw polygons',
@@ -13419,8 +13439,10 @@
       var modes = internal.rasterCanBeToned(lyr.raster) ? menus.image :
         internal.rasterIsGrayImage(lyr.raster) ? menus.grayImage :
         layerHasPaletteRaster(lyr) ? menus.dataRaster : menus.raster;
-      return blendIsAvailable(gui.model, lyr) ? modes : modes.filter(function(mode) {
-        return mode != 'blend';
+      var blend = blendIsAvailable(gui.model, lyr);
+      var hillshade = internal.rasterCanBeHillshaded(lyr.raster);
+      return modes.filter(function(mode) {
+        return (mode != 'blend' || blend) && (mode != 'hillshade' || hillshade);
       });
     }
 
@@ -14486,14 +14508,14 @@
     }
     if (format == 'hsl') {
       hsl = rgbToHsl(rgb);
-      return 'hsl(' + round$4(hsl.h, 1) + ', ' + round$4(hsl.s * 100, 1) + '%, ' +
-        round$4(hsl.l * 100, 1) + '%)';
+      return 'hsl(' + round$3(hsl.h, 1) + ', ' + round$3(hsl.s * 100, 1) + '%, ' +
+        round$3(hsl.l * 100, 1) + '%)';
     }
     if (format == 'oklch') {
       lch = internal.oklabToOklch(internal.rgbToOklab(rgb));
       // a gray has no hue
       return 'oklch(' + lch.l.toFixed(4) + ' ' + lch.c.toFixed(4) + ' ' +
-        (lch.c < 0.00005 ? 0 : round$4(lch.h, 2)) + ')';
+        (lch.c < 0.00005 ? 0 : round$3(lch.h, 2)) + ')';
     }
     return internal.formatColor({r: rgb.r, g: rgb.g, b: rgb.b, a: 1});
   }
@@ -14595,7 +14617,7 @@
     return {h: h, s: s, l: l};
   }
 
-  function round$4(val, decimals) {
+  function round$3(val, decimals) {
     var k = Math.pow(10, decimals);
     return Math.round(val * k) / k;
   }
@@ -14736,6 +14758,8 @@
 
   // opts.presetRows   rows of preset colors; [] for none
   // opts.onPreview(hex), opts.onChange(hex), opts.onHide()
+  // opts.buttons      [{label, onClick}], buttons beside Close; a click also
+  //                   closes the picker
   // opts.opacityInput the opacity field beside the color, if it has one. The
   //                   picker gets a slider for it, which shows the field's value
   //                   and writes to it: a drag shows its percentage in the field
@@ -14849,6 +14873,12 @@
       addFormatTabs(colorPicker);
       var fieldRow = El('div').addClass('label-color-picker-fields').appendTo(colorPicker);
       addColorInput(fieldRow);
+      (opts.buttons || []).forEach(function(o) {
+        El('button').appendTo(fieldRow).text(o.label).on('click', function() {
+          self.hide();
+          o.onClick();
+        });
+      });
       El('button').appendTo(fieldRow).text('Close').on('click', function() {
         self.hide();
       });
@@ -16755,7 +16785,7 @@
       o.type = shape;
     }
     o.radius = shape == 'square' ? Math.round(style.size / Math.SQRT2 * 1e4) / 1e4 :
-      round$3(style.size / 2);
+      round$2(style.size / 2);
     if (style.fill) {
       o.fill = style.fill;
     } else if (kind != 'stroke') {
@@ -16796,8 +16826,8 @@
 
   function getIconSize(rec) {
     if (!getIconShape(rec)) return null;
-    if (!rec.icon) return round$3(Number(rec.r) * 2);
-    return isNumber$1(rec['icon-size']) ? round$3(Number(rec['icon-size'])) : null;
+    if (!rec.icon) return round$2(Number(rec.r) * 2);
+    return isNumber$1(rec['icon-size']) ? round$2(Number(rec['icon-size'])) : null;
   }
 
   function getIconPaint(rec) {
@@ -16892,7 +16922,7 @@
     return val !== '' && val !== null && val !== undefined && isFinite(Number(val));
   }
 
-  function round$3(n) {
+  function round$2(n) {
     return Math.round(n * 100) / 100;
   }
 
@@ -17553,10 +17583,10 @@
     // length of the drag, and drop it back on release.
     var drawn = start.aligned ? drawnAnchor : anchor;
     return {
-      dx: round$2(left + anchorOffsets[anchor] * width),
-      dy: round$2(start.dy + delta.dy),
+      dx: round$1(left + anchorOffsets[anchor] * width),
+      dy: round$1(start.dy + delta.dy),
       'text-anchor': anchor,
-      x: round$2(left + anchorOffsets[drawn] * width),
+      x: round$1(left + anchorOffsets[drawn] * width),
       anchor: drawn
     };
   }
@@ -17608,7 +17638,7 @@
     return anchor in anchorOffsets ? anchor : 'start';
   }
 
-  function round$2(px) {
+  function round$1(px) {
     return Math.round(px * PRECISION) / PRECISION;
   }
 
@@ -29854,6 +29884,969 @@
       var o = gui.model.getActiveLayer();
       return o && o.layer || null;
     }
+  }
+
+  // A hillshade being previewed in place of an elevation layer, while the
+  // hillshade panel is open. The layer is not changed: the map draws a stand-in
+  // layer whose raster is the hillshade, and which keeps the elevation layer's
+  // display state (its bounds, and its projection on the map). Its raster is
+  // replaced as the settings change, which the raster previews' caches notice,
+  // since they check the identity of the grid.
+  var standIns = new WeakMap(); // elevation layer -> stand-in layer
+
+  // @raster a hillshade raster covering the layer: the full image, or a reduced
+  //   copy while a slider is being dragged
+  // @inset optional {preview, bbox, framed}: a full-resolution part of the
+  //   hillshade with newer settings, drawn in place of that part of @raster
+  //   (see drawRasterLayer()); framed if it doesn't cover the view
+  function setRasterHillshadePreview(layer, raster, inset) {
+    var standIn = standIns.get(layer);
+    if (!standIn) {
+      standIn = {raster_type: 'grid'};
+      standIns.set(layer, standIn);
+    }
+    standIn.raster = raster;
+    standIn.hillshade_inset = inset || null;
+  }
+
+  function clearRasterHillshadePreview(layer) {
+    standIns.delete(layer);
+  }
+
+  // Returns the layer for the map to draw in place of @layer, or null
+  function getRasterHillshadeStandIn(layer) {
+    var standIn = standIns.get(layer);
+    if (!standIn) return null;
+    standIn.name = layer.name;
+    standIn.gui = layer.gui;
+    return standIn;
+  }
+
+  // The hillshade panel's controls (gui-hillshade-tool.mjs) and the -hillshade
+  // command they add up to.
+  //
+  // A setting's default is the command's, so a setting left at its default is
+  // left out of the command, apart from the style: the panel starts on the
+  // opaque style, and writes `opaque` for it. The panel has some settings of
+  // its own, which map onto options:
+  // - exaggeration is a factor of the automatic exaggeration, as a power of 2,
+  //   so that the slider is centered on it whatever the map scale (0 is the
+  //   automatic exaggeration, and leaves exaggeration= out)
+  // - azimuth runs from 135 to 495 degrees, so that the default, 315, is in the
+  //   middle of the slider, and directions that make terrain look inverted
+  //   (light from the south) are at its ends
+  // - an opaque hillshade's shadow and highlight colors are derived from the
+  //   base color (with its hue), or chosen, and set by strengths, which fade
+  //   from the base color to them (see getHillshadeShadowColor() and
+  //   getHillshadeHighlightColor() in mapshaper-raster-color.mjs). They are
+  //   kept apart from the transparent style's colors, so that switching styles
+  //   doesn't carry black and white over.
+
+  var HILLSHADE_STYLES = [
+    {value: 'shadow', label: 'Transparent'},
+    {value: 'opaque', label: 'Opaque'}
+  ];
+
+  var HILLSHADE_LIGHTINGS = [
+    {value: 'hard', label: 'Hard'},
+    {value: 'balanced', label: 'Balanced'},
+    {value: 'soft', label: 'Soft'}
+  ];
+
+  var HILLSHADE_SMOOTHING_LEVELS = [
+    {value: 0, label: 'Off'},
+    {value: 1, label: '1'},
+    {value: 2, label: '2'},
+    {value: 3, label: '3'},
+    {value: 4, label: '4'}
+  ];
+
+  // @section the panel section the slider is in
+  // @style the style the slider is shown for, if only one
+  // @fields the slider changes the fields of shading, which take longer to
+  //   compute than the settings that combine them (see computeShadingFields())
+  // @snap distance from the default within which the slider settles on it
+  var HILLSHADE_SLIDERS = [
+    {name: 'max_opacity', label: 'Shadows', section: 'shading', style: 'shadow', min: 0, max: 1, step: 0.01, value: 0.55},
+    {name: 'highlights', label: 'Highlights', section: 'shading', style: 'shadow', min: 0, max: 2, step: 0.01, value: 1},
+    {name: 'shadow_strength', label: 'Shadows', section: 'shading', style: 'opaque', min: 0, max: 2, step: 0.01, value: 1},
+    {name: 'highlight_strength', label: 'Highlights', section: 'shading', style: 'opaque', min: 0, max: 1, step: 0.01, value: 1},
+    {name: 'azimuth', label: 'Azimuth', section: 'light', min: 135, max: 495, step: 1, value: 315, snap: 3, fields: true},
+    {name: 'altitude', label: 'Altitude', section: 'light', min: 10, max: 80, step: 1, value: 45, snap: 1, fields: true},
+    {name: 'exaggeration', label: 'Exaggeration', section: 'terrain', min: -2, max: 2, step: 0.05, value: 0, snap: 0.05, fields: true},
+    {name: 'ambient', label: 'Ambient', section: 'effects', min: 0, max: 1, step: 0.01, value: 0.5},
+    {name: 'texture', label: 'Texture', section: 'effects', min: 0, max: 1, step: 0.01, value: 0},
+    {name: 'aerial', label: 'Aerial', section: 'effects', min: 0, max: 1, step: 0.01, value: 0},
+    {name: 'gamma', label: 'Gamma', section: 'effects', min: 0.3, max: 1.5, step: 0.01, value: 0.7}
+  ];
+
+  // null is a color derived from the base color
+  var DEFAULT_HILLSHADE_COLORS = {
+    shadow_color: '#000000',
+    highlight_color: '#ffffff',
+    base_color: '#d7d7d7',
+    opaque_shadow_color: null,
+    opaque_highlight_color: null
+  };
+
+  // The colors shown for each style, as keys of the settings
+  // @derived the color is null until one is chosen, and the color it is derived
+  //   from the base color with (see getHillshadeOptions())
+  var HILLSHADE_COLOR_ROWS = [
+    {name: 'shadow_color', label: 'Shadow', style: 'shadow'},
+    {name: 'highlight_color', label: 'Highlight', style: 'shadow'},
+    {name: 'base_color', label: 'Base', style: 'opaque'},
+    {name: 'opaque_shadow_color', label: 'Shadow', style: 'opaque', derived: 'shadow'},
+    {name: 'opaque_highlight_color', label: 'Highlight', style: 'opaque', derived: 'highlight'}
+  ];
+
+  var COMPASS_POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+
+  // The style is the exception to the command's defaults (see above)
+  function getDefaultHillshadeSettings() {
+    var settings = {style: 'opaque', lighting: 'balanced', smoothing: 0};
+    HILLSHADE_SLIDERS.forEach(function(slider) {
+      settings[slider.name] = slider.value;
+    });
+    return Object.assign(settings, DEFAULT_HILLSHADE_COLORS);
+  }
+
+  function getHillshadeSlider(name) {
+    return HILLSHADE_SLIDERS.find(function(slider) { return slider.name == name; }) || null;
+  }
+
+  // A value from a slider, rounded to its step and settled on the default if
+  // it is close
+  function getHillshadeSliderValue(slider, val) {
+    var v = Math.round(val / slider.step) * slider.step;
+    if (slider.snap && Math.abs(v - slider.value) < slider.snap) v = slider.value;
+    return +v.toFixed(2);
+  }
+
+  // e.g. "315° NW"
+  function formatAzimuth(val) {
+    var deg = getCompassDegrees(val);
+    return deg + '° ' + COMPASS_POINTS[Math.round(deg / 45) % 8];
+  }
+
+  // @autoExaggeration the automatic exaggeration of the raster being shaded
+  function formatHillshadeSliderValue(slider, val, autoExaggeration) {
+    if (slider.name == 'azimuth') return formatAzimuth(val);
+    if (slider.name == 'altitude') return val + '°';
+    if (slider.name == 'exaggeration') return formatExaggeration(getExaggeration(val, autoExaggeration));
+    return val.toFixed(2);
+  }
+
+  // The two significant digits of getExaggeration(), with a decimal below 10
+  // (1.0, 0.25, 2.8, 12)
+  function formatExaggeration(val) {
+    return val < 10 ? val.toPrecision(2) : String(val);
+  }
+
+  function getExaggeration(factor, autoExaggeration) {
+    return +(autoExaggeration * Math.pow(2, factor)).toPrecision(2);
+  }
+
+  // The -hillshade options of the settings, as the command's parser gives them
+  // (a key with an underscore for each option), leaving out those at their
+  // defaults
+  // @autoExaggeration see formatHillshadeSliderValue()
+  // @colorFns {shadow(baseHex, strength, hex), highlight(baseHex, strength, hex)},
+  //   returning the colors of an opaque hillshade as '#rrggbb', from the
+  //   chosen color @hex, or derived from the base color if @hex is null
+  function getHillshadeOptions(settings, autoExaggeration, colorFns) {
+    var defaults = getDefaultHillshadeSettings();
+    var opts = {};
+    var azimuth = getCompassDegrees(settings.azimuth);
+    var shadow = settings.opaque_shadow_color, highlight = settings.opaque_highlight_color;
+    if (settings.style == 'opaque') {
+      if (settings.base_color == defaults.base_color && settings.shadow_strength == 1 &&
+          settings.highlight_strength == 1 && !shadow && !highlight) {
+        opts.opaque = true;
+      } else {
+        // base-color= implies opaque; a shadow or highlight color without it
+        // would put the base between them
+        opts.base_color = settings.base_color;
+        if (settings.shadow_strength != 1 || shadow) {
+          opts.shadow_color = colorFns.shadow(settings.base_color, settings.shadow_strength, shadow);
+        }
+        if (settings.highlight_strength != 1 || highlight) {
+          opts.highlight_color = colorFns.highlight(settings.base_color, settings.highlight_strength, highlight);
+        }
+      }
+    } else {
+      ['max_opacity', 'highlights', 'shadow_color', 'highlight_color'].forEach(function(key) {
+        if (settings[key] != defaults[key]) opts[key] = settings[key];
+      });
+    }
+    if (azimuth != getCompassDegrees(defaults.azimuth)) opts.azimuth = azimuth;
+    ['altitude', 'lighting'].forEach(function(key) {
+      if (settings[key] != defaults[key]) opts[key] = settings[key];
+    });
+    if (settings.exaggeration != defaults.exaggeration) {
+      opts.exaggeration = getExaggeration(settings.exaggeration, autoExaggeration);
+    }
+    ['smoothing', 'ambient', 'texture', 'aerial', 'gamma'].forEach(function(key) {
+      if (settings[key] != defaults[key]) opts[key] = settings[key];
+    });
+    return opts;
+  }
+
+  // @keepElevation keep the elevation layer (+), which -hillshade replaces by
+  //   default
+  function getHillshadeCommand(settings, autoExaggeration, colorFns, keepElevation) {
+    var opts = getHillshadeOptions(settings, autoExaggeration, colorFns);
+    var parts = ['-hillshade'];
+    Object.keys(opts).forEach(function(key) {
+      var name = key.replace(/_/g, '-');
+      parts.push(opts[key] === true ? name : name + '=' + opts[key]);
+    });
+    if (keepElevation) parts.push('+');
+    return parts.join(' ');
+  }
+
+  function getCompassDegrees(val) {
+    return ((Math.round(val) % 360) + 360) % 360;
+  }
+
+  // While a slider is dragged, the most pixels that are shaded at full
+  // resolution for each change
+  var WINDOW_MAX_PIXELS = 1e6;
+  // ... or, on a map in other coordinates than the raster's, the size the whole
+  // raster is reduced to (see renderReducedDraft())
+  var DRAFT_MAX_PIXELS = 1e6;
+  // work that takes longer than this shows a spinner
+  var BUSY_DELAY = 250;
+
+  var colorFns = {
+    shadow: function(hex, strength, color) {
+      return internal.formatColor(internal.getHillshadeShadowColor(internal.parseColor(hex), strength,
+        color ? internal.parseColor(color) : null));
+    },
+    highlight: function(hex, strength, color) {
+      return internal.formatColor(internal.getHillshadeHighlightColor(internal.parseColor(hex), strength,
+        color ? internal.parseColor(color) : null));
+    }
+  };
+
+  // The 'hillshade' mode: controls that preview -hillshade on an elevation
+  // raster. The map shows the hillshade in place of the elevation layer, which
+  // is not changed until Apply runs -hillshade, which is what goes into the
+  // session history and the undo stack. Leaving the mode any other way --
+  // Cancel, the panel's ×, another tool, another layer -- drops the preview.
+  //
+  // The panel reads the elevations once, and keeps what takes time to compute:
+  // the smoothed terrain for each smoothing level, and the fields of shading
+  // (see computeShadingFields()), which depend only on the light, the
+  // exaggeration and the smoothing. Other settings recombine the fields. While
+  // a slider is dragged, the part of the raster in view is shaded at full
+  // resolution, or if that's more than WINDOW_MAX_PIXELS, a box of that many
+  // pixels in the middle of the view, drawn over the last full image (see
+  // renderWindowDraft()). When the slider is let go of, the preview is made at
+  // full size, with the fields recomputed for the new settings (see
+  // renderExact()), which gives the same image as -hillshade.
+  function HillshadeTool(gui) {
+    var parent = gui.container.findChild('.mshp-main-map');
+    var panel = El('div').addClass('label-style-panel raster-tone-panel raster-hillshade-panel')
+      .appendTo(parent).hide();
+    var sliderControls = {}; // slider name -> {row, input, readout}
+    var colorControls = {}; // color setting -> {row, input, chit, picker}
+    var buttonGroups = {}; // setting -> {value -> button}
+    var settingPicker = false; // the picker echoes the colors it is given to onPreview
+    var settings = getDefaultHillshadeSettings();
+    var targetLayer = null;
+    // What the panel has computed for the target layer, replaced when the panel
+    // opens on a layer, so that work still running for an earlier one is
+    // dropped when it finishes. See turnOn().
+    var state = null;
+    var noteEl, titleSpinner, keepCheckbox, applyBtn;
+    // the button whose setting is being computed, which shows the spinner in
+    // place of its label; otherwise the spinner is next to the title
+    var busyButton = null;
+    var pendingFrame = null;
+    var pendingExact = false;
+    var keepPreview = false;
+
+    initPanel();
+
+    gui.on('interaction_mode_change', function(e) {
+      if (e.mode == 'hillshade' && activeLayerCanBeHillshaded()) {
+        turnOn();
+      } else {
+        turnOff();
+      }
+    });
+
+    gui.model.on('update', function() {
+      if (!targetLayer) return;
+      if (!activeLayerCanBeHillshaded()) {
+        gui.interaction.turnOff();
+      } else if (getActiveLayer() != targetLayer) {
+        // another raster was selected, which starts over on that one
+        turnOff();
+        turnOn();
+      }
+    });
+
+    function initPanel() {
+      var header = El('div').addClass('label-style-panel-title').appendTo(panel);
+      var section, btnRow, keepLabel, title;
+      title = El('span').appendTo(header).text('Hillshade');
+      titleSpinner = El('span').addClass('raster-hillshade-spinner').appendTo(title);
+      El('button').addClass('label-style-close').appendTo(header).text('×').on('click', cancel);
+      noteEl = El('div').addClass('raster-blend-note').appendTo(panel);
+
+      section = makePanelSection(panel, 'Shading');
+      addButtonRow(section, 'Style', 'style', HILLSHADE_STYLES);
+      HILLSHADE_COLOR_ROWS.forEach(function(o) {
+        colorControls[o.name] = addColorRow(section, o);
+      });
+      addSliderRows(section, 'shading');
+
+      section = makePanelSection(panel, 'Light');
+      addSliderRows(section, 'light');
+      addButtonRow(section, 'Lighting', 'lighting', HILLSHADE_LIGHTINGS);
+
+      section = makePanelSection(panel, 'Terrain');
+      addSliderRows(section, 'terrain');
+      addButtonRow(section, 'Smoothing', 'smoothing', HILLSHADE_SMOOTHING_LEVELS);
+
+      section = makePanelSection(panel, 'Effects');
+      addSliderRows(section, 'effects');
+
+      btnRow = El('div').addClass('label-style-row label-panel-button-row raster-tone-buttons').appendTo(panel);
+      keepLabel = El('label').addClass('raster-blend-keep-label').appendTo(btnRow);
+      keepCheckbox = El('input').attr('type', 'checkbox').appendTo(keepLabel)
+        .on('change', releaseFocus);
+      keepCheckbox.node().checked = true;
+      El('span').appendTo(keepLabel).text('Keep elevation');
+      makePanelActionButton(btnRow, 'Cancel', cancel);
+      applyBtn = makePanelActionButton(btnRow, 'Apply', apply);
+    }
+
+    function addSliderRows(section, name) {
+      HILLSHADE_SLIDERS.filter(function(slider) {
+        return slider.section == name;
+      }).forEach(function(slider) {
+        sliderControls[slider.name] = addSliderRow(section, slider);
+      });
+    }
+
+    function addSliderRow(parentEl, slider) {
+      var row = El('div').addClass('label-style-row raster-tone-slider-row').appendTo(parentEl);
+      var input, readout;
+      El('span').addClass('raster-tone-slider-label').appendTo(row).text(slider.label);
+      input = El('input').attr('type', 'range').attr('min', slider.min).attr('max', slider.max)
+        .attr('step', slider.step).attr('aria-label', slider.label).appendTo(row)
+        .on('input', function() {
+          setSetting(slider.name, getHillshadeSliderValue(slider, +input.node().value), false);
+        })
+        .on('change', function() {
+          busyButton = null;
+          updateControls();
+          schedulePreview(true);
+          releaseFocus();
+        });
+      // A double-click puts the slider back at its default
+      input.on('dblclick', function() {
+        setSetting(slider.name, slider.value, true);
+      });
+      readout = El('span').addClass('raster-tone-slider-value').appendTo(row);
+      return {row: row, input: input, readout: readout};
+    }
+
+    function addButtonRow(parentEl, label, key, choices) {
+      var row = El('div').addClass('label-style-row raster-tone-slider-row raster-hillshade-button-row').appendTo(parentEl);
+      var group;
+      El('span').addClass('raster-tone-slider-label').appendTo(row).text(label);
+      group = El('div').addClass('label-btn-group').appendTo(row);
+      buttonGroups[key] = {};
+      choices.forEach(function(choice) {
+        var btn = buttonGroups[key][choice.value] = makePanelButton(group, choice.label, function() {
+          if (settings[key] !== choice.value) setSetting(key, choice.value, true, btn);
+        });
+      });
+    }
+
+    // A drag in the picker previews on the map, as a drag of a slider does.
+    // A derived color shows "auto" in its field, and the picker has an Auto
+    // button that goes back to it (as a blank field or a typed "auto" does).
+    function addColorRow(parentEl, o) {
+      var row = El('div').addClass('label-style-row raster-tone-slider-row raster-blend-color-row').appendTo(parentEl);
+      var control = {row: row};
+      El('span').addClass('raster-tone-slider-label').appendTo(row).text(o.label);
+      control.chit = El('div').addClass('label-color-chit').attr('role', 'button')
+        .on('click', function() {
+          control.picker.toggle();
+        });
+      control.input = El('input').attr('type', 'text')
+        .attr('aria-label', o.label + ' color')
+        .on('change', function() {
+          var str = control.input.node().value.trim();
+          var hex = toSixDigitHex(str);
+          if (hex) {
+            setSetting(o.name, hex.toLowerCase(), true);
+          } else if (o.derived && (str === '' || str.toLowerCase() == 'auto') && settings[o.name]) {
+            setSetting(o.name, null, true);
+          }
+          showColor(o.name);
+          releaseFocus();
+        });
+      makeColorField(row, control.chit, control.input);
+      settingPicker = true;
+      control.picker = new ColorPicker(row, {
+        buttons: o.derived ? [{label: 'Auto', onClick: function() {
+          if (settings[o.name]) setSetting(o.name, null, true);
+        }}] : [],
+        presetRows: layerColorPresetRows,
+        onPreview: function(hex) {
+          if (!settingPicker) setSetting(o.name, hex.toLowerCase(), false);
+        },
+        onChange: function(hex) {
+          setSetting(o.name, hex.toLowerCase(), true);
+        }
+      });
+      settingPicker = false;
+      return control;
+    }
+
+    // @exact the change is complete (a slider was let go of, a button clicked),
+    //   rather than part of a drag
+    // @btn the button that made the change, if any
+    function setSetting(key, val, exact, btn) {
+      settings[key] = val;
+      busyButton = btn || null;
+      if (state) state.version++;
+      updateControls();
+      schedulePreview(exact);
+    }
+
+    function updateControls() {
+      var opaque = settings.style == 'opaque';
+      HILLSHADE_SLIDERS.forEach(function(slider) {
+        var control = sliderControls[slider.name];
+        control.row.classed('hidden', !!slider.style && slider.style != settings.style);
+        control.input.node().value = settings[slider.name];
+        showSliderValue(slider);
+      });
+      HILLSHADE_COLOR_ROWS.forEach(function(o) {
+        colorControls[o.name].row.node().style.display = (o.style == 'opaque') == opaque ? '' : 'none';
+        showColor(o.name);
+      });
+      Object.keys(buttonGroups).forEach(function(key) {
+        Object.keys(buttonGroups[key]).forEach(function(val) {
+          buttonGroups[key][val].classed('selected', String(settings[key]) == val);
+        });
+      });
+    }
+
+    function showSliderValue(slider) {
+      var control = sliderControls[slider.name];
+      var input = control.input.node();
+      var min = +input.min, max = +input.max;
+      var fill = max > min ? (input.value - min) / (max - min) : 0;
+      input.style.setProperty('--fill', 'calc(6px + (100% - 12px) * ' + Math.round(fill * 1000) / 1000 + ')');
+      control.readout.text(formatHillshadeSliderValue(slider, settings[slider.name],
+        state ? state.autoExaggeration : 1));
+    }
+
+    // A derived color is shown at strength 1, as a chosen one is
+    function showColor(name) {
+      var control = colorControls[name];
+      var o = HILLSHADE_COLOR_ROWS.find(function(o) { return o.name == name; });
+      var hex = settings[name] || colorFns[o.derived](settings.base_color, 1, null);
+      settingPicker = true;
+      control.picker.setColor(hex);
+      settingPicker = false;
+      control.input.node().value = settings[name] ? hex : 'auto';
+      control.chit.css('background-color', hex);
+    }
+
+    function hidePickers() {
+      HILLSHADE_COLOR_ROWS.forEach(function(o) {
+        colorControls[o.name].picker.hide();
+      });
+    }
+
+    function turnOn() {
+      var o = gui.model.getActiveLayer();
+      var terrain = null;
+      targetLayer = o.layer;
+      settings = getDefaultHillshadeSettings();
+      try {
+        terrain = internal.readHillshadeTerrain(o.layer, o.dataset, {});
+      } catch (e) {
+        // stop() has already said why
+      }
+      state = terrain ? {
+        terrain: terrain,
+        autoExaggeration: internal.getAutoExaggeration(terrain.cells.median),
+        draftFactor: getShrinkFactor(terrain.grid.width, terrain.grid.height, DRAFT_MAX_PIXELS),
+        smoothed: {0: terrain.grid}, // smoothing level -> grid, or a promise of one
+        reduced: {}, // smoothing level -> reduced copy of the smoothed grid
+        fields: {}, // field name -> {key, data}, at full size
+        draftFields: {}, // field name -> {key or source, data}, reduced
+        exactRaster: null, // the latest full-size image
+        version: 0, // incremented with each change of the settings
+        exactRunning: false,
+        exactAgain: false,
+        busyTimer: null
+      } : null;
+      updateControls();
+      showNote(state ? '' : 'This layer can\'t be shaded.');
+      applyBtn.classed('disabled', !state);
+      panel.show();
+      schedulePreview(true);
+    }
+
+    function turnOff() {
+      if (!targetLayer) return;
+      if (pendingFrame !== null) {
+        cancelAnimationFrame(pendingFrame);
+        pendingFrame = null;
+      }
+      pendingExact = false;
+      hidePickers();
+      if (state) clearTimeout(state.busyTimer);
+      showBusy(false);
+      if (!keepPreview) {
+        clearRasterHillshadePreview(targetLayer);
+        gui.dispatchEvent('map-needs-refresh');
+      }
+      targetLayer = null;
+      state = null;
+      releaseFocus();
+      panel.hide();
+    }
+
+    function exitMode() {
+      if (gui.interaction.getMode() == 'hillshade') {
+        gui.interaction.turnOff();
+      } else {
+        turnOff();
+      }
+    }
+
+    function cancel() {
+      exitMode();
+    }
+
+    // The preview stays on the map while -hillshade runs, which replaces the
+    // layer (unless the elevation layer is kept), so that the elevations don't
+    // flash up in between
+    function apply() {
+      var lyr = targetLayer;
+      var cmd;
+      if (!state) return;
+      cmd = getHillshadeCommand(settings, state.autoExaggeration, colorFns, keepCheckbox.node().checked);
+      keepPreview = true;
+      exitMode();
+      keepPreview = false;
+      runGuiEditCommand(gui, cmd, {
+        title: 'Hillshade error',
+        onDone: function() {
+          clearRasterHillshadePreview(lyr);
+          gui.dispatchEvent('map-needs-refresh');
+        }
+      });
+    }
+
+    // Slider events come faster than the map can be redrawn on a large raster
+    function schedulePreview(exact) {
+      pendingExact = pendingExact || exact;
+      if (pendingFrame !== null) return;
+      pendingFrame = requestAnimationFrame(function() {
+        var exactNow = pendingExact;
+        pendingFrame = null;
+        pendingExact = false;
+        if (!state) return;
+        if (exactNow) {
+          requestExact(state);
+        } else {
+          renderDraft(state);
+        }
+      });
+    }
+
+    // Options as the command will have them, and the settings of shading they
+    // give (see getHillshadeShading())
+    function getShading(st) {
+      return internal.getHillshadeShading(getHillshadeOptions(settings, st.autoExaggeration, colorFns),
+        st.terrain);
+    }
+
+    // Keys of the settings each field depends on (see computeShadingFields()),
+    // or null for a field the settings don't use
+    function getFieldKeys(shading) {
+      var s = shading.settings;
+      return {
+        shade: [shading.smoothing, s.azimuth, settings.altitude, settings.lighting, s.exaggeration].join(','),
+        openness: s.ambient > 0 ? [shading.smoothing, s.exaggeration].join(',') : null,
+        texture: s.texture > 0 ? [shading.smoothing, s.exaggeration].join(',') : null
+      };
+    }
+
+    // One full-size image is made at a time; a request while one is being made
+    // makes another when it is done, with the settings of then. The spinner
+    // stays until the last one is done.
+    function requestExact(st) {
+      if (st.exactRunning) {
+        st.exactAgain = true;
+        return;
+      }
+      st.exactRunning = true;
+      clearTimeout(st.busyTimer);
+      st.busyTimer = setTimeout(function() {
+        if (st == state) showBusy(true);
+      }, BUSY_DELAY);
+      renderExact(st).catch(function(e) {
+        if (st == state) showNote(e.message || String(e));
+        return 'failed';
+      }).then(function(result) {
+        st.exactRunning = false;
+        clearTimeout(st.busyTimer);
+        if (st != state) return;
+        if (result != 'failed') showNote('');
+        if (st.exactAgain) {
+          st.exactAgain = false;
+          requestExact(st);
+        } else {
+          showBusy(false);
+        }
+      });
+    }
+
+    // The spinner takes the place of the label of the button that started the
+    // work, or the space kept for it next to the title, so the panel's layout
+    // doesn't change
+    function showBusy(busy) {
+      var onButton = busy && !!busyButton && busyButton.hasClass('selected');
+      Object.keys(buttonGroups).forEach(function(key) {
+        Object.keys(buttonGroups[key]).forEach(function(val) {
+          var btn = buttonGroups[key][val];
+          btn.classed('busy', onButton && btn == busyButton);
+        });
+      });
+      titleSpinner.classed('active', busy && !onButton);
+    }
+
+    // The full-size image, recomputing whatever the settings need. If the
+    // settings change in the meantime (in a drag), what was computed is kept,
+    // and the draft is made again, in case it was missing a field.
+    async function renderExact(st) {
+      var version = st.version;
+      var shading = getShading(st);
+      var grid = await getSmoothedGrid(st, shading.smoothing);
+      var current = await getFields(st, grid, shading, getFieldKeys(shading));
+      if (st != state) return;
+      if (version != st.version) {
+        schedulePreview(false);
+        return;
+      }
+      st.exactRaster = makePreviewRaster(st.terrain.source, internal.writeHillshadeRgba(
+        internal.combineShadingFields(current, grid, shading.settings), grid.valid, shading.style, shading.colors), 1);
+      showPreview(st, st.exactRaster, null);
+    }
+
+    async function getSmoothedGrid(st, level) {
+      var terrain = st.terrain;
+      var grid = st.smoothed[level];
+      if (!grid) {
+        grid = st.smoothed[level] = internal.runSmoothingStage(terrain.grid,
+          internal.getSmoothingSettings(level, {}, terrain.cells.median, terrain.minElevation), {}
+        ).then(function(result) {
+          return (st.smoothed[level] = Object.assign({}, terrain.grid, {elev: result.elev}));
+        });
+      }
+      return grid;
+    }
+
+    // Computes the fields that aren't kept for these settings, in one pass
+    async function getFields(st, grid, shading, keys) {
+      var s = shading.settings;
+      var needs = Object.keys(keys).filter(function(name) {
+        return keys[name] && !(st.fields[name] && st.fields[name].key == keys[name]);
+      });
+      var result;
+      if (needs.length > 0) {
+        result = await internal.runShadingFieldsStage(grid, Object.assign({}, s, {
+          ambient: needs.includes('openness') ? s.ambient : 0,
+          texture: needs.includes('texture') ? s.texture : 0
+        }), {});
+        needs.forEach(function(name) {
+          st.fields[name] = {key: keys[name], data: result[name]};
+        });
+      }
+      return {
+        shade: st.fields.shade.data,
+        openness: keys.openness ? st.fields.openness.data : null,
+        texture: keys.texture ? st.fields.texture.data : null
+      };
+    }
+
+    // The preview while a slider is dragged. Full-size work waits until the
+    // slider is let go of, so a pause in the drag doesn't shade the whole
+    // raster.
+    function renderDraft(st) {
+      var shading = getShading(st);
+      var full = st.smoothed[shading.smoothing];
+      if (!full || full.then) {
+        // renderExact() makes the draft again once the smoothing is done
+        return;
+      } else if (st.exactRaster && !(targetLayer.gui && targetLayer.gui.dynamic_crs)) {
+        renderWindowDraft(st, shading, full);
+      } else {
+        renderReducedDraft(st, shading, full);
+      }
+    }
+
+    // The part of the raster in view, or a box of WINDOW_MAX_PIXELS in the
+    // middle of it, shaded at full resolution over the last full image. A
+    // slider that changes the light or the exaggeration reshades the box; the
+    // other fields are copied from the latest ones, even if they were computed
+    // for another exaggeration. A field that hasn't been computed is left out
+    // until renderExact() has computed it.
+    function renderWindowDraft(st, shading, full) {
+      var s = shading.settings;
+      var keys = getFieldKeys(shading);
+      var win = getPreviewWindow(st.terrain.source);
+      var reach, tile, grid, current, tones, core, rgba;
+      if (!win) return;
+      // the shading reach without the fields, which are copied
+      reach = internal.getShadingReach(Object.assign({}, s, {ambient: 0, texture: 0}));
+      tile = {
+        xa: Math.max(0, win.x0 - reach), ya: Math.max(0, win.y0 - reach),
+        xb: Math.min(full.width, win.x1 + reach), yb: Math.min(full.height, win.y1 + reach)
+      };
+      grid = {
+        elev: cropArray(full.elev, full.width, tile),
+        valid: full.valid ? cropArray(full.valid, full.width, tile) : null,
+        width: tile.xb - tile.xa,
+        height: tile.yb - tile.ya,
+        cellWidths: full.cellWidths.subarray(tile.ya, tile.yb),
+        cellHeights: full.cellHeights.subarray(tile.ya, tile.yb)
+      };
+      current = {
+        shade: st.fields.shade && st.fields.shade.key == keys.shade ?
+          cropArray(st.fields.shade.data, full.width, tile) :
+          internal.computeShadingFields(grid, Object.assign({}, s, {ambient: 0, texture: 0})).shade
+      };
+      ['openness', 'texture'].forEach(function(name) {
+        var o = st.fields[name];
+        if (!keys[name] || !o || o.key.split(',')[0] != String(shading.smoothing)) return;
+        current[name] = cropArray(o.data, full.width, tile);
+      });
+      s = Object.assign({}, s, {
+        ambient: current.openness ? s.ambient : 0,
+        texture: current.texture ? s.texture : 0
+      });
+      tones = internal.combineShadingFields(current, grid, s);
+      core = {xa: win.x0 - tile.xa, ya: win.y0 - tile.ya, xb: win.x1 - tile.xa, yb: win.y1 - tile.ya};
+      rgba = internal.writeHillshadeRgba(cropArray(tones, grid.width, core),
+        grid.valid ? cropArray(grid.valid, grid.width, core) : null, shading.style, shading.colors);
+      showPreview(st, st.exactRaster, makeInset(st.terrain.source, rgba, win));
+    }
+
+    // The rectangle of raster pixels to shade while a slider is dragged:
+    // {x0, y0, x1, y1, framed}, or null if the raster is out of view
+    function getPreviewWindow(source) {
+      var ext = gui.map.getExtent();
+      var view = ext.getBounds();
+      var b = source.bbox;
+      var dx = (b[2] - b[0]) / source.width, dy = (b[3] - b[1]) / source.height;
+      var vx0 = clampInt(Math.floor((view.xmin - b[0]) / dx), 0, source.width);
+      var vx1 = clampInt(Math.ceil((view.xmax - b[0]) / dx), 0, source.width);
+      var vy0 = clampInt(Math.floor((b[3] - view.ymax) / dy), 0, source.height);
+      var vy1 = clampInt(Math.ceil((b[3] - view.ymin) / dy), 0, source.height);
+      var vw = vx1 - vx0, vh = vy1 - vy0;
+      var aspect, w, h, cx, cy, x0, y0;
+      if (vw <= 0 || vh <= 0) return null;
+      if (vw * vh <= WINDOW_MAX_PIXELS) {
+        return {x0: vx0, y0: vy0, x1: vx1, y1: vy1, framed: false};
+      }
+      // the shape of the view, in raster pixels
+      aspect = (view.xmax - view.xmin) / dx / ((view.ymax - view.ymin) / dy);
+      w = Math.min(vw, Math.round(Math.sqrt(WINDOW_MAX_PIXELS * aspect)));
+      h = Math.min(vh, Math.floor(WINDOW_MAX_PIXELS / w));
+      w = Math.min(vw, Math.floor(WINDOW_MAX_PIXELS / h));
+      cx = ((view.xmin + view.xmax) / 2 - b[0]) / dx;
+      cy = (b[3] - (view.ymin + view.ymax) / 2) / dy;
+      x0 = clampInt(Math.round(cx - w / 2), vx0, vx1 - w);
+      y0 = clampInt(Math.round(cy - h / 2), vy0, vy1 - h);
+      return {x0: x0, y0: y0, x1: x0 + w, y1: y0 + h, framed: true};
+    }
+
+    // An image made from reduced copies of the smoothed terrain and the fields,
+    // while a slider is dragged on a map that shows the raster in other
+    // coordinates, where a box of the raster wouldn't be a box on the map.
+    // A slider that changes the light or the exaggeration reshades the reduced
+    // terrain; the other fields are reduced copies of the latest ones, as in
+    // renderWindowDraft().
+    function renderReducedDraft(st, shading, full) {
+      var keys = getFieldKeys(shading);
+      var s = shading.settings;
+      var grid, current;
+      grid = st.draftFactor > 1 ?
+        st.reduced[shading.smoothing] || (st.reduced[shading.smoothing] = reduceGrid(full, st.draftFactor)) : full;
+      current = {shade: getDraftShade(st, grid, shading, keys.shade)};
+      ['openness', 'texture'].forEach(function(name) {
+        var o = st.fields[name];
+        if (!keys[name] || !o || o.key.split(',')[0] != String(shading.smoothing)) return;
+        current[name] = getDraftField(st, name, o.data);
+      });
+      s = Object.assign({}, s, {
+        ambient: current.openness ? s.ambient : 0,
+        texture: current.texture ? s.texture : 0
+      });
+      showPreview(st, makePreviewRaster(st.terrain.source, internal.writeHillshadeRgba(
+        internal.combineShadingFields(current, grid, s), grid.valid, shading.style, shading.colors),
+        st.draftFactor), null);
+    }
+
+    function getDraftShade(st, grid, shading, key) {
+      var s = shading.settings;
+      var o = st.draftFields.shade;
+      if (st.draftFactor == 1 && st.fields.shade && st.fields.shade.key == key) {
+        return st.fields.shade.data;
+      }
+      if (!o || o.key != key) {
+        o = st.draftFields.shade = {key: key, data: internal.computeHillshade(grid.elev, grid.valid,
+          grid.width, grid.height, grid.cellWidths, grid.cellHeights, s.lights, s.exaggeration)};
+      }
+      return o.data;
+    }
+
+    function getDraftField(st, name, data) {
+      var o = st.draftFields[name];
+      var k = st.draftFactor;
+      if (k == 1) return data;
+      if (!o || o.source != data) {
+        o = st.draftFields[name] = {source: data,
+          data: reduceArray(data, st.terrain.grid.width, st.terrain.grid.height, k)};
+      }
+      return o.data;
+    }
+
+    // @inset see setRasterHillshadePreview()
+    function showPreview(st, raster, inset) {
+      if (st != state) return;
+      setRasterHillshadePreview(targetLayer, raster, inset);
+      gui.dispatchEvent('map-needs-refresh');
+    }
+
+    function showNote(note) {
+      noteEl.text(note);
+      noteEl.node().style.display = note ? '' : 'none';
+    }
+
+    function releaseFocus() {
+      releasePanelFocus(panel.node());
+    }
+
+    function activeLayerCanBeHillshaded() {
+      var lyr = getActiveLayer();
+      return !!(lyr && internal.layerHasRaster(lyr) && internal.rasterCanBeHillshaded(lyr.raster));
+    }
+
+    function getActiveLayer() {
+      var o = gui.model.getActiveLayer();
+      return o && o.layer || null;
+    }
+  }
+
+  // Every @k-th pixel of every @k-th row of a grid of the stages of
+  // mapshaper-hillshade-stages.mjs, with the ground size of a pixel scaled to
+  // match
+  function reduceGrid(grid, k) {
+    var w = Math.ceil(grid.width / k), h = Math.ceil(grid.height / k);
+    var cellWidths = new Float64Array(h), cellHeights = new Float64Array(h);
+    for (var y = 0; y < h; y++) {
+      cellWidths[y] = grid.cellWidths[y * k] * k;
+      cellHeights[y] = grid.cellHeights[y * k] * k;
+    }
+    return {
+      elev: reduceArray(grid.elev, grid.width, grid.height, k),
+      valid: grid.valid ? reduceArray(grid.valid, grid.width, grid.height, k) : null,
+      width: w,
+      height: h,
+      cellWidths: cellWidths,
+      cellHeights: cellHeights
+    };
+  }
+
+  function reduceArray(arr, width, height, k) {
+    var w = Math.ceil(width / k), h = Math.ceil(height / k);
+    var out = new arr.constructor(w * h);
+    var x, y, i = 0, row;
+    for (y = 0; y < h; y++) {
+      row = y * k * width;
+      for (x = 0; x < w; x++) {
+        out[i++] = arr[row + x * k];
+      }
+    }
+    return out;
+  }
+
+  // A hillshade raster for the preview, covering the elevation raster @source.
+  // A reduced image covers a little more than the raster at its right and
+  // bottom edges, if the raster's size isn't a multiple of @k.
+  function makePreviewRaster(source, rgba, k) {
+    var w = Math.ceil(source.width / k), h = Math.ceil(source.height / k);
+    var b = source.bbox;
+    var dx = (b[2] - b[0]) / source.width * k;
+    var dy = (b[3] - b[1]) / source.height * k;
+    var bbox = k == 1 ? b.concat() : [b[0], b[3] - h * dy, b[0] + w * dx, b[3]];
+    return makeRgbaRaster(rgba, w, h, bbox, {});
+  }
+
+  // The box of renderWindowDraft(), as setRasterHillshadePreview() takes it
+  // @win {x0, y0, x1, y1, framed}, in pixels of the elevation raster @source
+  function makeInset(source, rgba, win) {
+    var b = source.bbox;
+    var dx = (b[2] - b[0]) / source.width, dy = (b[3] - b[1]) / source.height;
+    var w = win.x1 - win.x0, h = win.y1 - win.y0;
+    var bbox = [b[0] + win.x0 * dx, b[3] - win.y1 * dy, b[0] + win.x1 * dx, b[3] - win.y0 * dy];
+    // at full resolution, which the map scales down if it's zoomed out
+    var raster = makeRgbaRaster(rgba, w, h, bbox, {maxPixels: w * h});
+    return {preview: raster.view.preview, bbox: bbox, framed: win.framed};
+  }
+
+  function makeRgbaRaster(rgba, w, h, bbox, previewOpts) {
+    var dx = (bbox[2] - bbox[0]) / w, dy = (bbox[3] - bbox[1]) / h;
+    var raster = {
+      sourceId: 'hillshade-preview',
+      interpretation: 'image',
+      grid: {
+        width: w,
+        height: h,
+        bands: 4,
+        pixelType: 'uint8',
+        samples: rgba,
+        sampleBands: [0, 1, 2, 3],
+        nodata: null,
+        bbox: bbox,
+        transform: [dx, 0, bbox[0], 0, -dy, bbox[3]]
+      },
+      view: {recipe: {type: 'rgb', bands: [0, 1, 2, 3], scaling: 'none'}}
+    };
+    raster.view.preview = internal.createRasterPreview(raster, previewOpts);
+    return raster;
+  }
+
+  // The pixels of @rect {xa, ya, xb, yb} of @arr, a grid of @width columns
+  function cropArray(arr, width, rect) {
+    var w = rect.xb - rect.xa, h = rect.yb - rect.ya;
+    var out = new arr.constructor(w * h);
+    var y, i;
+    for (y = 0; y < h; y++) {
+      i = (rect.ya + y) * width + rect.xa;
+      out.set(arr.subarray(i, i + w), y * w);
+    }
+    return out;
+  }
+
+  function clampInt(val, min, max) {
+    return Math.max(min, Math.min(max, val));
   }
 
   function Model(gui) {
@@ -44603,7 +45596,8 @@
       _ext = extent;
     };
 
-    _self.drawRasterLayer = function(layer, opts) {
+    _self.drawRasterLayer = function(layerArg, opts) {
+      var layer = getRasterHillshadeStandIn(layerArg) || layerArg;
       var raster = layer.raster;
       var options = opts || {};
       var preview = null;
@@ -44647,8 +45641,39 @@
         }
       }
       if (!preview || !preview.pixels || !bbox) return;
-      drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
+      if (layer.hillshade_inset) {
+        drawRasterWithInset(layer.hillshade_inset, opacity, function() {
+          drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
+        });
+      } else {
+        drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
+      }
     };
+
+    // A full-resolution part of a hillshade being previewed with newer settings
+    // (see setRasterHillshadePreview()). The rest of the hillshade is drawn
+    // around it rather than under it, so a transparent hillshade isn't drawn
+    // twice there.
+    function drawRasterWithInset(inset, opacity, drawRest) {
+      var pixRatio = GUI.getPixelRatio();
+      var t = _ext.getTransform(pixRatio);
+      var p1 = t.transform(inset.bbox[0], inset.bbox[3]);
+      var p2 = t.transform(inset.bbox[2], inset.bbox[1]);
+      _ctx.save();
+      _ctx.beginPath();
+      _ctx.rect(0, 0, _canvas.width, _canvas.height);
+      _ctx.rect(p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+      _ctx.clip('evenodd');
+      drawRest();
+      _ctx.restore();
+      drawRasterPreview(inset.preview, inset.bbox, true, null, opacity);
+      if (inset.framed) {
+        _ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+        _ctx.lineWidth = pixRatio;
+        _ctx.strokeRect(Math.round(p1[0]) + pixRatio / 2, Math.round(p1[1]) + pixRatio / 2,
+          Math.round(p2[0] - p1[0]) - pixRatio, Math.round(p2[1] - p1[1]) - pixRatio);
+      }
+    }
 
     // A recolored copy of a preview that the tone or blend panel is showing,
     // as function(preview, bbox) returning {canvas, width, height}, or null
@@ -47361,7 +48386,7 @@
         var q = ext.translateCoords(p[0], p[1]);
         var cmd = started ? 'L' : 'M';
         started = true;
-        return cmd + round$1(q[0]) + ' ' + round$1(q[1]);
+        return cmd + round(q[0]) + ' ' + round(q[1]);
       }).filter(Boolean).join(' ');
       path.setAttribute('d', d);
     }
@@ -47402,8 +48427,8 @@
         return;
       }
       p = ext.translateCoords(point.display[0], point.display[1]);
-      marker.setAttribute('cx', round$1(p[0]));
-      marker.setAttribute('cy', round$1(p[1]));
+      marker.setAttribute('cx', round(p[0]));
+      marker.setAttribute('cy', round(p[1]));
       marker.setAttribute('r', 4);
       marker.classList.toggle('ruler-great-circle-endpoint', !!useGreatCircleStyle);
       marker.removeAttribute('display');
@@ -47419,7 +48444,7 @@
     return document.createElementNS(SVG_NS$1, name);
   }
 
-  function round$1(n) {
+  function round(n) {
     return Math.round(n * 10) / 10;
   }
 
@@ -50331,7 +51356,6 @@
 
   //   opts.query: text typed by the user
   //   opts.token: Mapbox access token
-  //   opts.proximity: optional [lon, lat] to rank nearby results first
   //   opts.limit: optional maximum number of results
   //   opts.language: optional language of the results (see getSearchLanguage());
   //     without it, Mapbox gives English names where it has them
@@ -50343,10 +51367,6 @@
       'limit=' + (opts.limit || 5),
       'types=' + PLACE_TYPES.join(',')
     ];
-    var p = opts.proximity;
-    if (p && isFinite(p[0]) && isFinite(p[1])) {
-      params.push('proximity=' + round(p[0]) + ',' + round(p[1]));
-    }
     if (opts.language) {
       params.push('language=' + encodeURIComponent(opts.language));
     }
@@ -50419,10 +51439,6 @@
 
   function getPrimaryLanguage(tag) {
     return tag.split(/[-_]/)[0].toLowerCase();
-  }
-
-  function round(n) {
-    return Math.round(n * 1e4) / 1e4;
   }
 
   // Converts a Geocoding v6 response into a list of places:
@@ -50667,7 +51683,7 @@
       var opts, json, resp;
       timer = null;
       if (query.length < MIN_CHARS) return;
-      opts = {query, token: getToken(), proximity: getMapCenter(), language: language};
+      opts = {query, token: getToken(), language: language};
       controller = typeof AbortController == 'function' ? new AbortController() : null;
       try {
         resp = await fetchPlaces(opts);
@@ -50778,14 +51794,6 @@
         bounds = new Bounds(c[0] - w, c[1] - h, c[0] + w, c[1] + h);
       }
       ext.zoomToBounds(bounds);
-    }
-
-    function getMapCenter() {
-      var b = gui.map.getExtent().getBounds();
-      if (!b.hasBounds()) return null;
-      var p = fromWebMercator(b.centerX(), b.centerY());
-      p[0] = ((p[0] + 180) % 360 + 360) % 360 - 180; // the view may be over a world copy
-      return p;
     }
 
     return {setEnabled};
@@ -51594,6 +52602,7 @@
     gui.rasterToneTool = new RasterToneTool(gui);
     gui.rasterBlendTool = new RasterBlendTool(gui);
     gui.rasterPaletteTool = new RasterPaletteTool(gui);
+    gui.hillshadeTool = new HillshadeTool(gui);
 
     gui.showProgressMessage = function(msg) {
       if (!gui.progressMessage) {

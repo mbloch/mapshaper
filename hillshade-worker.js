@@ -1,7 +1,8 @@
 (function () {
 
-  // Gaussian-like blurs of Float32 channels, as repeated box blurs. This module
-  // has no imports, so that the hillshade worker bundle stays small.
+  // Gaussian-like blurs of Float32 channels, as repeated box blurs, plus an exact
+  // Gaussian for small blurs. This module has no imports, so that the hillshade
+  // worker bundle stays small.
 
   var BOX_BLUR_PASSES = 3;
 
@@ -248,6 +249,16 @@
   // @opts.gamma steepness of the tone curve at flat ground
   // @opts.maxShade shade of the brightest slope, which gets the full highlight
   //   (see getHillshadeMaxShade()); without it there are no highlights
+  // @opts.highlightScale optional share of the full highlight that the
+  //   brightest slope gets instead (see getHillshadeHighlightScale())
+  // @opts.shadeScale optional factor applied to @shade first (see
+  //   getOpaqueShadeScale())
+  // @opts.highlightMaxShade optional, below @opts.maxShade: highlights are drawn
+  //   as under a light whose brightest slope has this shade, on the slopes as
+  //   near the light as they are under that light. A low light, under which
+  //   most slopes facing it are brighter than flat ground, then highlights the
+  //   same range of slopes as a higher one, and slopes between those and flat
+  //   ground are left clear.
   // @opts.basePosition for the opaque style: where the base color is on the
   //   ramp, as a share of its lightness (see getHillshadeBasePosition())
   function getHillshadeTones(shade, valid, style, opts) {
@@ -257,21 +268,30 @@
     var opaque = style == 'opaque';
     var maxOpacity = getToneMaxOpacity(style, o);
     var ratio = opaque ? 1 : o.highlightRatio >= 0 ? o.highlightRatio : getDefaultHighlightRatio();
-    var maxHighlight = Math.min(1, maxOpacity * ratio);
+    var maxHighlight = Math.min(1, maxOpacity * ratio) * (o.highlightScale >= 0 ? o.highlightScale : 1);
     var gamma = o.gamma > 0 ? o.gamma : DEFAULT_GAMMA;
     var litRange = o.maxShade > 1 ? o.maxShade - 1 : 0;
     var curves = getToneCurves(o.maxShade > 1 ? o.maxShade : 1, gamma,
       opaque ? o.basePosition : SHADOW_STYLE_BASE_POSITION);
     var shadowCurve = curves.shadow;
     var highlightCurve = curves.highlight;
+    var shadeScale = o.shadeScale > 0 ? o.shadeScale : 1;
+    // shade as under the highlights' light, which has the same angles to slopes
+    var litScale = 1;
     var i, s;
+    if (o.highlightMaxShade > 1 && o.highlightMaxShade < o.maxShade) {
+      litScale = o.highlightMaxShade / o.maxShade;
+      litRange = o.highlightMaxShade - 1;
+      highlightCurve = getToneCurves(o.highlightMaxShade, gamma,
+        opaque ? o.basePosition : SHADOW_STYLE_BASE_POSITION).highlight;
+    }
     for (i = 0; i < n; i++) {
       if (valid && !valid[i]) continue;
-      s = shade[i];
+      s = shade[i] * shadeScale;
       if (s < 1) {
         tones[i] = -shadowCurve(1 - s) * maxOpacity;
-      } else if (s > 1 && litRange > 0) {
-        tones[i] = highlightCurve((s - 1) / litRange) * maxHighlight;
+      } else if (s * litScale > 1 && litRange > 0) {
+        tones[i] = highlightCurve((s * litScale - 1) / litRange) * maxHighlight;
       }
     }
     return tones;
@@ -530,8 +550,9 @@
   // Brown filters in the frequency domain (spectrum times |k|^alpha); this
   // approximates it as a sum of differences of Gaussians, using
   // |k|^a = C * integral (1 - exp(-t k^2)) t^(-1-a/2) dt, sampled at
-  // half-octave scales up to @maxSigma pixels. Brown's unbounded scales make
-  // plains ringed by mountains read as giant drainages.
+  // half-octave scales up to @maxSigma pixels (see getTextureMaxScale()).
+  // Brown's unbounded scales make plains ringed by mountains read as giant
+  // drainages.
   // Elevation differences are divided by the pixel size, like a slope, so the
   // result does not depend on the extent or (with automatic exaggeration) the
   // zoom level.
@@ -1136,11 +1157,14 @@
   // Experimental lighting parameters, in raster pixels
   var LIGHT_ADJUSTMENT_SIGMA = 10;
   var OPENNESS_RADIUS = 24;
-  var TEXTURE_MAX_SCALE = 24;
+  // for settings without textureMaxScale (see getTextureMaxScale())
+  var DEFAULT_TEXTURE_MAX_SCALE = 24;
 
   function runHillshadeStage(task) {
     if (task.stage == 'smooth') return smoothTerrain(task.grid, task.settings);
     if (task.stage == 'shade') return {tones: shadeTerrain(task.grid, task.settings)};
+    if (task.stage == 'fields') return computeShadingFields(task.grid, task.settings);
+    if (task.stage == 'texture') return {texture: computeTextureField(task.grid, task.settings)};
     throw new Error('Unknown hillshade stage: ' + task.stage);
   }
 
@@ -1186,36 +1210,77 @@
   // @s.aerialRange from getAerialRange() on the whole grid, if @s.aerial > 0
   // @s.minElevation optional
   // @s.style, @s.toneOpts see getHillshadeTones()
-  // @s.textureDetail, @s.textureHighlights
+  // @s.textureDetail, @s.textureHighlights, @s.textureMaxScale, @s.textureGain
+  // @grid.texture optional texture field from computeTextureField(), which has a
+  //   much longer reach than the rest of shading, so it can be computed on
+  //   larger tiles
   // Returns signed tones (see getHillshadeTones())
   function shadeTerrain(grid, s) {
+    return combineShadingFields(computeShadingFields(grid, s), grid, s);
+  }
+
+  // The parts of shading that read neighboring pixels, and so take nearly all
+  // of its time. They depend only on these settings, so the hillshade panel
+  // computes them once and recombines them as other settings change:
+  // @s.lights, @s.azimuth, @s.exaggeration, @s.lightAdjust, @s.minElevation,
+  // @s.textureDetail, @s.textureMaxScale, @s.textureGain, and whether
+  // @s.ambient and @s.texture are above 0.
+  // Returns {shade, openness, texture}: openness is null unless @s.ambient > 0,
+  //   and texture null unless @s.texture > 0 (@grid.texture, if given)
+  function computeShadingFields(grid, s) {
     var elev = grid.elev, valid = grid.valid, w = grid.width, h = grid.height;
-    var offsets, shade, land, tones;
+    var offsets;
     if (s.lightAdjust > 0) {
       offsets = computeLightAdjustment(elev, valid, w, h, s.azimuth, s.lightAdjust,
         LIGHT_ADJUSTMENT_SIGMA);
     }
-    shade = computeHillshade(elev, valid, w, h, grid.cellWidths, grid.cellHeights,
-      s.lights, s.exaggeration, offsets);
-    // a flattened sea stays flat, rather than shading along the coast
-    land = s.minElevation != null && (s.ambient > 0 || s.texture > 0) ?
-      getAboveMinimumMask(elev, valid, s.minElevation) : valid;
+    return {
+      shade: computeHillshade(elev, valid, w, h, grid.cellWidths, grid.cellHeights,
+        s.lights, s.exaggeration, offsets),
+      openness: s.ambient > 0 ? computeOpenness(elev, valid, w, h, grid.cellWidths,
+        grid.cellHeights, s.exaggeration, OPENNESS_RADIUS) : null,
+      texture: s.texture > 0 ? grid.texture || computeTextureField(grid, s) : null
+    };
+  }
+
+  // The texture field of computeShadingFields()
+  function computeTextureField(grid, s) {
+    return computeTextureShading(grid.elev, getLandMask(grid, s), grid.width, grid.height,
+      getRowCellSizes(grid), s.exaggeration * (s.textureGain > 0 ? s.textureGain : 1),
+      s.textureDetail, getTextureScaleSetting(s));
+  }
+
+  function getTextureScaleSetting(s) {
+    return s.textureMaxScale > 0 ? s.textureMaxScale : DEFAULT_TEXTURE_MAX_SCALE;
+  }
+
+  // Combines the fields of computeShadingFields() into signed tones, pixel by
+  // pixel, apart from removeThinHighlights(), which reaches one pixel. The
+  // fields are not modified.
+  // @grid the grid the fields were computed on
+  function combineShadingFields(fields, grid, s) {
+    var elev = grid.elev, valid = grid.valid;
+    var shade = fields.shade, land, tones;
+    land = s.ambient > 0 || s.texture > 0 ? getLandMask(grid, s) : valid;
     if (s.aerial > 0) {
-      applyAerialPerspective(shade, elev, valid, s.aerial, s.aerialRange);
+      shade = applyAerialPerspective(Float32Array.from(shade), elev, valid, s.aerial, s.aerialRange);
     }
     tones = getHillshadeTones(shade, valid, s.style, s.toneOpts);
     if (s.ambient > 0) {
-      applyAmbientTones(tones, computeOpenness(elev, valid, w, h, grid.cellWidths,
-        grid.cellHeights, s.exaggeration, OPENNESS_RADIUS), land, s.ambient,
+      applyAmbientTones(tones, fields.openness, land, s.ambient,
         getToneMaxOpacity(s.style, s.toneOpts));
     }
     // after the tone curve, so max-opacity= and gamma= don't affect it
     if (s.texture > 0) {
-      applyTextureTones(tones, computeTextureShading(elev, land, w, h, getRowCellSizes(grid),
-        s.exaggeration, s.textureDetail, TEXTURE_MAX_SCALE), land,
+      applyTextureTones(tones, fields.texture, land,
         s.texture, Math.min(1, s.texture * s.textureHighlights));
     }
-    return removeThinHighlights(tones, valid, w, h);
+    return removeThinHighlights(tones, valid, grid.width, grid.height);
+  }
+
+  // a flattened sea stays flat, rather than shading along the coast
+  function getLandMask(grid, s) {
+    return s.minElevation != null ? getAboveMinimumMask(grid.elev, grid.valid, s.minElevation) : grid.valid;
   }
 
   function getRowCellSizes(grid) {

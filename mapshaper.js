@@ -56679,53 +56679,10 @@ ${css.join('\n')}
         type: 'number'
       })
       .option('smoothing', {
-        describe: 'terrain smoothing level, from 0 (off) to 4 (default is 1)'
+        describe: 'terrain smoothing level, from 0 (off) to 4 (default is 0)'
       })
       .option('ambient', {
         describe: 'darkening of terrain with a partial view of the sky, 0-1 (default is 0.5)',
-        type: 'number'
-      })
-      .option('fps-passes', {
-        // describe: 'passes of feature-preserving smoothing (FPS), overriding the level (0 is off)',
-        type: 'integer'
-      })
-      .option('fps-levels', {
-        // describe: '1 or 2; if 2, run FPS on a downsampled copy, then once at full resolution',
-        type: 'integer'
-      })
-      .option('fps-threshold', {
-        // describe: 'FPS keeps slope changes sharper than this angle, on steep slopes (0 is off)',
-        type: 'number'
-      })
-      .option('fps-radius', {
-        // describe: 'FPS smoothing window radius, in pixels (overrides the level)',
-        type: 'integer'
-      })
-      .option('fps-min-threshold', {
-        // describe: 'FPS threshold in flat terrain, rising with slope to fps-threshold (default is 1)',
-        type: 'number'
-      })
-      .option('fps-slope-factor', {
-        // describe: 'threshold degrees per degree of mean slope (default depends on the level)',
-        type: 'number'
-      })
-      .option('fps-slope-radius', {
-        // describe: 'dynamic smoothing: radius for averaging slope, in pixels (default is 10)',
-        type: 'number'
-      })
-      .option('fps-blend', {
-        // describe: 'dynamic two-level smoothing: thresholds blending one level into two (default is 5,15)'
-      })
-      .option('fps-spread', {
-        // describe: '(experimental) FPS threshold as this multiple of the local spread of slope directions',
-        type: 'number'
-      })
-      .option('fps-spread-radius', {
-        // describe: '(experimental) radius for measuring the spread, in pixels (default is 3)',
-        type: 'number'
-      })
-      .option('maximum-change', {
-        // describe: 'limit how far FPS can move an elevation, in meters (off by default)',
         type: 'number'
       })
       .option('light-adjust', {
@@ -56753,7 +56710,7 @@ ${css.join('\n')}
         type: 'number'
       })
       .option('base-color', {
-        describe: 'color of flat ground, for opaque shading (default is #d7d7d7); implies opaque'
+        describe: 'color of flat ground lit from 45 degrees, for opaque shading (default is #d7d7d7); implies opaque'
       })
       .option('max-opacity', {
         describe: 'opacity of the darkest shadows, if not opaque; 0-1 (default is 0.55)',
@@ -56803,6 +56760,75 @@ ${css.join('\n')}
       .option('threshold', {
         describe: 'skip differences in lightness smaller than this, 0-1 (default is 0)',
         type: 'number'
+      })
+      .option('name', nameOpt)
+      .option('target', targetOpt)
+      .option('no-replace', noReplaceOpt);
+
+    parser.command('smooth-terrain')
+      .describe('generalize an elevation raster, keeping ridges and valleys sharp (like -hillshade smoothing=)')
+      .option('level', {
+        DEFAULT: true,
+        describe: 'smoothing level, from 1 to 4 (default is 1)'
+      })
+      .option('min-elevation', {
+        describe: 'leave terrain below this elevation unchanged (0 keeps the coastline in place)',
+        type: 'number'
+      })
+      .option('fps-passes', {
+        // describe: 'passes of feature-preserving smoothing (FPS), overriding the level',
+        type: 'integer'
+      })
+      .option('fps-levels', {
+        // describe: '1 or 2; if 2, run FPS on a downsampled copy, then once at full resolution',
+        type: 'integer'
+      })
+      .option('fps-threshold', {
+        // describe: 'FPS keeps slope changes sharper than this angle, on steep slopes',
+        type: 'number'
+      })
+      .option('fps-radius', {
+        // describe: 'FPS smoothing window radius, in pixels (overrides the level)',
+        type: 'integer'
+      })
+      .option('fps-min-threshold', {
+        // describe: 'FPS threshold in flat terrain, rising with slope to fps-threshold (default is 1)',
+        type: 'number'
+      })
+      .option('fps-slope-factor', {
+        // describe: 'threshold degrees per degree of mean slope (default depends on the level)',
+        type: 'number'
+      })
+      .option('fps-slope-radius', {
+        // describe: 'dynamic smoothing: radius for averaging slope, in pixels (default is 10)',
+        type: 'number'
+      })
+      .option('fps-blend', {
+        // describe: 'dynamic two-level smoothing: thresholds blending one level into two (default is 5,15)'
+      })
+      .option('fps-spread', {
+        // describe: '(experimental) FPS threshold as this multiple of the local spread of slope directions',
+        type: 'number'
+      })
+      .option('fps-spread-radius', {
+        // describe: '(experimental) radius for measuring the spread, in pixels (default is 3)',
+        type: 'number'
+      })
+      .option('maximum-change', {
+        // describe: 'limit how far FPS can move an elevation, in meters (off by default)',
+        type: 'number'
+      })
+      .option('band', {
+        describe: 'band containing elevation values (default is 1)',
+        type: 'integer'
+      })
+      .option('workers', {
+        // describe: 'number of worker threads (default depends on raster size and CPU; 0 is off)',
+        type: 'integer'
+      })
+      .option('verbose', {
+        describe: 'print the settings used',
+        type: 'flag'
       })
       .option('name', nameOpt)
       .option('target', targetOpt)
@@ -91611,10 +91637,65 @@ ${css.join('\n')}
     };
   }
 
-  // Gaussian-like blurs of Float32 channels, as repeated box blurs. This module
-  // has no imports, so that the hillshade worker bundle stays small.
+  // Gaussian-like blurs of Float32 channels, as repeated box blurs, plus an exact
+  // Gaussian for small blurs. This module has no imports, so that the hillshade
+  // worker bundle stays small.
 
   var BOX_BLUR_PASSES = 3;
+
+  // Box widths are odd integers, so at small sigmas the box passes miss the
+  // requested sigma by 5-10% (or don't blur at all, below 0.75) and give a
+  // box-shaped falloff.
+  var MAX_KERNEL_SIGMA = 3;
+
+  // Gaussian blur of a single Float32 channel, in place: a discrete Gaussian
+  // kernel up to MAX_KERNEL_SIGMA, box passes above it
+  // @tmp Float32Array the size of the channel
+  // @weights optional per-pixel weights (0 for invalid pixels), or null
+  function blurChannelGaussian(channel, tmp, weights, width, height, sigma) {
+    if (!(sigma > 0)) return channel;
+    if (sigma <= MAX_KERNEL_SIGMA) {
+      kernelBlur(channel, tmp, weights, width, height, getDiscreteGaussianKernel(sigma));
+    } else {
+      blurChannel(channel, tmp, weights, width, height, getGaussianBoxWidths(sigma, BOX_BLUR_PASSES));
+    }
+    return channel;
+  }
+
+  // Weights of a symmetric kernel, from the center outwards. Uses the discrete
+  // Gaussian (e^-t * I_n(t), with t = sigma^2), whose variance is exactly sigma^2
+  // at any sigma; a sampled Gaussian comes out too narrow below about sigma 0.8.
+  // Truncated one pixel past 4 sigma; at small sigmas the tails of the discrete
+  // Gaussian are relatively heavy.
+  function getDiscreteGaussianKernel(sigma) {
+    var t = sigma * sigma;
+    var reach = Math.ceil(sigma * 4) + 1;
+    var kernel = new Float64Array(reach + 1);
+    var sum = 0;
+    for (var n = 0; n <= reach; n++) {
+      kernel[n] = Math.exp(-t) * besselI(n, t);
+      sum += n === 0 ? kernel[n] : kernel[n] * 2;
+    }
+    for (n = 0; n <= reach; n++) {
+      kernel[n] /= sum;
+    }
+    return kernel;
+  }
+
+  // Modified Bessel function of the first kind, from its power series, which
+  // converges quickly for the arguments used here (x <= MAX_KERNEL_SIGMA^2)
+  function besselI(n, x) {
+    var half = x / 2;
+    var term = 1;
+    var sum, k;
+    for (k = 1; k <= n; k++) term *= half / k;
+    sum = term;
+    for (k = 1; k < 200 && term > sum * 1e-15; k++) {
+      term *= half * half / (k * (k + n));
+      sum += term;
+    }
+    return sum;
+  }
 
   // Gaussian-like blur of a single Float32 channel, in place.
   // @weights optional per-pixel weights (0 for invalid pixels), or null
@@ -91660,6 +91741,120 @@ ${css.join('\n')}
         boxBlur(channel, tmp, width, height, radius);
       }
     });
+  }
+
+  // Separable convolution, in place. Like the box passes, it repeats edge pixels
+  // past the edges and, with weights, gives each pixel the weighted mean of its
+  // valid neighbors.
+  function kernelBlur(channel, tmp, weights, width, height, kernel) {
+    if (weights) {
+      kernelBlurHorizontalWeighted(channel, tmp, weights, width, height, kernel);
+      kernelBlurVerticalWeighted(tmp, channel, weights, width, height, kernel);
+    } else {
+      kernelBlurHorizontal(channel, tmp, width, height, kernel);
+      kernelBlurVertical(tmp, channel, width, height, kernel);
+    }
+  }
+
+  function kernelBlurHorizontal(src, dest, width, height, kernel) {
+    var reach = kernel.length - 1;
+    var padded = new Float64Array(width + reach * 2);
+    var x, y, k, i, row, c, sum;
+    for (y = 0; y < height; y++) {
+      row = y * width;
+      for (i = 0; i < padded.length; i++) {
+        padded[i] = src[row + clampIndex(i - reach, width)];
+      }
+      for (x = 0; x < width; x++) {
+        c = x + reach;
+        sum = padded[c] * kernel[0];
+        for (k = 1; k <= reach; k++) {
+          sum += (padded[c - k] + padded[c + k]) * kernel[k];
+        }
+        dest[row + x] = sum;
+      }
+    }
+  }
+
+  function kernelBlurVertical(src, dest, width, height, kernel) {
+    var reach = kernel.length - 1;
+    var sums = new Float64Array(width);
+    var x, y, k, row, above, below, w;
+    for (y = 0; y < height; y++) {
+      row = y * width;
+      w = kernel[0];
+      for (x = 0; x < width; x++) sums[x] = src[row + x] * w;
+      for (k = 1; k <= reach; k++) {
+        above = clampIndex(y - k, height) * width;
+        below = clampIndex(y + k, height) * width;
+        w = kernel[k];
+        for (x = 0; x < width; x++) sums[x] += (src[above + x] + src[below + x]) * w;
+      }
+      for (x = 0; x < width; x++) dest[row + x] = sums[x];
+    }
+  }
+
+  function kernelBlurHorizontalWeighted(src, dest, weights, width, height, kernel) {
+    var reach = kernel.length - 1;
+    var values = new Float64Array(width + reach * 2);
+    var wts = new Float64Array(width + reach * 2);
+    var x, y, k, i, id, row, c, sum, weightSum;
+    for (y = 0; y < height; y++) {
+      row = y * width;
+      for (i = 0; i < values.length; i++) {
+        id = row + clampIndex(i - reach, width);
+        wts[i] = weights[id];
+        values[i] = getWeightedValue(src, weights, id);
+      }
+      for (x = 0; x < width; x++) {
+        c = x + reach;
+        sum = values[c] * kernel[0];
+        weightSum = wts[c] * kernel[0];
+        for (k = 1; k <= reach; k++) {
+          sum += (values[c - k] + values[c + k]) * kernel[k];
+          weightSum += (wts[c - k] + wts[c + k]) * kernel[k];
+        }
+        dest[row + x] = weightSum > 0 ? sum / weightSum : src[row + x];
+      }
+    }
+  }
+
+  function kernelBlurVerticalWeighted(src, dest, weights, width, height, kernel) {
+    var reach = kernel.length - 1;
+    var sums = new Float64Array(width);
+    var weightSums = new Float64Array(width);
+    var x, y, k, id, row, above, below, w;
+    for (y = 0; y < height; y++) {
+      row = y * width;
+      w = kernel[0];
+      for (x = 0; x < width; x++) {
+        id = row + x;
+        sums[x] = getWeightedValue(src, weights, id) * w;
+        weightSums[x] = weights[id] * w;
+      }
+      for (k = 1; k <= reach; k++) {
+        above = clampIndex(y - k, height) * width;
+        below = clampIndex(y + k, height) * width;
+        w = kernel[k];
+        for (x = 0; x < width; x++) {
+          sums[x] += (getWeightedValue(src, weights, above + x) + getWeightedValue(src, weights, below + x)) * w;
+          weightSums[x] += (weights[above + x] + weights[below + x]) * w;
+        }
+      }
+      for (x = 0; x < width; x++) {
+        id = row + x;
+        dest[id] = weightSums[x] > 0 ? sums[x] / weightSums[x] : src[id];
+      }
+    }
+  }
+
+  // Invalid pixels may hold NaN, which a weight of 0 doesn't cancel
+  function getWeightedValue(src, weights, id) {
+    return weights[id] > 0 ? src[id] * weights[id] : 0;
+  }
+
+  function clampIndex(i, n) {
+    return i < 0 ? 0 : i >= n ? n - 1 : i;
   }
 
   function boxBlur(src, tmp, width, height, radius) {
@@ -91746,8 +91941,10 @@ ${css.join('\n')}
     __proto__: null,
     BOX_BLUR_PASSES: BOX_BLUR_PASSES,
     blurChannel: blurChannel,
+    blurChannelGaussian: blurChannelGaussian,
     blurFloatChannel: blurFloatChannel,
     getBlurReach: getBlurReach,
+    getDiscreteGaussianKernel: getDiscreteGaussianKernel,
     getGaussianBoxWidths: getGaussianBoxWidths
   });
 
@@ -91841,6 +92038,35 @@ ${css.join('\n')}
     return Math.max(getBlendedMaxShade(lights), getSearchedMaxShade(lights));
   }
 
+  // For the shadow style, whose flat ground is clear at any altitude: the share
+  // of the full highlight that the brightest slope gets. The slopes brighter
+  // than flat ground are those within about 90 - altitude degrees of the light,
+  // so a light higher than DEFAULT_ALTITUDE would put the full highlight on a
+  // small, sharp spot. Scaling it down by that angle keeps the highlights'
+  // falloff as gradual as at DEFAULT_ALTITUDE.
+  // @maxShade getHillshadeMaxShade() of the lights
+  // @refMaxShade the same, with the lights at DEFAULT_ALTITUDE
+  function getHillshadeHighlightScale(maxShade, refMaxShade) {
+    var angle = Math.acos(1 / Math.max(1, maxShade));
+    var ref = Math.acos(1 / Math.max(1, refMaxShade));
+    return ref > 0 && angle < ref ? angle / ref : 1;
+  }
+
+  // For the opaque style: the factor that makes a slope's tone a function of
+  // its angle to the light alone, the same function at every altitude, so that
+  // the highlights cover the same range of slopes. computeHillshade() divides
+  // by the light on flat ground; this rescales it to the light on flat ground
+  // at DEFAULT_ALTITUDE, relative to the brightest slope. So flat ground gets
+  // the base color at DEFAULT_ALTITUDE, and moves along the ramp from the
+  // shadow color to the highlight color as the light rises: a high light
+  // lights flat ground nearly as well as the slope facing it.
+  // Use with the tone curve of @refMaxShade.
+  // @maxShade getHillshadeMaxShade() of the lights
+  // @refMaxShade the same, with the lights at DEFAULT_ALTITUDE
+  function getOpaqueShadeScale(maxShade, refMaxShade) {
+    return maxShade > 0 ? refMaxShade / maxShade : 1;
+  }
+
   // Searches slopes and aspects in 1 degree steps, then 0.05 degree steps
   // around the brightest
   function getSearchedMaxShade(lights) {
@@ -91918,6 +92144,18 @@ ${css.join('\n')}
   // steeper slopes than a smoother one, so the relief still looks like its own.
   // @cellWidths, @cellHeights per-row size of a pixel, in any unit
   function getFittedVerticalScale(elev, valid, width, height, cellWidths, cellHeights) {
+    var grads = getSampledGradients(elev, valid, width, height, cellWidths, cellHeights);
+    var g;
+    if (grads.length === 0) return 1;
+    // the median of a DEM with large flat areas is 0; a higher percentile still
+    // describes its slopes
+    g = grads[Math.floor(grads.length / 2)] || grads[Math.floor(grads.length * 0.9)];
+    return g > 0 ? Math.tan(FITTED_MEDIAN_SLOPE * Math.PI / 180) / g : 1;
+  }
+
+  // Gradients (rise over run) of up to about FIT_SAMPLES pixels spread over the
+  // grid, sorted
+  function getSampledGradients(elev, valid, width, height, cellWidths, cellHeights) {
     var step = Math.max(1, Math.ceil(Math.sqrt(width * height / FIT_SAMPLES)));
     var grads = [];
     var x, y, i, dx, dy, g;
@@ -91933,12 +92171,7 @@ ${css.join('\n')}
         if (isFinite(g)) grads.push(g);
       }
     }
-    if (grads.length === 0) return 1;
-    grads = Float64Array.from(grads).sort();
-    // the median of a DEM with large flat areas is 0; a higher percentile still
-    // describes its slopes
-    g = grads[Math.floor(grads.length / 2)] || grads[Math.floor(grads.length * 0.9)];
-    return g > 0 ? Math.tan(FITTED_MEDIAN_SLOPE * Math.PI / 180) / g : 1;
+    return Float64Array.from(grads).sort();
   }
 
   // Returns brightness values, scaled so that flat ground is 1, lit slopes are
@@ -92061,6 +92294,16 @@ ${css.join('\n')}
   // @opts.gamma steepness of the tone curve at flat ground
   // @opts.maxShade shade of the brightest slope, which gets the full highlight
   //   (see getHillshadeMaxShade()); without it there are no highlights
+  // @opts.highlightScale optional share of the full highlight that the
+  //   brightest slope gets instead (see getHillshadeHighlightScale())
+  // @opts.shadeScale optional factor applied to @shade first (see
+  //   getOpaqueShadeScale())
+  // @opts.highlightMaxShade optional, below @opts.maxShade: highlights are drawn
+  //   as under a light whose brightest slope has this shade, on the slopes as
+  //   near the light as they are under that light. A low light, under which
+  //   most slopes facing it are brighter than flat ground, then highlights the
+  //   same range of slopes as a higher one, and slopes between those and flat
+  //   ground are left clear.
   // @opts.basePosition for the opaque style: where the base color is on the
   //   ramp, as a share of its lightness (see getHillshadeBasePosition())
   function getHillshadeTones(shade, valid, style, opts) {
@@ -92070,21 +92313,30 @@ ${css.join('\n')}
     var opaque = style == 'opaque';
     var maxOpacity = getToneMaxOpacity(style, o);
     var ratio = opaque ? 1 : o.highlightRatio >= 0 ? o.highlightRatio : getDefaultHighlightRatio();
-    var maxHighlight = Math.min(1, maxOpacity * ratio);
+    var maxHighlight = Math.min(1, maxOpacity * ratio) * (o.highlightScale >= 0 ? o.highlightScale : 1);
     var gamma = o.gamma > 0 ? o.gamma : DEFAULT_GAMMA;
     var litRange = o.maxShade > 1 ? o.maxShade - 1 : 0;
     var curves = getToneCurves(o.maxShade > 1 ? o.maxShade : 1, gamma,
       opaque ? o.basePosition : SHADOW_STYLE_BASE_POSITION);
     var shadowCurve = curves.shadow;
     var highlightCurve = curves.highlight;
+    var shadeScale = o.shadeScale > 0 ? o.shadeScale : 1;
+    // shade as under the highlights' light, which has the same angles to slopes
+    var litScale = 1;
     var i, s;
+    if (o.highlightMaxShade > 1 && o.highlightMaxShade < o.maxShade) {
+      litScale = o.highlightMaxShade / o.maxShade;
+      litRange = o.highlightMaxShade - 1;
+      highlightCurve = getToneCurves(o.highlightMaxShade, gamma,
+        opaque ? o.basePosition : SHADOW_STYLE_BASE_POSITION).highlight;
+    }
     for (i = 0; i < n; i++) {
       if (valid && !valid[i]) continue;
-      s = shade[i];
+      s = shade[i] * shadeScale;
       if (s < 1) {
         tones[i] = -shadowCurve(1 - s) * maxOpacity;
-      } else if (s > 1 && litRange > 0) {
-        tones[i] = highlightCurve((s - 1) / litRange) * maxHighlight;
+      } else if (s * litScale > 1 && litRange > 0) {
+        tones[i] = highlightCurve((s * litScale - 1) / litRange) * maxHighlight;
       }
     }
     return tones;
@@ -92418,8 +92670,9 @@ ${css.join('\n')}
   // Brown filters in the frequency domain (spectrum times |k|^alpha); this
   // approximates it as a sum of differences of Gaussians, using
   // |k|^a = C * integral (1 - exp(-t k^2)) t^(-1-a/2) dt, sampled at
-  // half-octave scales up to @maxSigma pixels. Brown's unbounded scales make
-  // plains ringed by mountains read as giant drainages.
+  // half-octave scales up to @maxSigma pixels (see getTextureMaxScale()).
+  // Brown's unbounded scales make plains ringed by mountains read as giant
+  // drainages.
   // Elevation differences are divided by the pixel size, like a slope, so the
   // result does not depend on the extent or (with automatic exaggeration) the
   // zoom level.
@@ -92457,6 +92710,43 @@ ${css.join('\n')}
   var TEXTURE_MIN_SCALE = 0.7;
   // brings typical relief (France at zoom 7) to about 1 at the 98th percentile
   var TEXTURE_SCALE = 0.125;
+
+  // The largest scale of texture shading, in pixels: a fraction of the size of
+  // the whole grid (not of a tile of it), so that the texture shows the
+  // landforms that fill the map at any resolution. At a fixed size, the
+  // valleys of detailed DEMs were left out: the texture of a 3.9 m lidar DEM of
+  // a volcano still grew at 24 pixels.
+  function getTextureMaxScale(width, height) {
+    return Math.max(TEXTURE_MIN_MAX_SCALE, Math.sqrt(width * height) * TEXTURE_MAX_SCALE_FRACTION);
+  }
+
+  var TEXTURE_MIN_MAX_SCALE = 24;
+  var TEXTURE_MAX_SCALE_FRACTION = 1 / 16;
+
+  // Multiplier of texture shading for terrain gentler than mountains, which
+  // otherwise gets little texture at any texture= (4% median opacity on a
+  // rolling plain at texture=1, against 40-50% in mountains). Mountains get 1.
+  // @medianSlope from getTextureMedianSlope()
+  // @autoExaggeration getAutoExaggeration() of the DEM; the exaggeration in use
+  //   isn't included, so that exaggeration= still scales the texture
+  function getTextureGain(medianSlope, autoExaggeration) {
+    var slope = medianSlope * autoExaggeration;
+    if (!(slope > 0)) return TEXTURE_MAX_GAIN;
+    return Math.max(1, Math.min(TEXTURE_MAX_GAIN, TEXTURE_GAIN_SLOPE / slope));
+  }
+
+  // an exaggerated median gradient below this gets a gain above 1
+  var TEXTURE_GAIN_SLOPE = 0.25;
+  var TEXTURE_MAX_GAIN = 8;
+
+  // Median gradient (rise over run) of a DEM, leaving out flat pixels, so that
+  // a sea flattened to one elevation doesn't count as gentle terrain
+  function getTextureMedianSlope(elev, valid, width, height, cellWidths, cellHeights) {
+    var grads = getSampledGradients(elev, valid, width, height, cellWidths, cellHeights);
+    var first = 0;
+    while (first < grads.length && grads[first] === 0) first++;
+    return first < grads.length ? grads[first + Math.floor((grads.length - first) / 2)] : 0;
+  }
 
   // Removes bright lines one pixel wide from signed tones, in place: a
   // morphological opening with a 2x2 square (each pixel gets the brightest of
@@ -92563,12 +92853,17 @@ ${css.join('\n')}
     getDefaultHighlightRatio: getDefaultHighlightRatio,
     getDefaultMaxOpacity: getDefaultMaxOpacity,
     getFittedVerticalScale: getFittedVerticalScale,
+    getHillshadeHighlightScale: getHillshadeHighlightScale,
     getHillshadeLights: getHillshadeLights,
     getHillshadeMaxShade: getHillshadeMaxShade,
     getHillshadeTones: getHillshadeTones,
     getLightAdjustmentReach: getLightAdjustmentReach,
     getLightingSchemeNames: getLightingSchemeNames,
+    getOpaqueShadeScale: getOpaqueShadeScale,
     getOpennessReach: getOpennessReach,
+    getTextureGain: getTextureGain,
+    getTextureMaxScale: getTextureMaxScale,
+    getTextureMedianSlope: getTextureMedianSlope,
     getTextureShadingReach: getTextureShadingReach,
     getToneMaxOpacity: getToneMaxOpacity,
     isOpaqueHillshade: isOpaqueHillshade,
@@ -93125,13 +93420,16 @@ ${css.join('\n')}
   // Experimental lighting parameters, in raster pixels
   var LIGHT_ADJUSTMENT_SIGMA = 10;
   var OPENNESS_RADIUS = 24;
-  var TEXTURE_MAX_SCALE = 24;
+  // for settings without textureMaxScale (see getTextureMaxScale())
+  var DEFAULT_TEXTURE_MAX_SCALE = 24;
   // Overlap of tiles beyond the computed reach of a stage
   var REACH_MARGIN = 2;
 
   function runHillshadeStage(task) {
     if (task.stage == 'smooth') return smoothTerrain(task.grid, task.settings);
     if (task.stage == 'shade') return {tones: shadeTerrain(task.grid, task.settings)};
+    if (task.stage == 'fields') return computeShadingFields(task.grid, task.settings);
+    if (task.stage == 'texture') return {texture: computeTextureField(task.grid, task.settings)};
     throw new Error('Unknown hillshade stage: ' + task.stage);
   }
 
@@ -93188,36 +93486,82 @@ ${css.join('\n')}
   // @s.aerialRange from getAerialRange() on the whole grid, if @s.aerial > 0
   // @s.minElevation optional
   // @s.style, @s.toneOpts see getHillshadeTones()
-  // @s.textureDetail, @s.textureHighlights
+  // @s.textureDetail, @s.textureHighlights, @s.textureMaxScale, @s.textureGain
+  // @grid.texture optional texture field from computeTextureField(), which has a
+  //   much longer reach than the rest of shading, so it can be computed on
+  //   larger tiles
   // Returns signed tones (see getHillshadeTones())
   function shadeTerrain(grid, s) {
+    return combineShadingFields(computeShadingFields(grid, s), grid, s);
+  }
+
+  // The parts of shading that read neighboring pixels, and so take nearly all
+  // of its time. They depend only on these settings, so the hillshade panel
+  // computes them once and recombines them as other settings change:
+  // @s.lights, @s.azimuth, @s.exaggeration, @s.lightAdjust, @s.minElevation,
+  // @s.textureDetail, @s.textureMaxScale, @s.textureGain, and whether
+  // @s.ambient and @s.texture are above 0.
+  // Returns {shade, openness, texture}: openness is null unless @s.ambient > 0,
+  //   and texture null unless @s.texture > 0 (@grid.texture, if given)
+  function computeShadingFields(grid, s) {
     var elev = grid.elev, valid = grid.valid, w = grid.width, h = grid.height;
-    var offsets, shade, land, tones;
+    var offsets;
     if (s.lightAdjust > 0) {
       offsets = computeLightAdjustment(elev, valid, w, h, s.azimuth, s.lightAdjust,
         LIGHT_ADJUSTMENT_SIGMA);
     }
-    shade = computeHillshade(elev, valid, w, h, grid.cellWidths, grid.cellHeights,
-      s.lights, s.exaggeration, offsets);
-    // a flattened sea stays flat, rather than shading along the coast
-    land = s.minElevation != null && (s.ambient > 0 || s.texture > 0) ?
-      getAboveMinimumMask(elev, valid, s.minElevation) : valid;
+    return {
+      shade: computeHillshade(elev, valid, w, h, grid.cellWidths, grid.cellHeights,
+        s.lights, s.exaggeration, offsets),
+      openness: s.ambient > 0 ? computeOpenness(elev, valid, w, h, grid.cellWidths,
+        grid.cellHeights, s.exaggeration, OPENNESS_RADIUS) : null,
+      texture: s.texture > 0 ? grid.texture || computeTextureField(grid, s) : null
+    };
+  }
+
+  // The texture field of computeShadingFields()
+  function computeTextureField(grid, s) {
+    return computeTextureShading(grid.elev, getLandMask(grid, s), grid.width, grid.height,
+      getRowCellSizes(grid), s.exaggeration * (s.textureGain > 0 ? s.textureGain : 1),
+      s.textureDetail, getTextureScaleSetting(s));
+  }
+
+  // Reach of computeTextureField()
+  function getTextureReach(s) {
+    return getTextureShadingReach(getTextureScaleSetting(s)) + REACH_MARGIN;
+  }
+
+  function getTextureScaleSetting(s) {
+    return s.textureMaxScale > 0 ? s.textureMaxScale : DEFAULT_TEXTURE_MAX_SCALE;
+  }
+
+  // Combines the fields of computeShadingFields() into signed tones, pixel by
+  // pixel, apart from removeThinHighlights(), which reaches one pixel. The
+  // fields are not modified.
+  // @grid the grid the fields were computed on
+  function combineShadingFields(fields, grid, s) {
+    var elev = grid.elev, valid = grid.valid;
+    var shade = fields.shade, land, tones;
+    land = s.ambient > 0 || s.texture > 0 ? getLandMask(grid, s) : valid;
     if (s.aerial > 0) {
-      applyAerialPerspective(shade, elev, valid, s.aerial, s.aerialRange);
+      shade = applyAerialPerspective(Float32Array.from(shade), elev, valid, s.aerial, s.aerialRange);
     }
     tones = getHillshadeTones(shade, valid, s.style, s.toneOpts);
     if (s.ambient > 0) {
-      applyAmbientTones(tones, computeOpenness(elev, valid, w, h, grid.cellWidths,
-        grid.cellHeights, s.exaggeration, OPENNESS_RADIUS), land, s.ambient,
+      applyAmbientTones(tones, fields.openness, land, s.ambient,
         getToneMaxOpacity(s.style, s.toneOpts));
     }
     // after the tone curve, so max-opacity= and gamma= don't affect it
     if (s.texture > 0) {
-      applyTextureTones(tones, computeTextureShading(elev, land, w, h, getRowCellSizes(grid),
-        s.exaggeration, s.textureDetail, TEXTURE_MAX_SCALE), land,
+      applyTextureTones(tones, fields.texture, land,
         s.texture, Math.min(1, s.texture * s.textureHighlights));
     }
-    return removeThinHighlights(tones, valid, w, h);
+    return removeThinHighlights(tones, valid, grid.width, grid.height);
+  }
+
+  // a flattened sea stays flat, rather than shading along the coast
+  function getLandMask(grid, s) {
+    return s.minElevation != null ? getAboveMinimumMask(grid.elev, grid.valid, s.minElevation) : grid.valid;
   }
 
   function getShadingReach(s) {
@@ -93229,7 +93573,7 @@ ${css.join('\n')}
       reach = Math.max(reach, getOpennessReach(OPENNESS_RADIUS));
     }
     if (s.texture > 0) {
-      reach = Math.max(reach, getTextureShadingReach(TEXTURE_MAX_SCALE));
+      reach = Math.max(reach, getTextureShadingReach(getTextureScaleSetting(s)));
     }
     return reach + THIN_HIGHLIGHT_REACH + REACH_MARGIN;
   }
@@ -93253,8 +93597,12 @@ ${css.join('\n')}
   var HillshadeStages = /*#__PURE__*/Object.freeze({
     __proto__: null,
     REACH_MARGIN: REACH_MARGIN,
+    combineShadingFields: combineShadingFields,
+    computeShadingFields: computeShadingFields,
+    computeTextureField: computeTextureField,
     getShadingReach: getShadingReach,
     getSmoothingReach: getSmoothingReach,
+    getTextureReach: getTextureReach,
     runHillshadeStage: runHillshadeStage,
     shadeTerrain: shadeTerrain,
     smoothTerrain: smoothTerrain
@@ -93605,8 +93953,10 @@ ${css.join('\n')}
     var maxWorkers = getHillshadeWorkerCount(opts.workers, grid.width * grid.height);
     var smoothTiles = smoothing ?
       getTileLayout(grid.width, grid.height, maxWorkers, getSmoothingReach(smoothing), true) : [];
-    var shadeTiles = getTileLayout(grid.width, grid.height, maxWorkers, getShadingReach(shading), false);
-    var poolSize = maxWorkers > 0 ? Math.max(smoothTiles.length, shadeTiles.length) : 0;
+    var textureTiles = getTextureTiles(grid, shading, maxWorkers);
+    var shadeTiles = getTileLayout(grid.width, grid.height, maxWorkers,
+      getShadingReach(Object.assign({}, shading, {texture: 0})), false);
+    var poolSize = maxWorkers > 0 ? Math.max(smoothTiles.length, textureTiles.length, shadeTiles.length) : 0;
     var pool = poolSize > 0 ? await startWorkerPool(HILLSHADE_WORKER_SCRIPT, poolSize) : null;
     var resume = opts.resume || function() {};
     var thresholds = null, smoothed, shaded;
@@ -93620,6 +93970,12 @@ ${css.join('\n')}
       }
       if (shading.aerial > 0) {
         shading = Object.assign({}, shading, {aerialRange: getAerialRange(grid.elev, grid.valid)});
+      }
+      if (shading.texture > 0) {
+        grid = Object.assign({}, grid, {
+          texture: (await runStage(pool, 'texture', grid, shading, textureTiles, ['texture'])).texture
+        });
+        resume();
       }
       shaded = await runStage(pool, 'shade', grid, shading, shadeTiles, ['tones']);
       resume();
@@ -93636,6 +93992,53 @@ ${css.join('\n')}
     if (pixels < MIN_AUTO_WORKER_PIXELS) return 0;
     n = Math.min(MAX_AUTO_WORKERS, getProcessorCount());
     return n > 1 ? n : 0;
+  }
+
+  // Runs only the smoothing stage (for -smooth-terrain)
+  // Returns {elev, thresholds, workers}
+  async function runSmoothingStage(grid, smoothing, opts) {
+    var maxWorkers = getHillshadeWorkerCount(opts.workers, grid.width * grid.height);
+    var tiles = getTileLayout(grid.width, grid.height, maxWorkers, getSmoothingReach(smoothing), true);
+    var pool = maxWorkers > 0 ? await startWorkerPool(HILLSHADE_WORKER_SCRIPT, tiles.length) : null;
+    var resume = opts.resume || function() {};
+    var smoothed;
+    resume();
+    try {
+      smoothed = await runStage(pool, 'smooth', grid, smoothing, tiles, ['elev', 'thresholds']);
+      resume();
+    } finally {
+      if (pool) pool.close();
+    }
+    return {elev: smoothed.elev, thresholds: smoothed.thresholds, workers: pool ? pool.size : 0};
+  }
+
+  // Computes the fields that shading combines (see computeShadingFields()), for
+  // the hillshade panel, which recombines them as other settings change
+  // Returns {shade, openness, texture}
+  async function runShadingFieldsStage(grid, shading, opts) {
+    var maxWorkers = getHillshadeWorkerCount(opts.workers, grid.width * grid.height);
+    var others = Object.assign({}, shading, {texture: 0});
+    var tiles = getTileLayout(grid.width, grid.height, maxWorkers, getShadingReach(others), false);
+    var textureTiles = getTextureTiles(grid, shading, maxWorkers);
+    var poolSize = maxWorkers > 0 ? Math.max(tiles.length, textureTiles.length) : 0;
+    var pool = poolSize > 0 ? await startWorkerPool(HILLSHADE_WORKER_SCRIPT, poolSize) : null;
+    var fields;
+    try {
+      fields = await runStage(pool, 'fields', grid, others, tiles, ['shade', 'openness']);
+      fields.texture = shading.texture > 0 ?
+        (await runStage(pool, 'texture', grid, shading, textureTiles, ['texture'])).texture : null;
+      return fields;
+    } finally {
+      if (pool) pool.close();
+    }
+  }
+
+  // Texture shading reaches much farther than the rest of shading (see
+  // getTextureMaxScale()), so it is computed on its own, larger tiles, and the
+  // other stages get it as a field
+  function getTextureTiles(grid, shading, maxWorkers) {
+    if (!(shading.texture > 0)) return [];
+    return getTileLayout(grid.width, grid.height, maxWorkers, getTextureReach(shading), false);
   }
 
   // @keys the arrays of the stage's result, which are assembled from the cores
@@ -93665,6 +94068,7 @@ ${css.join('\n')}
     return {
       elev: copyTile$1(grid.elev, grid.width, tile),
       valid: grid.valid ? copyTile$1(grid.valid, grid.width, tile) : null,
+      texture: grid.texture ? copyTile$1(grid.texture, grid.width, tile) : null,
       width: tile.xb - tile.xa,
       height: tile.yb - tile.ya,
       cellWidths: grid.cellWidths.slice(tile.ya, tile.yb),
@@ -93676,7 +94080,201 @@ ${css.join('\n')}
     __proto__: null,
     HILLSHADE_WORKER_SCRIPT: HILLSHADE_WORKER_SCRIPT,
     getHillshadeWorkerCount: getHillshadeWorkerCount,
-    runHillshadeStages: runHillshadeStages
+    runHillshadeStages: runHillshadeStages,
+    runShadingFieldsStage: runShadingFieldsStage,
+    runSmoothingStage: runSmoothingStage
+  });
+
+  // Smoothing levels of -smooth-terrain and -hillshade smoothing=, and the FPS
+  // options of -smooth-terrain that override them.
+
+  // Smoothing levels 1-4. Each uses dynamic smoothing: the FPS threshold rises
+  // from DEFAULT_FPS_MIN_THRESHOLD in flat terrain to the preset's threshold on
+  // steep slopes, by slopeFactor degrees per degree of mean slope. More passes
+  // don't generalize much more: beyond three or four, FPS facets slopes instead
+  // of removing small landforms.
+  var FPS_PRESETS = {
+    1: {rounds: 1, threshold: 10, radius: 3, levels: 1, slopeFactor: 0.6},
+    2: {rounds: 2, threshold: 15, radius: 4, levels: 1, slopeFactor: 1},
+    3: {rounds: 3, threshold: 20, radius: 6, levels: 1, slopeFactor: 1.4},
+    4: {rounds: 3, threshold: 25, radius: 8, levels: 1, slopeFactor: 1.9}
+  };
+  // default level of -smooth-terrain; -hillshade doesn't smooth unless
+  // smoothing= is given
+  var DEFAULT_SMOOTHING = 1;
+  // the full-resolution pass of two-level smoothing (fps-levels=2)
+  var FPS_REFINEMENT = {rounds: 1, threshold: 20, radius: 4};
+  // dynamic smoothing
+  var DEFAULT_FPS_MIN_THRESHOLD = 1;
+  var DEFAULT_FPS_SLOPE_FACTOR = 1;
+  var DEFAULT_FPS_SLOPE_RADIUS = 10;
+  var DEFAULT_FPS_BLEND = [5, 15];
+  // spread-based dynamic smoothing (fps-spread=)
+  var DEFAULT_FPS_SPREAD_RADIUS = 3;
+
+  // @str a level from 0 (off) to 4, or off; @min the lowest level allowed
+  // Returns a number, or the default level if @str is null
+  function parseSmoothingLevel(str, optionName, min) {
+    var s = str == null ? String(DEFAULT_SMOOTHING) : String(str).toLowerCase();
+    if (s == 'off' && min === 0) s = '0';
+    if (!/^[0-4]$/.test(s) || Number(s) < min) {
+      stop$1(optionName + ' should be a level from ' + (min === 0 ? '0 (off)' : min) + ' to 4');
+    }
+    return Number(s);
+  }
+
+  // Settings for smoothTerrain(), or null for no smoothing
+  // Smoothing uses the automatic exaggeration even when -hillshade
+  // exaggeration= is given, so that exaggeration= styles the shading without
+  // changing how much detail smoothing keeps (FPS thresholds are angles on the
+  // exaggerated surface).
+  // @opts FPS options of -smooth-terrain, or {}
+  // @metersPerPixel median ground size of a pixel
+  // @minElevation: min-elevation= in meters, or null
+  function getSmoothingSettings(level, opts, metersPerPixel, minElevation) {
+    if (level === 0) return null;
+    return {
+      fps: getFpsOptions(level, opts),
+      refinement: FPS_REFINEMENT,
+      exaggeration: getAutoExaggeration(metersPerPixel),
+      minElevation: minElevation
+    };
+  }
+
+  // The settings used, as recorded in the derivation of the output of
+  // -smooth-terrain (see formatSmoothingSettings())
+  function getSmoothingParams(level, opts) {
+    var fps = getFpsOptions(level, opts);
+    var dynamic = fps.minThreshold > 0;
+    return {
+      level: level,
+      fps_levels: fps.levels,
+      fps_passes: fps.rounds,
+      fps_radius: fps.radius,
+      fps_threshold: fps.threshold,
+      // the threshold itself, for a fixed threshold
+      fps_min_threshold: dynamic ? fps.minThreshold : fps.threshold,
+      fps_spread: dynamic ? fps.spread : null,
+      fps_spread_radius: dynamic ? fps.spreadRadius : null,
+      fps_slope_factor: dynamic ? fps.slopeFactor : null,
+      fps_slope_radius: dynamic ? fps.slopeRadius : null,
+      fps_blend: dynamic && fps.levels == 2 ? (fps.blendRange ? fps.blendRange.join(',') : 'off') : null,
+      maximum_change: fps.maxChange
+    };
+  }
+
+  // Formats settings from getSmoothingParams() as -smooth-terrain options, so
+  // they can be pasted into a command
+  function formatSmoothingSettings(params) {
+    return Object.keys(params).filter(function(key) {
+      return params[key] !== null;
+    }).map(function(key) {
+      var val = params[key];
+      return key.replace(/_/g, '-') + '=' + (typeof val == 'number' ? +val.toFixed(3) : val);
+    }).join(' ');
+  }
+
+  function validateFpsOptions(opts) {
+    if (opts.fps_threshold != null && !(opts.fps_threshold > 0 && opts.fps_threshold < 90)) {
+      stop$1('fps-threshold= should be an angle between 0 and 90 degrees');
+    }
+    if (opts.fps_min_threshold != null && !(opts.fps_min_threshold > 0 && opts.fps_min_threshold < 90)) {
+      stop$1('fps-min-threshold= should be an angle between 0 and 90 degrees');
+    }
+    if (opts.fps_slope_factor != null && !(opts.fps_slope_factor >= 0 && opts.fps_slope_factor <= 20)) {
+      stop$1('fps-slope-factor= should be from 0 to 20');
+    }
+    if (opts.fps_slope_radius != null && !(opts.fps_slope_radius >= 0 && opts.fps_slope_radius <= 50)) {
+      stop$1('fps-slope-radius= should be from 0 to 50 pixels');
+    }
+    if (opts.fps_passes != null && !(opts.fps_passes >= 1 && opts.fps_passes <= 20)) {
+      stop$1('fps-passes= should be from 1 to 20');
+    }
+    if (opts.fps_levels != null && opts.fps_levels != 1 && opts.fps_levels != 2) {
+      stop$1('fps-levels= should be 1 or 2');
+    }
+    if (opts.fps_radius != null && !(opts.fps_radius >= 1 && opts.fps_radius <= 20)) {
+      stop$1('fps-radius= should be from 1 to 20 pixels');
+    }
+    if (opts.maximum_change != null && !(opts.maximum_change > 0)) {
+      stop$1('maximum-change= should be a positive number');
+    }
+    if (opts.fps_spread != null && (opts.fps_slope_factor != null || opts.fps_slope_radius != null)) {
+      stop$1('fps-slope-factor= and fps-slope-radius= do not apply with fps-spread=');
+    }
+    if (opts.fps_spread_radius != null && opts.fps_spread == null) {
+      stop$1('fps-spread-radius= needs fps-spread=');
+    }
+  }
+
+  // e.g. "2.1 (10th percentile), 3.4 (median), 11.3 (90th percentile) degrees"
+  function formatThresholdRange(thresholds, valid) {
+    var stride = Math.max(1, Math.floor(thresholds.length / 100000));
+    var values = [];
+    for (var i = 0; i < thresholds.length; i += stride) {
+      if (!valid || valid[i]) values.push(thresholds[i]);
+    }
+    if (values.length === 0) return 'none';
+    values.sort(function(a, b) { return a - b; });
+    return [[0.1, '10th percentile'], [0.5, 'median'], [0.9, '90th percentile']].map(function(o) {
+      return values[Math.floor(o[0] * (values.length - 1))].toFixed(1) + ' (' + o[1] + ')';
+    }).join(', ') + ' degrees';
+  }
+
+  // A minimum threshold equal to the threshold gives a fixed threshold, without
+  // dynamic smoothing
+  function getFpsOptions(level, opts) {
+    var preset = FPS_PRESETS[level];
+    var levels = opts.fps_levels || preset.levels;
+    var threshold = opts.fps_threshold || preset.threshold;
+    var spread = opts.fps_spread > 0;
+    var minThreshold = opts.fps_min_threshold > 0 ? opts.fps_min_threshold :
+      Math.min(DEFAULT_FPS_MIN_THRESHOLD, threshold);
+    var dynamic = minThreshold < threshold;
+    var slopeFactor = opts.fps_slope_factor >= 0 ? opts.fps_slope_factor :
+      preset.slopeFactor >= 0 ? preset.slopeFactor : DEFAULT_FPS_SLOPE_FACTOR;
+    if (minThreshold > threshold) {
+      stop$1('fps-min-threshold= should not be larger than the FPS threshold (' + threshold + ' degrees)');
+    }
+    if (opts.fps_blend != null && levels != 2) {
+      stop$1('fps-blend= applies to two-level smoothing (fps-levels=2)');
+    }
+    return {
+      rounds: opts.fps_passes || preset.rounds,
+      radius: opts.fps_radius || preset.radius,
+      threshold: threshold,
+      maxChange: opts.maximum_change || null,
+      levels: levels,
+      minThreshold: dynamic ? minThreshold : null,
+      spread: dynamic && spread ? opts.fps_spread : null,
+      spreadRadius: dynamic && spread ? (opts.fps_spread_radius > 0 ? opts.fps_spread_radius : DEFAULT_FPS_SPREAD_RADIUS) : null,
+      slopeFactor: dynamic && !spread ? slopeFactor : null,
+      slopeRadius: dynamic && !spread ? (opts.fps_slope_radius >= 0 ? opts.fps_slope_radius : DEFAULT_FPS_SLOPE_RADIUS) : null,
+      blendRange: dynamic && levels == 2 ? parseFpsBlend(opts.fps_blend) : null
+    };
+  }
+
+  // Returns [lo, hi] in degrees, or null for off
+  function parseFpsBlend(str) {
+    var range;
+    if (str == null) return DEFAULT_FPS_BLEND.concat();
+    if (String(str).toLowerCase() == 'off') return null;
+    range = String(str).split(',').map(Number);
+    if (range.length != 2 || !(range[0] >= 0 && range[1] >= range[0] && range[1] < 90)) {
+      stop$1('fps-blend= takes two angles, low to high (e.g. 5,15), or off');
+    }
+    return range;
+  }
+
+  var TerrainSmoothingOptions = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    DEFAULT_SMOOTHING: DEFAULT_SMOOTHING,
+    formatSmoothingSettings: formatSmoothingSettings,
+    formatThresholdRange: formatThresholdRange,
+    getSmoothingParams: getSmoothingParams,
+    getSmoothingSettings: getSmoothingSettings,
+    parseSmoothingLevel: parseSmoothingLevel,
+    validateFpsOptions: validateFpsOptions
   });
 
   // Pixel operations for -tone and -hillshade. Colors are adjusted in OKLab
@@ -93785,6 +94383,10 @@ ${css.join('\n')}
   // The result has the lightness of the stacked pixel. Its OKLab a and b move
   // from the stacked pixel's toward the image's by opts.shadowChroma or
   // opts.highlightChroma: 0 is plain stacking, 1 keeps the image's color.
+  // Above 1, they move on past the image's, away from the image stacked with a
+  // gray of the shading color's lightness, so that a colored shadow or
+  // highlight makes the image's own color more vivid rather than pushing it
+  // toward the opposite hue.
   // opts:
   //   shadow, highlight  {r, g, b} bytes
   //   shadowChroma, highlightChroma  0 or more
@@ -93796,9 +94398,12 @@ ${css.join('\n')}
     var shadow = opts.shadow, highlight = opts.highlight;
     var rgb = [0, 0, 0];
     var lab = [0, 0, 0];
-    var i, k, a, ta, oa, K, q, r, g, b, sr, sg, sb, A, B, w;
+    var i, k, a, ta, oa, K, G, q, r, g, b, sr, sg, sb, A, B, w;
     out = out || new Uint8Array(samples.length);
     initTables();
+    // the grays for chroma above 1, or null for a shading color that is gray
+    var shadowGray = getChromaGray(shadow, lab, rgb);
+    var highlightGray = getChromaGray(highlight, lab, rgb);
     for (i = 0, k = 0; i < samples.length; i += bands, k++) {
       a = amounts[k];
       r = samples[i];
@@ -93813,18 +94418,29 @@ ${css.join('\n')}
         continue;
       }
       K = a < 0 ? shadow : highlight;
+      G = a < 0 ? shadowGray : highlightGray;
       q = a < 0 ? opts.shadowChroma : opts.highlightChroma;
       a = a < 0 ? (a < -1 ? 1 : -a) : (a > 1 ? 1 : a);
       sr = r + (K.r - r) * a;
       sg = g + (K.g - g) * a;
       sb = b + (K.b - b) * a;
       if (q !== 0 && ta > 0) {
-        srgbToOklab(r, g, b, lab);
-        A = lab[1];
-        B = lab[2];
-        srgbToOklab(Math.round(sr), Math.round(sg), Math.round(sb), lab);
-        A = lab[1] + (A - lab[1]) * q;
-        B = lab[2] + (B - lab[2]) * q;
+        if (q > 1 && G) {
+          srgbToOklab(Math.round(r + (G - r) * a), Math.round(g + (G - g) * a), Math.round(b + (G - b) * a), lab);
+          A = lab[1];
+          B = lab[2];
+          srgbToOklab(r, g, b, lab);
+          A = lab[1] + (lab[1] - A) * (q - 1);
+          B = lab[2] + (lab[2] - B) * (q - 1);
+          srgbToOklab(Math.round(sr), Math.round(sg), Math.round(sb), lab);
+        } else {
+          srgbToOklab(r, g, b, lab);
+          A = lab[1];
+          B = lab[2];
+          srgbToOklab(Math.round(sr), Math.round(sg), Math.round(sb), lab);
+          A = lab[1] + (A - lab[1]) * q;
+          B = lab[2] + (B - lab[2]) * q;
+        }
         if (!oklabToLinear(lab[0], A, B, rgb)) {
           fitChroma(lab[0], A, B, rgb);
         }
@@ -93852,6 +94468,16 @@ ${css.join('\n')}
       out[i + 3] = Math.round(oa * 255);
     }
     return out;
+  }
+
+  // The sRGB channel value of the gray with the OKLab lightness of @color
+  // {r, g, b}, or null if @color is gray already
+  // @lab, @rgb scratch arrays
+  function getChromaGray(color, lab, rgb) {
+    if (color.r == color.g && color.g == color.b) return null;
+    srgbToOklab(color.r, color.g, color.b, lab);
+    oklabToLinear(lab[0], 0, 0, rgb);
+    return encodeChannel(rgb[0]);
   }
 
   // The shading as an RGBA overlay that, stacked on the image (in sRGB, as
@@ -94163,7 +94789,7 @@ ${css.join('\n')}
   }
 
   // Where the base color is on the ramp from the shadow color to the
-  // highlight color, when one of them is derived. A slope tilted a little
+  // highlight color, when it is derived from them. A slope tilted a little
   // toward the light then gets as much lighter as one tilted away gets darker:
   // the brightest slope was 1.25 times as bright as flat ground under the
   // former default lights (1.21 under the current ones), so highlight tones
@@ -94181,8 +94807,8 @@ ${css.join('\n')}
   // The three colors of opaque shading. The highlight color defaults to white.
   // A missing base color is HILLSHADE_BASE_WEIGHT of the way from the shadow
   // color to the highlight color, or #d7d7d7 if the shadow color is missing
-  // too. A missing shadow color is extrapolated from the base and highlight
-  // colors (see getDerivedShadowColor()), or #686868 if all three are missing.
+  // too. A missing shadow color is derived from the base color (see
+  // getHillshadeShadowColor()), or #686868 if all three are missing.
   // @shadow, @base, @highlight {r, g, b} or null
   // Returns {shadow, base, highlight}, as {r, g, b} objects
   function getHillshadeRampColors(shadow, base, highlight) {
@@ -94191,8 +94817,131 @@ ${css.join('\n')}
       parseColor(getOklchInterpolator(formatRgb(shadow), formatRgb(light))(HILLSHADE_BASE_WEIGHT).color) :
       toRgb(DEFAULT_HILLSHADE_BASE);
     var dark = shadow ? toRgb(shadow) : !base && !highlight ? toRgb(DEFAULT_HILLSHADE_SHADOW) :
-      getDerivedShadowColor(mid, light);
+      getHillshadeShadowColor(mid, 1);
     return {shadow: dark, base: mid, highlight: light};
+  }
+
+  // The shadow color of opaque shading derived from the base color: the base's
+  // hue and chroma (as much as the gamut has room for), and a lightness from
+  // getDerivedShadowLightness(). (Extrapolating hue and chroma from the base and
+  // highlight colors as well would multiply small differences between them into
+  // a strong, unrelated color.)
+  // With a chosen shadow color, a strength up to 1 fades from the base color to
+  // it, and a strength above 1 darkens it by as much again as it is darker than
+  // the base, keeping its hue and chroma. A chosen color equal to the derived
+  // one gives the derived colors at every strength.
+  // @base {r, g, b}
+  // @strength 0 (flat: the base color) to 2; 1 is the default shadow
+  // @color {r, g, b} or null, a chosen shadow color
+  function getHillshadeShadowColor(base, strength, color) {
+    var lch = oklabToOklch(rgbToOklab(base));
+    var ratio = getDefaultShadowRatio();
+    var l, step;
+    if (!color) {
+      l = lch.l - strength * (lch.l - getDerivedShadowLightness(lch.l));
+      return toRgb(oklchToRgb({l: Math.max(0, l), c: lch.c, h: lch.h}));
+    }
+    if (strength <= 1) {
+      return mixOklab(base, color, Math.max(0, strength));
+    }
+    lch = oklabToOklch(rgbToOklab(color));
+    step = rgbToOklab(base).l - lch.l;
+    // a chosen color no darker than the base is darkened as a derived color of
+    // its lightness would be
+    if (!(step > 0)) step = lch.l * (1 - ratio) / ratio;
+    l = lch.l - (strength - 1) * step;
+    return toRgb(oklchToRgb({l: Math.max(0, l), c: lch.c, h: lch.h}));
+  }
+
+  // Lightness of the derived shadow color of a base color of lightness @l. A
+  // base as light as the default base color or darker gets a shadow in the same
+  // ratio to it as the default colors have, so that shading has the same
+  // contrast whatever the base color. A lighter base would then sit higher and
+  // higher on the ramp to white, leaving little room for highlights, so it gets
+  // a shadow that keeps it where the default base is on the ramp (75% of the
+  // way from the shadow to white). The two meet at the default base color.
+  function getDerivedShadowLightness(l) {
+    var pos = getDefaultBasePosition();
+    return Math.max(l * getDefaultShadowRatio(), (l - pos) / (1 - pos));
+  }
+
+  // The highlight color of opaque shading derived from the base color: the
+  // base's hue, toward white; or with a chosen highlight color, toward it
+  // @base {r, g, b}
+  // @strength 0 (flat: the base color) to 1 (white or the chosen color, the
+  //   default)
+  // @color {r, g, b} or null
+  function getHillshadeHighlightColor(base, strength, color) {
+    return mixOklab(base, color || {r: 255, g: 255, b: 255}, Math.max(0, Math.min(1, strength)));
+  }
+
+  // The colors -blend stacks for an opaque hillshade: black and white, tinted
+  // by how the hillshade's shadow and highlight colors differ from the plain
+  // ones of the same lightness (the base's hue and chroma, darker; the base
+  // faded toward white), so that auto and gray colors blend black and white,
+  // and a bluish shadow color blends bluish shadows. A tint is the color
+  // difference as stacking would make it at the opacity of the deepest shadow
+  // or brightest highlight, clipped to the 0-255 range (shifting it back into
+  // range instead would lighten shadows and darken highlights).
+  // @stops {shadow, base, highlight} {r, g, b}
+  // @maxShadow, @maxHighlight the opacities the darkest and lightest tones
+  //   blend at (see decodeOpaqueHillshadeShading())
+  // Returns {shadow, highlight}, as {r, g, b} bytes
+  function getOpaqueHillshadeStackingColors(stops, maxShadow, maxHighlight) {
+    var base = oklabToOklch(rgbToOklab(stops.base));
+    var plainShadow = toRgb(oklchToRgb({l: rgbToOklab(stops.shadow).l, c: base.c, h: base.h}));
+    var t = base.l < 1 ? (rgbToOklab(stops.highlight).l - base.l) / (1 - base.l) : 1;
+    var plainHighlight = mixOklab(stops.base, {r: 255, g: 255, b: 255}, Math.max(0, Math.min(1, t)));
+    return {
+      shadow: getStackingTint(stops.shadow, plainShadow, maxShadow, 0),
+      highlight: getStackingTint(stops.highlight, plainHighlight, maxHighlight, 255)
+    };
+  }
+
+  // @plain the color @color would be without a tint
+  // @start 0 (black) or 255 (white), the color tinted
+  function getStackingTint(color, plain, opacity, start) {
+    var d = [color.r - plain.r, color.g - plain.g, color.b - plain.b];
+    // within rounding of the plain color
+    if (d.every(function(v) { return Math.abs(v) <= 2; })) {
+      return {r: start, g: start, b: start};
+    }
+    d = d.map(function(v) { return Math.round(Math.max(0, Math.min(255, start + v / opacity))); });
+    return {r: d[0], g: d[1], b: d[2]};
+  }
+
+  // @t 0 (@a) to 1 (@b), in Oklab
+  function mixOklab(a, b, t) {
+    var p = rgbToOklab(a), q = rgbToOklab(b);
+    var lab = {l: p.l + t * (q.l - p.l), a: p.a + t * (q.a - p.a), b: p.b + t * (q.b - p.b)};
+    return toRgb(oklchToRgb(oklabToOklch(lab)));
+  }
+
+  // The inverses of getHillshadeShadowColor() and getHillshadeHighlightColor(),
+  // for showing the strengths of given colors (approximately, if their hue isn't
+  // the base's)
+  function getHillshadeShadowStrength(base, shadow) {
+    var b = rgbToOklab(base).l;
+    var range = b - getDerivedShadowLightness(b);
+    if (!(range > 0)) return 1;
+    return (b - rgbToOklab(shadow).l) / range;
+  }
+
+  function getHillshadeHighlightStrength(base, highlight) {
+    var b = rgbToOklab(base).l;
+    return b < 1 ? (rgbToOklab(highlight).l - b) / (1 - b) : 1;
+  }
+
+  // lightness of the default shadow color as a share of the default base color's
+  function getDefaultShadowRatio() {
+    return rgbToOklab(DEFAULT_HILLSHADE_SHADOW).l / rgbToOklab(DEFAULT_HILLSHADE_BASE).l;
+  }
+
+  // where the default base color is on the ramp from the default shadow color
+  // to white, as a share of lightness
+  function getDefaultBasePosition() {
+    var s = rgbToOklab(DEFAULT_HILLSHADE_SHADOW).l;
+    return (rgbToOklab(DEFAULT_HILLSHADE_BASE).l - s) / (1 - s);
   }
 
   // Where the base color is on the ramp from the shadow color to the highlight
@@ -94202,19 +94951,6 @@ ${css.join('\n')}
     var dark = rgbToOklab(stops.shadow).l;
     var range = rgbToOklab(stops.highlight).l - dark;
     return range > 0 ? (rgbToOklab(stops.base).l - dark) / range : 0.5;
-  }
-
-  // The shadow color that puts @base HILLSHADE_BASE_WEIGHT of the way to
-  // @highlight in lightness. It has the base color's hue and chroma (as much
-  // as the gamut has room for): extrapolating them as well would multiply
-  // small differences between the base and highlight colors into a strong,
-  // unrelated color. Black if the base is too dark for the extrapolation.
-  function getDerivedShadowColor(base, highlight) {
-    var lch = oklabToOklch(rgbToOklab(base));
-    var w = HILLSHADE_BASE_WEIGHT;
-    var l = (lch.l - w * rgbToOklab(highlight).l) / (1 - w);
-    if (l <= 0) return {r: 0, g: 0, b: 0};
-    return toRgb(oklchToRgb({l: l, c: lch.c, h: lch.h}));
   }
 
   function toRgb(o) {
@@ -94268,176 +95004,129 @@ ${css.join('\n')}
     getContrastCenter: getContrastCenter,
     getHillshadeBasePosition: getHillshadeBasePosition,
     getHillshadeColorRamp: getHillshadeColorRamp,
+    getHillshadeHighlightColor: getHillshadeHighlightColor,
+    getHillshadeHighlightStrength: getHillshadeHighlightStrength,
     getHillshadeRampColors: getHillshadeRampColors,
+    getHillshadeShadowColor: getHillshadeShadowColor,
+    getHillshadeShadowStrength: getHillshadeShadowStrength,
     getImageLightnessPercentiles: getImageLightnessPercentiles,
     getOklchHue: getOklchHue,
     getOklchLightnessChroma: getOklchLightnessChroma,
+    getOpaqueHillshadeStackingColors: getOpaqueHillshadeStackingColors,
     getShadingOverlayPixels: getShadingOverlayPixels,
     getToneColorTable: getToneColorTable,
     toneRgbPixels: toneRgbPixels
   });
 
-  // Smoothing levels 1-4 (smoothing=0 is off). Each uses dynamic smoothing:
-  // the FPS threshold rises from DEFAULT_FPS_MIN_THRESHOLD in flat terrain to
-  // the preset's threshold on steep slopes, by slopeFactor degrees per degree of
-  // mean slope. More passes don't generalize much more: beyond three or four, FPS
-  // facets slopes instead of removing small landforms.
-  var FPS_PRESETS = {
-    1: {rounds: 1, threshold: 10, radius: 3, levels: 1, slopeFactor: 0.6},
-    2: {rounds: 2, threshold: 15, radius: 4, levels: 1, slopeFactor: 1},
-    3: {rounds: 3, threshold: 20, radius: 6, levels: 1, slopeFactor: 1.4},
-    4: {rounds: 3, threshold: 25, radius: 8, levels: 1, slopeFactor: 1.9}
-  };
-  var DEFAULT_SMOOTHING = 1;
-  // the full-resolution pass of two-level smoothing (fps-levels=2)
-  var FPS_REFINEMENT = {rounds: 1, threshold: 20, radius: 4};
-  // dynamic smoothing
-  var DEFAULT_FPS_MIN_THRESHOLD = 1;
-  var DEFAULT_FPS_SLOPE_FACTOR = 1;
-  var DEFAULT_FPS_SLOPE_RADIUS = 10;
-  var DEFAULT_FPS_BLEND = [5, 15];
-  // spread-based dynamic smoothing (fps-spread=)
-  var DEFAULT_FPS_SPREAD_RADIUS = 3;
   var METERS_PER_DEGREE$1 = 6371008.8 * Math.PI / 180;
   var DEFAULT_AMBIENT = 0.5;
   var DEFAULT_TEXTURE_DETAIL = 0.5;
-
-  // Returns a smoothing level, from 0 (off) to 4
-  function getSmoothingLevel(opts) {
-    var str = opts.smoothing == null ? String(DEFAULT_SMOOTHING) : String(opts.smoothing).toLowerCase();
-    var level;
-    if (str == 'off') str = '0';
-    if (!/^[0-4]$/.test(str)) {
-      stop$1('smoothing= should be a level from 0 (off) to 4');
-    }
-    level = Number(str);
-    // fps-passes=0 or fps-threshold=0 turns smoothing off, like smoothing=0
-    if (opts.fps_passes === 0 || opts.fps_threshold === 0) {
-      return 0;
-    }
-    if (level === 0 && (opts.fps_passes != null || opts.fps_radius != null ||
-        opts.fps_threshold != null || opts.fps_levels != null || opts.maximum_change != null ||
-        opts.fps_min_threshold != null || opts.fps_slope_factor != null ||
-        opts.fps_slope_radius != null || opts.fps_blend != null || opts.fps_spread != null ||
-        opts.fps_spread_radius != null)) {
-      stop$1('FPS settings do not apply with smoothing=0');
-    }
-    if (opts.fps_spread != null && (opts.fps_slope_factor != null || opts.fps_slope_radius != null)) {
-      stop$1('fps-slope-factor= and fps-slope-radius= do not apply with fps-spread=');
-    }
-    if (opts.fps_spread_radius != null && opts.fps_spread == null) {
-      stop$1('fps-spread-radius= needs fps-spread=');
-    }
-    return level;
-  }
-
-  // Settings for smoothTerrain(), or null for no smoothing
-  // @minElevation: min-elevation= in meters, or null
-  function getSmoothingSettings(level, opts, exaggeration, minElevation) {
-    if (level === 0) return null;
-    return {
-      fps: getFpsOptions(level, opts),
-      refinement: FPS_REFINEMENT,
-      exaggeration: exaggeration,
-      minElevation: minElevation
-    };
-  }
-
-  // e.g. "2.1 (10th percentile), 3.4 (median), 11.3 (90th percentile) degrees"
-  function formatThresholdRange(thresholds, valid) {
-    var stride = Math.max(1, Math.floor(thresholds.length / 100000));
-    var values = [];
-    for (var i = 0; i < thresholds.length; i += stride) {
-      if (!valid || valid[i]) values.push(thresholds[i]);
-    }
-    if (values.length === 0) return 'none';
-    values.sort(function(a, b) { return a - b; });
-    return [[0.1, '10th percentile'], [0.5, 'median'], [0.9, '90th percentile']].map(function(o) {
-      return values[Math.floor(o[0] * (values.length - 1))].toFixed(1) + ' (' + o[1] + ')';
-    }).join(', ') + ' degrees';
-  }
-
-  // A minimum threshold equal to the threshold gives a fixed threshold, without
-  // dynamic smoothing
-  function getFpsOptions(level, opts) {
-    var preset = FPS_PRESETS[level];
-    var levels = opts.fps_levels || preset.levels;
-    var threshold = opts.fps_threshold || preset.threshold;
-    var spread = opts.fps_spread > 0;
-    var minThreshold = opts.fps_min_threshold > 0 ? opts.fps_min_threshold :
-      Math.min(DEFAULT_FPS_MIN_THRESHOLD, threshold);
-    var dynamic = minThreshold < threshold;
-    var slopeFactor = opts.fps_slope_factor >= 0 ? opts.fps_slope_factor :
-      preset.slopeFactor >= 0 ? preset.slopeFactor : DEFAULT_FPS_SLOPE_FACTOR;
-    if (minThreshold > threshold) {
-      stop$1('fps-min-threshold= should not be larger than the FPS threshold (' + threshold + ' degrees)');
-    }
-    if (opts.fps_blend != null && levels != 2) {
-      stop$1('fps-blend= applies to two-level smoothing (fps-levels=2)');
-    }
-    return {
-      rounds: opts.fps_passes || preset.rounds,
-      radius: opts.fps_radius || preset.radius,
-      threshold: threshold,
-      maxChange: opts.maximum_change || null,
-      levels: levels,
-      minThreshold: dynamic ? minThreshold : null,
-      spread: dynamic && spread ? opts.fps_spread : null,
-      spreadRadius: dynamic && spread ? (opts.fps_spread_radius > 0 ? opts.fps_spread_radius : DEFAULT_FPS_SPREAD_RADIUS) : null,
-      slopeFactor: dynamic && !spread ? slopeFactor : null,
-      slopeRadius: dynamic && !spread ? (opts.fps_slope_radius >= 0 ? opts.fps_slope_radius : DEFAULT_FPS_SLOPE_RADIUS) : null,
-      blendRange: dynamic && levels == 2 ? parseFpsBlend(opts.fps_blend) : null
-    };
-  }
-
-  // Returns [lo, hi] in degrees, or null for off
-  function parseFpsBlend(str) {
-    var range;
-    if (str == null) return DEFAULT_FPS_BLEND.concat();
-    if (String(str).toLowerCase() == 'off') return null;
-    range = String(str).split(',').map(Number);
-    if (range.length != 2 || !(range[0] >= 0 && range[1] >= range[0] && range[1] < 90)) {
-      stop$1('fps-blend= takes two angles, low to high (e.g. 5,15), or off');
-    }
-    return range;
-  }
-
-  function getSmoothingParams(level, opts) {
-    var fps = level > 0 ? getFpsOptions(level, opts) : null;
-    var dynamic = fps && fps.minThreshold > 0;
-    return {
-      smoothing: level,
-      fps_levels: fps ? fps.levels : null,
-      fps_passes: fps ? fps.rounds : null,
-      fps_radius: fps ? fps.radius : null,
-      fps_threshold: fps ? fps.threshold : null,
-      // the threshold itself, for a fixed threshold
-      fps_min_threshold: dynamic ? fps.minThreshold : fps ? fps.threshold : null,
-      fps_spread: dynamic ? fps.spread : null,
-      fps_spread_radius: dynamic ? fps.spreadRadius : null,
-      fps_slope_factor: dynamic ? fps.slopeFactor : null,
-      fps_slope_radius: dynamic ? fps.slopeRadius : null,
-      fps_blend: dynamic && fps.levels == 2 ? (fps.blendRange ? fps.blendRange.join(',') : 'off') : null,
-      maximum_change: fps ? fps.maxChange : null
-    };
-  }
 
   // Returns a new layer; -hillshade replaces the target unless + is used
   // @resume optional function to call after each wait for workers
   //   (job.resumeCommand())
   cmd.hillshade = async function(lyr, dataset, opts, resume) {
-    var grid, cells, elev, valid, altitude, exaggeration, style, out, result;
-    var hasMin, toneOpts, azimuth, colors, smoothing, params, ambient, lighting, lights, stops = null;
-    var unitMeters, minElevation, band;
+    var terrain = readHillshadeTerrain(lyr, dataset, opts);
+    var shading = getHillshadeShading(opts, terrain);
+    var cells = terrain.cells, source = terrain.source;
+    var result, out;
+    if (!(opts.exaggeration > 0)) {
+      message('Exaggeration:', formatExaggeration(shading.settings.exaggeration) + ' (automatic)');
+    }
+    verbose('Settings:', formatHillshadeSettings(shading.params));
+    if (!cells.unknown) {
+      verbose('Ground pixel size:', formatPixelSize(cells.median));
+      if (source.verticalUnits) {
+        verbose('Elevation units:', formatVerticalUnits(source.verticalUnits));
+      }
+    }
+    result = await runHillshadeStages(terrain.grid,
+      getSmoothingSettings(shading.smoothing, {}, cells.median, terrain.minElevation),
+      shading.settings, {workers: opts.workers, resume: resume});
+    if (result.workers > 0) {
+      verbose('Workers:', result.workers);
+    }
+    if (result.thresholds) {
+      verbose('FPS thresholds:', formatThresholdRange(result.thresholds, terrain.grid.valid));
+    }
+    out = {
+      raster_type: 'grid',
+      raster: getHillshadeRaster(lyr.raster, source,
+        writeHillshadeRgba(result.tones, terrain.grid.valid, shading.style, shading.colors), shading.params)
+    };
+    setOutputLayerName(out, lyr, 'hillshade', opts);
+    return [out];
+  };
+
+  // Reads the elevations that -hillshade shades (in meters, raised to
+  // min-elevation= if given), with the options that affect them: band= and
+  // min-elevation=. Checks the other options too.
+  // Returns {source, grid, cells, minElevation}: source is the raster's grid,
+  //   and grid the input of the stages of mapshaper-hillshade-stages.mjs
+  function readHillshadeTerrain(lyr, dataset, opts) {
+    var source, band, cells, valid, unitMeters, elev, minElevation = null;
     if (!layerHasRaster(lyr)) {
       stop$1('Command requires a raster layer');
     }
-    grid = getRasterGrid(lyr.raster);
-    validateHillshadeGrid(grid, opts);
-    band = getRasterGridBandIndex(grid, opts.band);
-    style = getHillshadeStyle(opts);
-    smoothing = getSmoothingLevel(opts);
-    altitude = opts.altitude >= 0 ? opts.altitude : DEFAULT_ALTITUDE;
+    source = getRasterGrid(lyr.raster);
+    validateHillshadeGrid(source, opts);
+    band = getRasterGridBandIndex(source, opts.band);
+    cells = getHillshadeCellSizes(source, getDatasetCRS(dataset));
+    valid = getRasterValidityMask(source);
+    unitMeters = getElevationScale(lyr, source, band, valid, cells,
+      'its relief was scaled to a typical steepness', 'To adjust it, use exaggeration=. To shade it to scale');
+    elev = readElevationBand(source, band, unitMeters);
+    if (opts.min_elevation != null) {
+      // min-elevation= is in the raster's own units, like the values -info shows
+      minElevation = opts.min_elevation * unitMeters;
+      raiseLowElevations(elev, valid, minElevation);
+    }
+    return {
+      source: source,
+      cells: cells,
+      minElevation: minElevation,
+      grid: {
+        elev: elev,
+        valid: valid,
+        width: source.width,
+        height: source.height,
+        cellWidths: cells.widths,
+        cellHeights: cells.heights
+      }
+    };
+  }
+
+  // How altitude= changes the tones, away from DEFAULT_ALTITUDE. An opaque
+  // hillshade keeps the highlights the same size, and flat ground's color
+  // follows the light (see getOpaqueShadeScale()); a transparent one keeps flat
+  // ground clear, so its highlights can't cover more slopes than those brighter
+  // than flat ground: it dims the highlights of a high light (see
+  // getHillshadeHighlightScale()), and draws those of a low light as at
+  // DEFAULT_ALTITUDE, on the slopes nearest the light (see highlightMaxShade in
+  // getHillshadeTones()).
+  // @refMaxShade getHillshadeMaxShade() of the lights at DEFAULT_ALTITUDE, or
+  //   null at DEFAULT_ALTITUDE
+  function setAltitudeToneOpts(toneOpts, style, refMaxShade) {
+    if (!refMaxShade) return;
+    if (style == 'opaque') {
+      toneOpts.shadeScale = getOpaqueShadeScale(toneOpts.maxShade, refMaxShade);
+      toneOpts.maxShade = refMaxShade;
+    } else {
+      toneOpts.highlightScale = getHillshadeHighlightScale(toneOpts.maxShade, refMaxShade);
+      if (toneOpts.maxShade > refMaxShade) toneOpts.highlightMaxShade = refMaxShade;
+    }
+  }
+
+  // The settings of -hillshade, apart from those of readHillshadeTerrain()
+  // @terrain from readHillshadeTerrain()
+  // Returns {style, smoothing, colors, settings, params}: smoothing is the
+  //   smoothing level, colors the colors of writeHillshadeRgba(), settings those
+  //   of shadeTerrain() and params those recorded in the hillshade's derivation
+  function getHillshadeShading(opts, terrain) {
+    var style = getHillshadeStyle(opts);
+    var smoothing = opts.smoothing == null ? 0 : parseSmoothingLevel(opts.smoothing, 'smoothing=', 0);
+    var altitude = opts.altitude >= 0 ? opts.altitude : DEFAULT_ALTITUDE;
+    var stops = null, colors, exaggeration, azimuth, ambient, lighting, lights, toneOpts, params;
     if (altitude > 90) stop$1('altitude= should be from 0 to 90 degrees');
     colors = {
       shadow: readToneColor(opts.shadow_color, 'shadow-color'),
@@ -94449,11 +95138,7 @@ ${css.join('\n')}
         colors.highlight);
       colors.ramp = getHillshadeColorRamp(stops);
     }
-    cells = getHillshadeCellSizes(grid, getDatasetCRS(dataset));
-    exaggeration = opts.exaggeration > 0 ? opts.exaggeration : getAutoExaggeration(cells.median);
-    if (!(opts.exaggeration > 0)) {
-      message('Exaggeration:', formatExaggeration(exaggeration) + ' (automatic)');
-    }
+    exaggeration = opts.exaggeration > 0 ? opts.exaggeration : getAutoExaggeration(terrain.cells.median);
     azimuth = opts.azimuth == null ? DEFAULT_AZIMUTH : opts.azimuth;
     ambient = opts.ambient >= 0 ? opts.ambient : DEFAULT_AMBIENT;
     lighting = opts.lighting || DEFAULT_LIGHTING;
@@ -94468,15 +95153,8 @@ ${css.join('\n')}
       maxShade: getHillshadeMaxShade(lights),
       basePosition: stops ? getHillshadeBasePosition(stops) : null
     };
-    hasMin = opts.min_elevation != null;
-    valid = getRasterValidityMask(grid);
-    // In pixel coordinates, the ratio of a DEM's values to its pixel size is
-    // unknown, whatever units the values are in, so the ratio is fitted instead.
-    unitMeters = cells.unknown ?
-      getFittedElevationScale(lyr, grid, band, valid, cells) :
-      getElevationUnitMeters$1(grid);
-    // min-elevation= is in the raster's own units, like the values -info shows
-    minElevation = hasMin ? opts.min_elevation * unitMeters : null;
+    setAltitudeToneOpts(toneOpts, style, altitude == DEFAULT_ALTITUDE ? null :
+      getHillshadeMaxShade(getHillshadeLights(azimuth, DEFAULT_ALTITUDE, lighting)));
     params = Object.assign({opaque: style == 'opaque', azimuth: azimuth, altitude: altitude,
       lighting: lighting, exaggeration: exaggeration,
       max_opacity: stops ? null : toneOpts.maxOpacity,
@@ -94486,60 +95164,49 @@ ${css.join('\n')}
       shadow_color: stops ? opts.shadow_color || formatColor(stops.shadow) : opts.shadow_color || null,
       highlight_color: stops ? opts.highlight_color || formatColor(stops.highlight) : opts.highlight_color || null,
       base_color: stops ? opts.base_color || formatColor(stops.base) : null,
-      min_elevation: hasMin ? opts.min_elevation : null},
-    getSmoothingParams(smoothing, opts), {
+      min_elevation: opts.min_elevation != null ? opts.min_elevation : null,
+      smoothing: smoothing,
       light_adjust: opts.light_adjust || 0, ambient: ambient,
       texture: opts.texture || 0,
       texture_detail: opts.texture > 0 ? opts.texture_detail || DEFAULT_TEXTURE_DETAIL : null,
       texture_highlights: opts.texture > 0 ? opts.texture_highlights || 0 : null,
       aerial: opts.aerial || 0,
       band: opts.band || null});
-    verbose('Settings:', formatHillshadeSettings(params));
-    if (!cells.unknown) {
-      verbose('Ground pixel size:', formatPixelSize(cells.median));
-      if (grid.verticalUnits) {
-        verbose('Elevation units:', formatVerticalUnits(grid.verticalUnits));
-      }
-    }
-    elev = readElevationBand(grid, band, unitMeters);
-    if (hasMin) {
-      raiseLowElevations(elev, valid, minElevation);
-    }
-    result = await runHillshadeStages({
-      elev: elev,
-      valid: valid,
-      width: grid.width,
-      height: grid.height,
-      cellWidths: cells.widths,
-      cellHeights: cells.heights
-    }, getSmoothingSettings(smoothing, opts, exaggeration, minElevation), {
-      lights: lights,
-      azimuth: azimuth,
-      exaggeration: exaggeration,
-      lightAdjust: opts.light_adjust || 0,
-      ambient: ambient,
-      aerial: opts.aerial || 0,
-      texture: opts.texture || 0,
-      textureDetail: params.texture_detail,
-      textureHighlights: params.texture_highlights,
-      minElevation: hasMin ? minElevation : null,
+    return {
       style: style,
-      toneOpts: toneOpts
-    }, {workers: opts.workers, resume: resume});
-    if (result.workers > 0) {
-      verbose('Workers:', result.workers);
-    }
-    if (result.thresholds) {
-      verbose('FPS thresholds:', formatThresholdRange(result.thresholds, valid));
-    }
-    out = {
-      raster_type: 'grid',
-      raster: getHillshadeRaster(lyr.raster, grid,
-        writeHillshadeRgba(result.tones, valid, style, colors), params)
+      smoothing: smoothing,
+      colors: colors,
+      params: params,
+      settings: {
+        lights: lights,
+        azimuth: azimuth,
+        exaggeration: exaggeration,
+        lightAdjust: opts.light_adjust || 0,
+        ambient: ambient,
+        aerial: opts.aerial || 0,
+        texture: opts.texture || 0,
+        textureDetail: params.texture_detail,
+        textureHighlights: params.texture_highlights,
+        textureMaxScale: opts.texture > 0 ? getTextureMaxScale(terrain.grid.width, terrain.grid.height) : null,
+        textureGain: opts.texture > 0 ? getTerrainTextureGain(terrain) : null,
+        minElevation: terrain.minElevation,
+        style: style,
+        toneOpts: toneOpts
+      }
     };
-    setOutputLayerName(out, lyr, 'hillshade', opts);
-    return [out];
-  };
+  }
+
+  // The hillshade panel gets the shading settings for every frame of a drag,
+  // so the slope statistics are kept with the terrain
+  function getTerrainTextureGain(terrain) {
+    var g = terrain.grid;
+    if (terrain.textureGain == null) {
+      terrain.textureGain = getTextureGain(
+        getTextureMedianSlope(g.elev, g.valid, g.width, g.height, g.cellWidths, g.cellHeights),
+        getAutoExaggeration(terrain.cells.median));
+    }
+    return terrain.textureGain;
+  }
 
   // derivation entries that aren't options
   var UNFORMATTED_PARAMS = ['type', 'sourceId'];
@@ -94567,6 +95234,21 @@ ${css.join('\n')}
     return meters >= 100 ? Math.round(meters) + ' m' : +meters.toFixed(1) + ' m';
   }
 
+  // A raster that can be shaded as terrain (the GUI offers its hillshade panel
+  // for these)
+  function rasterCanBeHillshaded(raster) {
+    var grid = raster && getRasterGrid(raster);
+    if (!grid || !grid.samples || !grid.bbox || rasterGridIsRotated(grid)) return false;
+    return rasterMayBeTerrain(raster, grid);
+  }
+
+  // A raster imported without interpretation= is an 'image', which includes a
+  // DEM, so only an image displayed in color is ruled out
+  function rasterMayBeTerrain(raster, grid) {
+    return raster.interpretation != 'categorical' &&
+      !(raster.interpretation == 'image' && rasterGridDisplaysColor(grid));
+  }
+
   function validateHillshadeGrid(grid, opts) {
     if (!grid || !grid.samples || !grid.bbox) {
       stop$1('Raster layer is missing the data needed for hillshading');
@@ -94585,30 +95267,6 @@ ${css.join('\n')}
     }
     if (opts.light_adjust != null && !(opts.light_adjust >= 0 && opts.light_adjust <= 60)) {
       stop$1('light-adjust= should be from 0 to 60 degrees');
-    }
-    if (opts.fps_threshold != null && !(opts.fps_threshold >= 0 && opts.fps_threshold < 90)) {
-      stop$1('fps-threshold= should be an angle from 0 (off) to 90 degrees');
-    }
-    if (opts.fps_min_threshold != null && !(opts.fps_min_threshold > 0 && opts.fps_min_threshold < 90)) {
-      stop$1('fps-min-threshold= should be an angle between 0 and 90 degrees');
-    }
-    if (opts.fps_slope_factor != null && !(opts.fps_slope_factor >= 0 && opts.fps_slope_factor <= 20)) {
-      stop$1('fps-slope-factor= should be from 0 to 20');
-    }
-    if (opts.fps_slope_radius != null && !(opts.fps_slope_radius >= 0 && opts.fps_slope_radius <= 50)) {
-      stop$1('fps-slope-radius= should be from 0 to 50 pixels');
-    }
-    if (opts.fps_passes != null && !(opts.fps_passes >= 0 && opts.fps_passes <= 20)) {
-      stop$1('fps-passes= should be from 0 (off) to 20');
-    }
-    if (opts.fps_levels != null && opts.fps_levels != 1 && opts.fps_levels != 2) {
-      stop$1('fps-levels= should be 1 or 2');
-    }
-    if (opts.fps_radius != null && !(opts.fps_radius >= 1 && opts.fps_radius <= 20)) {
-      stop$1('fps-radius= should be from 1 to 20 pixels');
-    }
-    if (opts.maximum_change != null && !(opts.maximum_change > 0)) {
-      stop$1('maximum-change= should be a positive number');
     }
     if (opts.texture_detail != null && !(opts.texture_detail > 0 && opts.texture_detail <= 2)) {
       stop$1('texture-detail= should be from 0 to 2');
@@ -94657,15 +95315,21 @@ ${css.join('\n')}
     return out;
   }
 
-  // The factor that scales a DEM in pixel coordinates to a typical steepness,
-  // with pixels taken to be 1 m across
-  function getFittedElevationScale(lyr, grid, band, valid, cells) {
-    var raw = readElevationBand(grid, band, 1);
-    var scale = getFittedVerticalScale(raw, valid, grid.width, grid.height, cells.widths, cells.heights);
+  // Meters per unit of the raster's values. In pixel coordinates, the ratio of
+  // a DEM's values to its pixel size is unknown, whatever units the values are
+  // in, so the ratio is fitted instead, with a message.
+  // @what, @advice parts of the message, e.g. 'its relief was scaled to a
+  //   typical steepness', 'To shade it to scale'
+  // @cells from getHillshadeCellSizes()
+  function getElevationScale(lyr, grid, band, valid, cells, what, advice) {
+    var scale;
+    if (!cells.unknown) return getElevationUnitMeters$1(grid);
+    // pixels are taken to be 1 m across
+    scale = getFittedVerticalScale(readElevationBand(grid, band, 1), valid, grid.width, grid.height,
+      cells.widths, cells.heights);
     message((lyr.name || 'This raster') + ' has no ground scale (it is in pixel' +
-      ' coordinates), so its relief was scaled to a typical steepness (vertical scale ' +
-      +scale.toPrecision(3) + '). To adjust it, use exaggeration=. To shade it to' +
-      ' scale, import it with pixel-size= (and vertical-units=, if not meters).');
+      ' coordinates), so ' + what + ' (vertical scale ' + +scale.toPrecision(3) + '). ' +
+      advice + ', import it with pixel-size= (and vertical-units=, if not meters).');
     return scale;
   }
 
@@ -94755,7 +95419,13 @@ ${css.join('\n')}
   var HillshadeCommand = /*#__PURE__*/Object.freeze({
     __proto__: null,
     formatHillshadeSettings: formatHillshadeSettings,
-    getHillshadeCellSizes: getHillshadeCellSizes
+    getElevationScale: getElevationScale,
+    getHillshadeCellSizes: getHillshadeCellSizes,
+    getHillshadeShading: getHillshadeShading,
+    rasterCanBeHillshaded: rasterCanBeHillshaded,
+    rasterMayBeTerrain: rasterMayBeTerrain,
+    readElevationBand: readElevationBand,
+    readHillshadeTerrain: readHillshadeTerrain
   });
 
   var MAX_RULE_LEN = 50;
@@ -101353,6 +102023,11 @@ ${css.join('\n')}
   var BLACK = {r: 0, g: 0, b: 0};
   var WHITE = {r: 255, g: 255, b: 255};
 
+  // The opacities that the darkest and lightest tones of an opaque -hillshade
+  // layer blend at: a transparent hillshade's, at its defaults
+  var OPAQUE_MAX_SHADOW = DEFAULT_MAX_OPACITY;
+  var OPAQUE_MAX_HIGHLIGHT = Math.min(1, DEFAULT_MAX_OPACITY * DEFAULT_HIGHLIGHT_RATIO);
+
   // A source not made by -hillshade is read as a transparent hillshade if at
   // least this share of its visible pixels is partly transparent
   var PARTIAL_ALPHA_SHARE = 0.01;
@@ -101374,7 +102049,7 @@ ${css.join('\n')}
     var params = raster.derivation || {};
     var hillshade = params.type == 'hillshade';
     var colors = {shadow: BLACK, highlight: WHITE};
-    var pixels, transparent, base, amounts;
+    var pixels, transparent, base, amounts, stops;
     if (params.type == 'blend' && params.overlay) {
       stop$1('The source is an overlay made by -blend, whose colors depend on the layers under it; use the hillshade it was made from');
     }
@@ -101400,11 +102075,13 @@ ${css.join('\n')}
       }
       amounts = decodeShadowStyleShading(pixels, colors.shadow, colors.highlight);
     } else if (hillshade && params.shadow_color && params.highlight_color && (baseColor || params.base_color)) {
-      amounts = decodeOpaqueHillshadeShading(pixels, {
+      stops = {
         shadow: readColor(params.shadow_color),
         base: baseColor || readColor(params.base_color),
         highlight: readColor(params.highlight_color)
-      });
+      };
+      amounts = decodeOpaqueHillshadeShading(pixels, stops);
+      colors = getOpaqueHillshadeStackingColors(stops, OPAQUE_MAX_SHADOW, OPAQUE_MAX_HIGHLIGHT);
     } else {
       base = baseColor || (hillshade ? readColor(params.base_color) : null);
       if (!base) {
@@ -101438,6 +102115,18 @@ ${css.join('\n')}
         raster.interpretation && raster.interpretation != 'image') return false;
     if (grid.bands <= 2) return true;
     return grid.bands <= 4 && samplesAreGray(grid.samples, grid.bands);
+  }
+
+  // Whether a raster is something to blend a hillshade into: one displayed in
+  // color, as color imagery, or a data raster with a palette (e.g. a
+  // hypsometric tint). A data raster displayed in gray, such as elevation data
+  // before it has a palette, is not; nor is a gray image, which
+  // rasterLooksLikeHillshade() takes for a hillshade.
+  function rasterIsBlendTarget(raster) {
+    var grid = getRasterGrid(raster);
+    if (!grid || rasterLooksLikeHillshade(raster)) return false;
+    return rasterGridDisplaysColor(grid) || grid.colorModel == 'palette' ||
+      !!(raster.view && raster.view.recipe && raster.view.recipe.palette);
   }
 
   // True if nearly all of a sample of the visible pixels are gray
@@ -101615,8 +102304,8 @@ ${css.join('\n')}
     var ls = getLightness(stops.shadow.r, stops.shadow.g, stops.shadow.b);
     var lb = getLightness(stops.base.r, stops.base.g, stops.base.b);
     var lh = getLightness(stops.highlight.r, stops.highlight.g, stops.highlight.b);
-    var maxShadow = DEFAULT_MAX_OPACITY;
-    var maxHighlight = Math.min(1, DEFAULT_MAX_OPACITY * DEFAULT_HIGHLIGHT_RATIO);
+    var maxShadow = OPAQUE_MAX_SHADOW;
+    var maxHighlight = OPAQUE_MAX_HIGHLIGHT;
     var i, j, key, a, l;
     for (i = 0, j = 0; i < n; i++, j += 4) {
       if (pixels[j + 3] === 0) continue;
@@ -101735,6 +102424,7 @@ ${css.join('\n')}
     decodeShadowStyleShading: decodeShadowStyleShading,
     getShadingAmounts: getShadingAmounts,
     guessBaseColor: guessBaseColor,
+    rasterIsBlendTarget: rasterIsBlendTarget,
     rasterLooksLikeHillshade: rasterLooksLikeHillshade,
     resampleShadingAmounts: resampleShadingAmounts,
     scaleShadingAmounts: scaleShadingAmounts
@@ -107716,6 +108406,107 @@ ${css.join('\n')}
 
   function formatPercent(share) {
     return (share * 100 < 10 ? (share * 100).toFixed(1) : Math.round(share * 100)) + '%';
+  }
+
+  // Feature-preserving smoothing of an elevation raster, as -hillshade smoothing=
+  // does before shading, so that contours and tints can use the same
+  // generalized terrain as a hillshade. The output records its settings in its
+  // derivation, so -hillshade doesn't smooth it again by default.
+  // Returns a new layer; -smooth-terrain replaces the target unless + is used
+  // @resume optional function to call after each wait for workers
+  //   (job.resumeCommand())
+  cmd.smoothTerrain = async function(lyr, dataset, opts, resume) {
+    var grid, band, level, cells, valid, unitMeters, elev, raised, minElevation, params, result, out;
+    if (!layerHasRaster(lyr)) {
+      stop$1('Command requires a raster layer');
+    }
+    grid = getRasterGrid(lyr.raster);
+    validateTerrainGrid(lyr.raster, grid);
+    band = getRasterGridBandIndex(grid, opts.band);
+    level = parseSmoothingLevel(opts.level, 'The smoothing level', 1);
+    validateFpsOptions(opts);
+    if (opts.workers != null && !(opts.workers >= 0 && opts.workers <= 64)) {
+      stop$1('workers= should be from 0 to 64');
+    }
+    params = getSmoothingParams(level, opts);
+    verbose('Settings:', formatSmoothingSettings(params));
+    cells = getHillshadeCellSizes(grid, getDatasetCRS(dataset));
+    valid = getRasterValidityMask(grid);
+    unitMeters = getElevationScale(lyr, grid, band, valid, cells,
+      'it was smoothed as if its relief had a typical steepness', 'To smooth it to scale');
+    // min-elevation= is in the raster's own units, like the values -info shows
+    minElevation = opts.min_elevation != null ? opts.min_elevation * unitMeters : null;
+    elev = readElevationBand(grid, band, unitMeters);
+    raised = minElevation != null ? raiseLowElevations(elev, valid, minElevation) : null;
+    result = await runSmoothingStage({
+      elev: elev,
+      valid: valid,
+      width: grid.width,
+      height: grid.height,
+      cellWidths: cells.widths,
+      cellHeights: cells.heights
+    }, getSmoothingSettings(level, opts, cells.median, minElevation), {workers: opts.workers, resume: resume});
+    if (result.workers > 0) {
+      verbose('Workers:', result.workers);
+    }
+    if (result.thresholds) {
+      verbose('FPS thresholds:', formatThresholdRange(result.thresholds, valid));
+    }
+    if (opts.min_elevation != null) {
+      params.min_elevation = opts.min_elevation;
+    }
+    out = {
+      raster_type: 'grid',
+      raster: getSmoothedRaster(lyr.raster, grid,
+        getSmoothedSamples(grid, band, result.elev, valid, raised, unitMeters), params)
+    };
+    setOutputLayerName(out, lyr, 'smooth-terrain', opts);
+    return [out];
+  };
+
+  function validateTerrainGrid(raster, grid) {
+    if (!grid || !grid.samples || !grid.bbox) {
+      stop$1('Raster layer is missing the data needed for smoothing');
+    }
+    if (!rasterMayBeTerrain(raster, grid)) {
+      stop$1('-smooth-terrain needs an elevation raster');
+    }
+    if (rasterGridIsRotated(grid)) {
+      stop$1('Smoothing does not support rotated or skewed rasters');
+    }
+  }
+
+  // Float32 samples of every band, with @smoothed (in meters) in @band. Pixels
+  // without an elevation, and pixels below min-elevation= (@raised), keep their
+  // values, so that a sea floor flattened for smoothing keeps its depths.
+  function getSmoothedSamples(grid, band, smoothed, valid, raised, unitMeters) {
+    var src = grid.samples;
+    var out = new Float32Array(src.length);
+    var n = grid.width * grid.height;
+    var i, j;
+    for (i = 0; i < src.length; i++) out[i] = src[i];
+    for (i = 0, j = band; i < n; i++, j += grid.bands) {
+      if (valid && !valid[i] || raised && raised[i]) continue;
+      out[j] = smoothed[i] / unitMeters;
+    }
+    return out;
+  }
+
+  // The source raster with new samples
+  // @params settings recorded in the derivation (see getSmoothingParams())
+  function getSmoothedRaster(src, grid, samples, params) {
+    var raster = Object.assign({}, src, {
+      grid: Object.assign({}, grid, {samples: samples, pixelType: 'float32'}),
+      derivation: Object.assign({}, src.derivation, {terrain_smoothing: params}),
+      view: Object.assign({}, src.view)
+    });
+    if (grid.coverage) raster.grid.coverage = grid.coverage.slice();
+    delete raster.view.preview;
+    delete raster.view.scalingStats;
+    if (runningInBrowser()) {
+      raster.view.preview = createRasterPreview(raster, {});
+    }
+    return raster;
   }
 
   function stopJob(job) {
@@ -114243,7 +115034,7 @@ ${css.join('\n')}
       'filter-islands2', 'filter-points', 'filter-slivers', 'grid', 'grid2',
       'fuzzy-join', 'hillshade', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
       'lines', 'mosaic', 'points', 'polygons', 'rectangles', 'rename-fields',
-      'repel', 'shapes', 'sharpen', 'simplify', 'slice', 'smooth', 'sort', 'split',
+      'repel', 'shapes', 'sharpen', 'simplify', 'slice', 'smooth', 'smooth-terrain', 'sort', 'split',
       'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'tone', 'uniq'
     ].indexOf(name) > -1;
   }
@@ -114489,6 +115280,13 @@ ${css.join('\n')}
         outputLayers = [];
         for (let lyr of targetLayers) {
           outputLayers = outputLayers.concat(await cmd.hillshade(lyr, targetDataset, opts, job.resumeCommand));
+        }
+        job.resumeCommand();
+
+      } else if (name == 'smooth-terrain') {
+        outputLayers = [];
+        for (let lyr of targetLayers) {
+          outputLayers = outputLayers.concat(await cmd.smoothTerrain(lyr, targetDataset, opts, job.resumeCommand));
         }
         job.resumeCommand();
 
@@ -115134,7 +115932,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.8.7";
+  var version = "0.8.8";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -116006,21 +116804,20 @@ ${css.join('\n')}
     var grid = getRasterGrid(raster);
     var radius = getBlurRadius(grid, opts, crs);
     var sigma = radius / 2;
-    var boxes = getGaussianBoxWidths(sigma, BOX_BLUR_PASSES);
     var samples = new grid.samples.constructor(grid.samples.length);
     var tmp = new Float32Array(grid.width * grid.height);
     var channel = new Float32Array(grid.width * grid.height);
     var weights = getRasterBlurWeights(grid);
     validateBlurGrid(grid);
     if (grid.bands == 4) {
-      blurRgbaGrid(grid, samples, channel, tmp, weights, boxes);
+      blurRgbaGrid(grid, samples, channel, tmp, weights, sigma);
       return Object.assign({}, grid, {
         samples: samples
       });
     }
     for (var band = 0; band < grid.bands; band++) {
       copyBandToChannel(grid, band, channel);
-      blurChannel(channel, tmp, weights, grid.width, grid.height, boxes);
+      blurChannelGaussian(channel, tmp, weights, grid.width, grid.height, sigma);
       copyChannelToBand(channel, samples, grid, band);
     }
     return Object.assign({}, grid, {
@@ -116076,14 +116873,14 @@ ${css.join('\n')}
     }
   }
 
-  function blurRgbaGrid(grid, samples, channel, tmp, weights, boxes) {
+  function blurRgbaGrid(grid, samples, channel, tmp, weights, sigma) {
     var alpha = new Float32Array(grid.width * grid.height);
     copyBandToChannel(grid, 3, alpha);
-    blurChannel(alpha, tmp, weights, grid.width, grid.height, boxes);
+    blurChannelGaussian(alpha, tmp, weights, grid.width, grid.height, sigma);
     for (var band = 0; band < grid.bands; band++) {
       if (band < 3) {
         copyPremultipliedBandToChannel(grid, band, channel);
-        blurChannel(channel, tmp, weights, grid.width, grid.height, boxes);
+        blurChannelGaussian(channel, tmp, weights, grid.width, grid.height, sigma);
         copyUnpremultipliedChannelToBand(channel, alpha, samples, grid, band);
       } else {
         copyChannelToBand(alpha, samples, grid, 3);
@@ -117664,6 +118461,7 @@ ${css.join('\n')}
     HillshadeCommand,
     HillshadeRunner,
     HillshadeStages,
+    TerrainSmoothingOptions,
     RasterColor,
     RasterBlend,
     RasterSharpen,
