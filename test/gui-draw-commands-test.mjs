@@ -1,6 +1,6 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
-import { getAddShapeCommand, drawnPathIsValid } from '../src/gui/gui-draw-commands';
+import { getAddShapeCommand, getAddRectangleCommand, drawnPathIsValid } from '../src/gui/gui-draw-commands';
 
 describe('gui draw commands', function() {
 
@@ -68,6 +68,25 @@ describe('gui draw commands', function() {
       var feat = JSON.parse(out['out.json']).features[0];
       assert.equal(feat.geometry.type, 'Polygon');
       assert.equal(feat.properties.fill, 'pink');
+    });
+  });
+
+  describe('getAddRectangleCommand()', function() {
+    it('writes a closed ring', function() {
+      assert.equal(getAddRectangleCommand([0, 1, 4, 3]),
+        '-add-shape coordinates=0,1,0,3,4,3,4,1,0,1');
+    });
+
+    it('adds rectangles that keep the layer a layer of rectangles', async function() {
+      var cmd = '-add-layer geometry-type=polygon name=rects ' +
+        getAddRectangleCommand([0, 0, 4, 3], {style: {stroke: 'red'}}) + ' ' +
+        getAddRectangleCommand([1, 1, 2, 2], {}) + ' -o out.json';
+      var out = await api.applyCommands(cmd);
+      var features = JSON.parse(out['out.json']).features;
+      assert.equal(features.length, 2);
+      assert.equal(features[0].properties.stroke, 'red');
+      var dataset = api.internal.importGeoJSON(JSON.parse(out['out.json']));
+      assert.ok(api.internal.layerOnlyHasRectangles(dataset.layers[0], dataset.arcs));
     });
   });
 

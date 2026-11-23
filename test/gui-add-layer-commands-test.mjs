@@ -40,6 +40,12 @@ describe('gui add layer commands', function() {
       assert.equal(getNewLayerName(labels, []), 'labels');
     });
 
+    it('names a layer of rectangles in the singular', function() {
+      // it usually holds a single rectangle
+      assert.equal(getNewLayerName(findDrawKind('rectangles'), []), 'rectangle');
+      assert.equal(getNewLayerName(findDrawKind('rectangles'), ['rectangle']), 'rectangle2');
+    });
+
     it('versions the name when it is taken', function() {
       // two layers of the same name make target= ambiguous
       assert.equal(getNewLayerName(labels, ['labels']), 'labels2');

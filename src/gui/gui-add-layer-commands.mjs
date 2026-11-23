@@ -45,6 +45,14 @@ export var DRAW_KINDS = [{
   name: 'polygons',
   mode: 'edit_polygons',
   tip: 'Create a new layer and draw polygons in it'
+}, {
+  kind: 'rectangles',
+  geometryType: 'polygon',
+  // singular, because a layer of rectangles usually holds just one -- a
+  // map frame, say
+  name: 'rectangle',
+  mode: 'rectangles',
+  tip: 'Create a new layer and draw rectangles in it'
 }];
 
 export function findDrawKind(kind) {

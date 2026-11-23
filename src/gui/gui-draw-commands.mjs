@@ -34,6 +34,19 @@ export function getAddShapeCommand(coords, opts) {
   return parts.join(' ');
 }
 
+// The command that adds a rectangle drawn with the rectangle tool.
+// bbox: [xmin, ymin, xmax, ymax] in the layer's CRS
+// opts: as getAddShapeCommand(), apart from geometryType
+//
+// The ring is closed and clockwise, the way -rectangle writes one, so that
+// the layer still counts as a layer of rectangles (see
+// layerOnlyHasRectangles()), which is what keeps the tool on it.
+export function getAddRectangleCommand(bbox, opts) {
+  var ring = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
+    [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
+  return getAddShapeCommand(ring, Object.assign({}, opts, {geometryType: 'polygon'}));
+}
+
 // The command that replaces the path of line @id, as the curve tool does when
 // a knot is dragged.
 // coords: [[x, y], ...] the new path's vertices, in the layer's CRS

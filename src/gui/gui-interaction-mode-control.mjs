@@ -100,7 +100,7 @@ export function InteractionMode(gui) {
     frame: 'edit map frame',
     frame_draw: 'draw map frame',
     'add-points': 'add points',
-    rectangles: 'drag-to-resize',
+    rectangles: 'draw/resize rectangles',
     off: 'turn off'
   };
   var btn, menu;
@@ -305,8 +305,8 @@ export function InteractionMode(gui) {
       return menus.lines;
     }
     if (o.layer.geometry_type == 'polygon') {
-      return internal.layerOnlyHasRectangles(o.layer, o.dataset.arcs) ?
-        menus.rectangles : menus.polygons;
+      return internal.layerOnlyHasRectangles(o.layer, o.dataset.arcs) ||
+        rectangleModeIsAvailable() ? menus.rectangles : menus.polygons;
     }
 
     return menus.standard;
@@ -491,6 +491,16 @@ export function InteractionMode(gui) {
     var o = gui.model.getActiveLayer();
     if (_editMode != 'symbols') return false;
     return !o || !o.layer || o.layer.geometry_type == 'point';
+  }
+
+  // The rectangle tool is offered on a layer of rectangles. The layer panel's
+  // "Draw" menu opens it on the empty polygon layer it creates, which is not
+  // one yet, so an empty polygon layer keeps the tool (and its menu) while the
+  // tool is open -- including once undo has emptied the layer again.
+  function rectangleModeIsAvailable() {
+    var o = gui.model.getActiveLayer();
+    return _editMode == 'rectangles' && !!o && !!o.layer &&
+      o.layer.geometry_type == 'polygon' && internal.getFeatureCount(o.layer) === 0;
   }
 
   function pointStyleModeIsAvailable() {

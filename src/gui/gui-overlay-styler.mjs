@@ -239,13 +239,18 @@ export function getOverlayLayers(activeLyr, hitData, styleOpts) {
     lyr.gui.style = getOverlayStyle(activeLyr, ids, outlineStyle);
     layers.push(lyr);
   }
-  // layer containing a single hover or pinned feature
-  if (hitData.id > -1) {
+  // layer containing a single hover or pinned feature (not while a shape is
+  // being drawn, when a click does not select)
+  if (hitData.id > -1 && !hitData.pending_path) {
     ids = [hitData.id];
     lyr = getOverlayLayer(activeLyr, ids);
     outlineStyle = getSelectedFeatureStyle(displayLyr, hitData, styleOpts);
     lyr.gui.style = getOverlayStyle(activeLyr, ids, outlineStyle);
     layers.push(lyr);
+  }
+  // the rectangle being drawn (gui-rectangle-control.mjs)
+  if (hitData.pending_path) {
+    layers.push(getPendingPathLayer(activeLyr, hitData));
   }
   return layers;
 }

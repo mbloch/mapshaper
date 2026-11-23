@@ -759,6 +759,17 @@ export function LayerControl(gui) {
       gui.interaction.setMode('blend');
     }
 
+    // Likewise the rectangle tool
+    function editRectangles() {
+      var target = findLayerById(id);
+      if (!target) return;
+      if (!map.isActiveLayer(target.layer)) {
+        target.layer.hidden = false;
+        model.selectLayer(target.layer, target.dataset);
+      }
+      gui.interaction.setMode('rectangles');
+    }
+
     // Likewise the hillshade panel
     function hillshadeLayer() {
       var target = findLayerById(id);
@@ -819,6 +830,11 @@ export function LayerControl(gui) {
         } else if (target.layer.geometry_type == 'polygon') {
           menuEvent.styleLayerName = 'style/edit polygons';
         }
+      }
+      // as in the arrow menu, which offers the tool on a layer of rectangles
+      if (!isFrame && target && target.layer.geometry_type == 'polygon' &&
+          internal.layerOnlyHasRectangles(target.layer, target.dataset.arcs)) {
+        menuEvent.editRectangles = editRectangles;
       }
       // where the arrow menu would offer it, with the layer active
       if (!isFrame && target && blendIsAvailable(model, target.layer)) {

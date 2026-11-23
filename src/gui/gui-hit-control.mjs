@@ -184,6 +184,12 @@ export function HitControl(gui, ext, mouse) {
     updateSelectionState({ids: selectionIds.concat(), id: hoverId, pinned: false});
   };
 
+  // Pins feature @id, as a click on it does in a mode that pins -- the
+  // rectangle tool selecting the rectangle it has just drawn.
+  self.pinFeature = function(id) {
+    updateSelectionState({ids: [id], id: id, pinned: true});
+  };
+
   self.setPinning = function(val) {
     if (pinnedOn != val) {
       pinnedOn = val;
