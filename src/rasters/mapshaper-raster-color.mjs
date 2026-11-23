@@ -108,6 +108,10 @@ export function toneRgbPixels(samples, bands, opts, out) {
 // The result has the lightness of the stacked pixel. Its OKLab a and b move
 // from the stacked pixel's toward the image's by opts.shadowChroma or
 // opts.highlightChroma: 0 is plain stacking, 1 keeps the image's color.
+// Above 1, they move on past the image's, away from the image stacked with a
+// gray of the shading color's lightness, so that a colored shadow or
+// highlight makes the image's own color more vivid rather than pushing it
+// toward the opposite hue.
 // opts:
 //   shadow, highlight  {r, g, b} bytes
 //   shadowChroma, highlightChroma  0 or more
@@ -119,9 +123,12 @@ export function blendShadingPixels(samples, bands, amounts, opts, out) {
   var shadow = opts.shadow, highlight = opts.highlight;
   var rgb = [0, 0, 0];
   var lab = [0, 0, 0];
-  var i, k, a, ta, oa, K, q, r, g, b, sr, sg, sb, A, B, w;
+  var i, k, a, ta, oa, K, G, q, r, g, b, sr, sg, sb, A, B, w;
   out = out || new Uint8Array(samples.length);
   initTables();
+  // the grays for chroma above 1, or null for a shading color that is gray
+  var shadowGray = getChromaGray(shadow, lab, rgb);
+  var highlightGray = getChromaGray(highlight, lab, rgb);
   for (i = 0, k = 0; i < samples.length; i += bands, k++) {
     a = amounts[k];
     r = samples[i];
@@ -136,18 +143,29 @@ export function blendShadingPixels(samples, bands, amounts, opts, out) {
       continue;
     }
     K = a < 0 ? shadow : highlight;
+    G = a < 0 ? shadowGray : highlightGray;
     q = a < 0 ? opts.shadowChroma : opts.highlightChroma;
     a = a < 0 ? (a < -1 ? 1 : -a) : (a > 1 ? 1 : a);
     sr = r + (K.r - r) * a;
     sg = g + (K.g - g) * a;
     sb = b + (K.b - b) * a;
     if (q !== 0 && ta > 0) {
-      srgbToOklab(r, g, b, lab);
-      A = lab[1];
-      B = lab[2];
-      srgbToOklab(Math.round(sr), Math.round(sg), Math.round(sb), lab);
-      A = lab[1] + (A - lab[1]) * q;
-      B = lab[2] + (B - lab[2]) * q;
+      if (q > 1 && G) {
+        srgbToOklab(Math.round(r + (G - r) * a), Math.round(g + (G - g) * a), Math.round(b + (G - b) * a), lab);
+        A = lab[1];
+        B = lab[2];
+        srgbToOklab(r, g, b, lab);
+        A = lab[1] + (lab[1] - A) * (q - 1);
+        B = lab[2] + (lab[2] - B) * (q - 1);
+        srgbToOklab(Math.round(sr), Math.round(sg), Math.round(sb), lab);
+      } else {
+        srgbToOklab(r, g, b, lab);
+        A = lab[1];
+        B = lab[2];
+        srgbToOklab(Math.round(sr), Math.round(sg), Math.round(sb), lab);
+        A = lab[1] + (A - lab[1]) * q;
+        B = lab[2] + (B - lab[2]) * q;
+      }
       if (!oklabToLinear(lab[0], A, B, rgb)) {
         fitChroma(lab[0], A, B, rgb);
       }
@@ -175,6 +193,16 @@ export function blendShadingPixels(samples, bands, amounts, opts, out) {
     out[i + 3] = Math.round(oa * 255);
   }
   return out;
+}
+
+// The sRGB channel value of the gray with the OKLab lightness of @color
+// {r, g, b}, or null if @color is gray already
+// @lab, @rgb scratch arrays
+function getChromaGray(color, lab, rgb) {
+  if (color.r == color.g && color.g == color.b) return null;
+  srgbToOklab(color.r, color.g, color.b, lab);
+  oklabToLinear(lab[0], 0, 0, rgb);
+  return encodeChannel(rgb[0]);
 }
 
 // The shading as an RGBA overlay that, stacked on the image (in sRGB, as
@@ -519,27 +547,64 @@ export function getHillshadeRampColors(shadow, base, highlight) {
 }
 
 // The shadow color of opaque shading derived from the base color: the base's
-// hue and chroma (as much as the gamut has room for), and a lightness in the
-// same ratio to the base's as the default colors have, so that shading has
-// the same contrast whatever the base color. (Extrapolating hue and chroma
-// from the base and highlight colors as well would multiply small
-// differences between them into a strong, unrelated color.)
+// hue and chroma (as much as the gamut has room for), and a lightness from
+// getDerivedShadowLightness(). (Extrapolating hue and chroma from the base and
+// highlight colors as well would multiply small differences between them into
+// a strong, unrelated color.)
+// With a chosen shadow color, a strength up to 1 fades from the base color to
+// it, and a strength above 1 darkens it by as much again as it is darker than
+// the base, keeping its hue and chroma. A chosen color equal to the derived
+// one gives the derived colors at every strength.
 // @base {r, g, b}
 // @strength 0 (flat: the base color) to 2; 1 is the default shadow
-export function getHillshadeShadowColor(base, strength) {
+// @color {r, g, b} or null, a chosen shadow color
+export function getHillshadeShadowColor(base, strength, color) {
   var lch = oklabToOklch(rgbToOklab(base));
-  var l = lch.l * Math.max(0, 1 - strength * (1 - getDefaultShadowRatio()));
-  return toRgb(oklchToRgb({l: l, c: lch.c, h: lch.h}));
+  var ratio = getDefaultShadowRatio();
+  var l, step;
+  if (!color) {
+    l = lch.l - strength * (lch.l - getDerivedShadowLightness(lch.l));
+    return toRgb(oklchToRgb({l: Math.max(0, l), c: lch.c, h: lch.h}));
+  }
+  if (strength <= 1) {
+    return mixOklab(base, color, Math.max(0, strength));
+  }
+  lch = oklabToOklch(rgbToOklab(color));
+  step = rgbToOklab(base).l - lch.l;
+  // a chosen color no darker than the base is darkened as a derived color of
+  // its lightness would be
+  if (!(step > 0)) step = lch.l * (1 - ratio) / ratio;
+  l = lch.l - (strength - 1) * step;
+  return toRgb(oklchToRgb({l: Math.max(0, l), c: lch.c, h: lch.h}));
+}
+
+// Lightness of the derived shadow color of a base color of lightness @l. A
+// base as light as the default base color or darker gets a shadow in the same
+// ratio to it as the default colors have, so that shading has the same
+// contrast whatever the base color. A lighter base would then sit higher and
+// higher on the ramp to white, leaving little room for highlights, so it gets
+// a shadow that keeps it where the default base is on the ramp (75% of the
+// way from the shadow to white). The two meet at the default base color.
+function getDerivedShadowLightness(l) {
+  var pos = getDefaultBasePosition();
+  return Math.max(l * getDefaultShadowRatio(), (l - pos) / (1 - pos));
 }
 
 // The highlight color of opaque shading derived from the base color: the
-// base's hue, toward white
+// base's hue, toward white; or with a chosen highlight color, toward it
 // @base {r, g, b}
-// @strength 0 (flat: the base color) to 1 (white, the default)
-export function getHillshadeHighlightColor(base, strength) {
-  var lch = oklabToOklch(rgbToOklab(base));
-  var s = Math.max(0, Math.min(1, strength));
-  return toRgb(oklchToRgb({l: lch.l + s * (1 - lch.l), c: lch.c * (1 - s), h: lch.h}));
+// @strength 0 (flat: the base color) to 1 (white or the chosen color, the
+//   default)
+// @color {r, g, b} or null
+export function getHillshadeHighlightColor(base, strength, color) {
+  return mixOklab(base, color || {r: 255, g: 255, b: 255}, Math.max(0, Math.min(1, strength)));
+}
+
+// @t 0 (@a) to 1 (@b), in Oklab
+function mixOklab(a, b, t) {
+  var p = rgbToOklab(a), q = rgbToOklab(b);
+  var lab = {l: p.l + t * (q.l - p.l), a: p.a + t * (q.a - p.a), b: p.b + t * (q.b - p.b)};
+  return toRgb(oklchToRgb(oklabToOklch(lab)));
 }
 
 // The inverses of getHillshadeShadowColor() and getHillshadeHighlightColor(),
@@ -547,8 +612,9 @@ export function getHillshadeHighlightColor(base, strength) {
 // the base's)
 export function getHillshadeShadowStrength(base, shadow) {
   var b = rgbToOklab(base).l;
-  if (!(b > 0)) return 1;
-  return (1 - rgbToOklab(shadow).l / b) / (1 - getDefaultShadowRatio());
+  var range = b - getDerivedShadowLightness(b);
+  if (!(range > 0)) return 1;
+  return (b - rgbToOklab(shadow).l) / range;
 }
 
 export function getHillshadeHighlightStrength(base, highlight) {
@@ -559,6 +625,13 @@ export function getHillshadeHighlightStrength(base, highlight) {
 // lightness of the default shadow color as a share of the default base color's
 function getDefaultShadowRatio() {
   return rgbToOklab(DEFAULT_HILLSHADE_SHADOW).l / rgbToOklab(DEFAULT_HILLSHADE_BASE).l;
+}
+
+// where the default base color is on the ramp from the default shadow color
+// to white, as a share of lightness
+function getDefaultBasePosition() {
+  var s = rgbToOklab(DEFAULT_HILLSHADE_SHADOW).l;
+  return (rgbToOklab(DEFAULT_HILLSHADE_BASE).l - s) / (1 - s);
 }
 
 // Where the base color is on the ramp from the shadow color to the highlight

@@ -120,6 +120,22 @@ describe('mapshaper-blend.mjs', function () {
       assert(Math.abs(half.c - (stacked.c + full.c) / 2) < 0.005);
     });
 
+    it('chroma above 1 makes the image\'s own color more vivid, whatever the shading color', function () {
+      var tan = [210, 180, 140];
+      var src = oklch.apply(null, tan);
+      var red = {shadow: {r: 147, g: 6, b: 6}, shadowChroma: 2};
+      var out = oklch.apply(null, blendOne(tan, -0.5, red));
+      var lab = function(k) {
+        var px = blendOne(tan, -0.5, {shadowChroma: k});
+        return internal.rgbToOklab({r: px[0], g: px[1], b: px[2]});
+      };
+      assert(out.c > src.c);
+      assert(Math.abs(out.h - src.h) < 0.1);
+      // with black, 2 goes as far past the image's color as 0 is short of it
+      assert(Math.abs(lab(2).a - (2 * lab(1).a - lab(0).a)) < 0.004);
+      assert(Math.abs(lab(2).b - (2 * lab(1).b - lab(0).b)) < 0.004);
+    });
+
     it('fits colors that leave the gamut', function () {
       var src = oklch(40, 160, 60);
       var stacked = oklch.apply(null, blendOne([40, 160, 60], -0.5));

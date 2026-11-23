@@ -225,7 +225,12 @@ toward the target pixel's:
   highlights, lit slopes are lighter but not hazy. In shadows, colors stay
   vivid (and so become more saturated, since they are darker).
 - Values above 1 go further than the target's own color: more vivid
-  slopes, limited by the gamut. The GUI's sliders go to 2.
+  slopes, limited by the gamut. The GUI's sliders go to 2. They extrapolate
+  away from the target stacked with a gray of the shading color's lightness
+  rather than from the stacked pixel itself, which is the same for black,
+  white or gray shading. With a colored shading color, extrapolating from
+  the stacked pixel would subtract that color, pushing slopes toward its
+  opposite hue (a red shadow color gave teal shadows at `chroma=2`).
 
 The default is `chroma=0,1`: shadows as stacked, highlights without haze.
 (`chroma=0`, plain stacking, was considered as a more neutral default, but

@@ -62,6 +62,8 @@ function closeOpenPickers(except) {
 
 // opts.presetRows   rows of preset colors; [] for none
 // opts.onPreview(hex), opts.onChange(hex), opts.onHide()
+// opts.buttons      [{label, onClick}], buttons beside Close; a click also
+//                   closes the picker
 // opts.opacityInput the opacity field beside the color, if it has one. The
 //                   picker gets a slider for it, which shows the field's value
 //                   and writes to it: a drag shows its percentage in the field
@@ -175,6 +177,12 @@ export function ColorPicker(parent, opts) {
     addFormatTabs(colorPicker);
     var fieldRow = El('div').addClass('label-color-picker-fields').appendTo(colorPicker);
     addColorInput(fieldRow);
+    (opts.buttons || []).forEach(function(o) {
+      El('button').appendTo(fieldRow).text(o.label).on('click', function() {
+        self.hide();
+        o.onClick();
+      });
+    });
     El('button').appendTo(fieldRow).text('Close').on('click', function() {
       self.hide();
     });

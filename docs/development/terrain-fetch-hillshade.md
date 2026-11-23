@@ -469,11 +469,16 @@ same pattern as other mapshaper commands.
   highlight color defaults to white. A missing base color is 80% of the way
   from the shadow color to the highlight color (in OKLCH), or `#d7d7d7` if
   the shadow color is missing too. A missing shadow color has the base's
-  hue and chroma (reduced to fit the sRGB gamut), and the base's lightness
-  times the ratio of the default colors' lightness (`#686868` / `#d7d7d7`,
-  about 0.59 in OKLab), so that a lighter or darker base keeps the same
-  contrast (`getHillshadeShadowColor()`): `base-color=#e0d8c0` gives a
-  `#706853` shadow, `#808080` a `#3b3b3b` one. Until v0.8.8 the shadow got
+  hue and chroma (reduced to fit the sRGB gamut). A base no lighter than
+  `#d7d7d7` gets a shadow lightness in the ratio of the default colors'
+  lightness (`#686868` / `#d7d7d7`, about 0.59 in OKLab), so that a darker
+  base keeps the same contrast: `#808080` gets a `#3b3b3b` shadow. A
+  lighter base would then sit ever higher on the ramp to white (93% for
+  `#f5f3ef`), with almost no room for highlights and a mid-gray shadow, so
+  it gets the shadow that keeps it where the default base is, 75% of the
+  way from the shadow to white: `#f2f2f2` gets `#cccccc`, `#e0d8c0` gets
+  `#736b56`. The two rules meet at `#d7d7d7` (`getHillshadeShadowColor()`).
+  A white base would get a white shadow, and no shading. Until v0.8.8 the shadow got
   the lightness that put the base at 80% of the way to the highlight
   color, which was black for any base darker than `#bebebe` and made
   mid-tone bases harsh. Extrapolating the hue and chroma as well would
@@ -1074,10 +1079,12 @@ The preview is drawn in place of the elevation layer (a stand-in layer from
 elevation layer is not changed until Apply.
 
 Some options are left out of the panel: `light-adjust=`, `texture-detail=`,
-`texture-highlights=`, `min-elevation=`, `band=`, and explicit opaque
-shadow and highlight colors (the panel sets them from the base color and
-two strengths, with `getHillshadeShadowColor()` and
-`getHillshadeHighlightColor()`).
+`texture-highlights=`, `min-elevation=` and `band=`. An opaque
+hillshade's shadow and highlight colors are derived from the base color
+("auto") until one is chosen, and the two strength sliders fade from the
+base color to them (`getHillshadeShadowColor()` and
+`getHillshadeHighlightColor()`); a shadow strength above 1 darkens the
+shadow color further.
 
 ## -smooth-terrain
 

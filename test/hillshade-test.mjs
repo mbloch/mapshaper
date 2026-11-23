@@ -430,10 +430,10 @@ describe('mapshaper-hillshade.mjs', function () {
       assert.equal(hex(rampColors('#000000').base), hex(rampColors('#000000', '#ffffff').base));
     })
 
-    it('opaque colors: a missing shadow has the base\'s hue, and the default colors\' ratio of lightness to the base', function () {
+    it('opaque colors: a missing shadow has the base\'s hue, and the default colors\' ratio of lightness to a base no lighter than the default', function () {
       var l = function(rgb) { return internal.rgbToOklab(rgb).l; };
       var ratio = l(internal.parseColor('#686868')) / l(internal.parseColor('#d7d7d7'));
-      [['#e0d8c0', null], ['#c8dcc0', '#fcffe7'], ['#c8d8e8', '#fff8e0'], ['#808080', null]].forEach(function(pair) {
+      [['#d0c8b0', null], ['#c8dcc0', '#fcffe7'], ['#c8d8e8', '#fff8e0'], ['#808080', null]].forEach(function(pair) {
         var stops = rampColors(null, pair[1], pair[0]);
         var base = internal.oklabToOklch(internal.rgbToOklab(stops.base));
         var shadow = internal.oklabToOklch(internal.rgbToOklab(stops.shadow));
@@ -441,6 +441,16 @@ describe('mapshaper-hillshade.mjs', function () {
         if (base.c > 0.02) assert(Math.abs(shadow.h - base.h) < 3, pair);
       });
       assert.equal(hex(rampColors(null, null, '#d7d7d7').shadow), '#686868');
+    })
+
+    it('opaque colors: a base lighter than the default stays 75% of the way from its derived shadow to white', function () {
+      var l = function(rgb) { return internal.rgbToOklab(rgb).l; };
+      ['#e8e8e8', '#f5f3ef', '#fafafa'].forEach(function(color) {
+        var base = internal.parseColor(color);
+        var shadow = internal.getHillshadeShadowColor(base, 1);
+        assert(Math.abs((l(base) - l(shadow)) / (1 - l(shadow)) - 0.75) < 0.01, color);
+      });
+      assert.equal(hex(internal.getHillshadeShadowColor(internal.parseColor('#f2f2f2'), 1)), '#cccccc');
     })
 
     it('opaque colors: shadow and highlight strengths derive colors from the base', function () {
@@ -456,6 +466,25 @@ describe('mapshaper-hillshade.mjs', function () {
         assert(Math.abs(internal.getHillshadeShadowStrength(base, shadow) - s) < 0.02, s);
       });
       assert(Math.abs(internal.getHillshadeHighlightStrength(base, internal.getHillshadeHighlightColor(base, 0.4)) - 0.4) < 0.02);
+    })
+
+    it('opaque colors: strengths fade from the base to chosen colors, and a stronger shadow is darker', function () {
+      var base = internal.parseColor('#e0d6c4');
+      var shadow = internal.parseColor('#203040');
+      var warm = internal.parseColor('#fff0c0');
+      var l = function(rgb) { return internal.rgbToOklab(rgb).l; };
+      var derived = internal.getHillshadeShadowColor(base, 1);
+      assert.equal(hex(internal.getHillshadeShadowColor(base, 1, shadow)), '#203040');
+      assert.equal(hex(internal.getHillshadeShadowColor(base, 0, shadow)), '#e0d6c4');
+      assert(l(internal.getHillshadeShadowColor(base, 1.5, shadow)) < l(shadow));
+      assert.equal(hex(internal.getHillshadeHighlightColor(base, 1, warm)), '#fff0c0');
+      assert.equal(hex(internal.getHillshadeHighlightColor(base, 0, warm)), '#e0d6c4');
+      // choosing the derived shadow color changes nothing
+      [0.5, 1.6].forEach(function(s) {
+        var a = internal.getHillshadeShadowColor(base, s);
+        var b = internal.getHillshadeShadowColor(base, s, derived);
+        assert(Math.abs(l(a) - l(b)) < 0.01, s);
+      });
     })
 
     it('opaque style: invalid pixels are clear', function () {

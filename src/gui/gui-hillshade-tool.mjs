@@ -22,11 +22,13 @@ var DRAFT_MAX_PIXELS = 1e6;
 var BUSY_DELAY = 250;
 
 var colorFns = {
-  shadow: function(hex, strength) {
-    return internal.formatColor(internal.getHillshadeShadowColor(internal.parseColor(hex), strength));
+  shadow: function(hex, strength, color) {
+    return internal.formatColor(internal.getHillshadeShadowColor(internal.parseColor(hex), strength,
+      color ? internal.parseColor(color) : null));
   },
-  highlight: function(hex, strength) {
-    return internal.formatColor(internal.getHillshadeHighlightColor(internal.parseColor(hex), strength));
+  highlight: function(hex, strength, color) {
+    return internal.formatColor(internal.getHillshadeHighlightColor(internal.parseColor(hex), strength,
+      color ? internal.parseColor(color) : null));
   }
 };
 
@@ -169,7 +171,9 @@ export function HillshadeTool(gui) {
     });
   }
 
-  // A drag in the picker previews on the map, as a drag of a slider does
+  // A drag in the picker previews on the map, as a drag of a slider does.
+  // A derived color shows "auto" in its field, and the picker has an Auto
+  // button that goes back to it (as a blank field or a typed "auto" does).
   function addColorRow(parentEl, o) {
     var row = El('div').addClass('label-style-row raster-tone-slider-row raster-blend-color-row').appendTo(parentEl);
     var control = {row: row};
@@ -181,14 +185,22 @@ export function HillshadeTool(gui) {
     control.input = El('input').attr('type', 'text')
       .attr('aria-label', o.label + ' color')
       .on('change', function() {
-        var hex = toSixDigitHex(control.input.node().value.trim());
-        if (hex) setSetting(o.name, hex.toLowerCase(), true);
+        var str = control.input.node().value.trim();
+        var hex = toSixDigitHex(str);
+        if (hex) {
+          setSetting(o.name, hex.toLowerCase(), true);
+        } else if (o.derived && (str === '' || str.toLowerCase() == 'auto') && settings[o.name]) {
+          setSetting(o.name, null, true);
+        }
         showColor(o.name);
         releaseFocus();
       });
     makeColorField(row, control.chit, control.input);
     settingPicker = true;
     control.picker = new ColorPicker(row, {
+      buttons: o.derived ? [{label: 'Auto', onClick: function() {
+        if (settings[o.name]) setSetting(o.name, null, true);
+      }}] : [],
       presetRows: layerColorPresetRows,
       onPreview: function(hex) {
         if (!settingPicker) setSetting(o.name, hex.toLowerCase(), false);
@@ -241,13 +253,15 @@ export function HillshadeTool(gui) {
       state ? state.autoExaggeration : 1));
   }
 
+  // A derived color is shown at strength 1, as a chosen one is
   function showColor(name) {
     var control = colorControls[name];
-    var hex = settings[name];
+    var o = HILLSHADE_COLOR_ROWS.find(function(o) { return o.name == name; });
+    var hex = settings[name] || colorFns[o.derived](settings.base_color, 1, null);
     settingPicker = true;
     control.picker.setColor(hex);
     settingPicker = false;
-    control.input.node().value = hex;
+    control.input.node().value = settings[name] ? hex : 'auto';
     control.chit.css('background-color', hex);
   }
 
@@ -473,12 +487,15 @@ export function HillshadeTool(gui) {
     };
   }
 
-  // The preview while a slider is dragged
+  // The preview while a slider is dragged. Full-size work waits until the
+  // slider is let go of, so a pause in the drag doesn't shade the whole
+  // raster.
   function renderDraft(st) {
     var shading = getShading(st);
     var full = st.smoothed[shading.smoothing];
     if (!full || full.then) {
-      requestExact(st);
+      // renderExact() makes the draft again once the smoothing is done
+      return;
     } else if (st.exactRaster && !(targetLayer.gui && targetLayer.gui.dynamic_crs)) {
       renderWindowDraft(st, shading, full);
     } else {
@@ -496,7 +513,6 @@ export function HillshadeTool(gui) {
     var s = shading.settings;
     var keys = getFieldKeys(shading);
     var win = getPreviewWindow(st.terrain.source);
-    var missing = false;
     var reach, tile, grid, current, tones, core, rgba;
     if (!win) return;
     // the shading reach without the fields, which are copied
@@ -520,12 +536,7 @@ export function HillshadeTool(gui) {
     };
     ['openness', 'texture'].forEach(function(name) {
       var o = st.fields[name];
-      if (!keys[name]) return;
-      if (o && o.key != keys[name]) missing = true;
-      if (!o || o.key.split(',')[0] != String(shading.smoothing)) {
-        missing = true;
-        return;
-      }
+      if (!keys[name] || !o || o.key.split(',')[0] != String(shading.smoothing)) return;
       current[name] = cropArray(o.data, full.width, tile);
     });
     s = Object.assign({}, s, {
@@ -537,7 +548,6 @@ export function HillshadeTool(gui) {
     rgba = internal.writeHillshadeRgba(cropArray(tones, grid.width, core),
       grid.valid ? cropArray(grid.valid, grid.width, core) : null, shading.style, shading.colors);
     showPreview(st, st.exactRaster, makeInset(st.terrain.source, rgba, win));
-    if (missing) requestExact(st);
   }
 
   // The rectangle of raster pixels to shade while a slider is dragged:
@@ -578,18 +588,13 @@ export function HillshadeTool(gui) {
   function renderReducedDraft(st, shading, full) {
     var keys = getFieldKeys(shading);
     var s = shading.settings;
-    var grid, current, missing = false;
+    var grid, current;
     grid = st.draftFactor > 1 ?
       st.reduced[shading.smoothing] || (st.reduced[shading.smoothing] = reduceGrid(full, st.draftFactor)) : full;
     current = {shade: getDraftShade(st, grid, shading, keys.shade)};
     ['openness', 'texture'].forEach(function(name) {
       var o = st.fields[name];
-      if (!keys[name]) return;
-      if (o && o.key != keys[name]) missing = true;
-      if (!o || o.key.split(',')[0] != String(shading.smoothing)) {
-        missing = true;
-        return;
-      }
+      if (!keys[name] || !o || o.key.split(',')[0] != String(shading.smoothing)) return;
       current[name] = getDraftField(st, name, o.data);
     });
     s = Object.assign({}, s, {
@@ -599,7 +604,6 @@ export function HillshadeTool(gui) {
     showPreview(st, makePreviewRaster(st.terrain.source, internal.writeHillshadeRgba(
       internal.combineShadingFields(current, grid, s), grid.valid, shading.style, shading.colors),
       st.draftFactor), null);
-    if (missing) requestExact(st);
   }
 
   function getDraftShade(st, grid, shading, key) {

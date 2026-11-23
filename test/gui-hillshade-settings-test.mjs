@@ -7,11 +7,13 @@ import {
 
 var internal = api.internal;
 var colorFns = {
-  shadow: function(hex, s) {
-    return internal.formatColor(internal.getHillshadeShadowColor(internal.parseColor(hex), s));
+  shadow: function(hex, s, color) {
+    return internal.formatColor(internal.getHillshadeShadowColor(internal.parseColor(hex), s,
+      color ? internal.parseColor(color) : null));
   },
-  highlight: function(hex, s) {
-    return internal.formatColor(internal.getHillshadeHighlightColor(internal.parseColor(hex), s));
+  highlight: function(hex, s, color) {
+    return internal.formatColor(internal.getHillshadeHighlightColor(internal.parseColor(hex), s,
+      color ? internal.parseColor(color) : null));
   }
 };
 
@@ -104,9 +106,23 @@ describe('gui-hillshade-settings.mjs', function () {
     assert.equal(opts.opaque, undefined);
   })
 
+  it('an opaque hillshade\'s chosen colors are used at strength 1, and faded toward the base below it', function () {
+    assert.equal(command({style: 'opaque', opaque_shadow_color: '#203040', opaque_highlight_color: '#fff0c0'}),
+      '-hillshade base-color=#d7d7d7 shadow-color=#203040 highlight-color=#fff0c0');
+    assert.equal(command({style: 'opaque', opaque_shadow_color: '#203040'}),
+      '-hillshade base-color=#d7d7d7 shadow-color=#203040');
+    var opts = getHillshadeOptions(Object.assign(getDefaultHillshadeSettings(), {style: 'opaque',
+      opaque_shadow_color: '#203040', shadow_strength: 0.5, opaque_highlight_color: '#fff0c0', highlight_strength: 0}),
+      1.5, colorFns);
+    assert.equal(opts.highlight_color, '#d7d7d7');
+    assert.notEqual(opts.shadow_color, '#203040');
+    assert.notEqual(opts.shadow_color, '#d7d7d7');
+  })
+
   it('transparent settings are left out of an opaque command, and the reverse', function () {
     assert.equal(command({style: 'opaque', max_opacity: 0.8, shadow_color: '#203040'}), '-hillshade opaque');
     assert.equal(command({base_color: '#e0d6c4', shadow_strength: 2}), '-hillshade');
+    assert.equal(command({opaque_shadow_color: '#203040'}), '-hillshade');
   })
 
   it('the command runs', async function () {
