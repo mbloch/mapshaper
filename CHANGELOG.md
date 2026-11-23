@@ -1,3 +1,8 @@
+v0.8.9
+* [web] Added rectangle drawing to the Draw menu.
+* -proj densifies by default, so long straight segments follow the curves of the projection. Use the new `no-densify` option for the previous behavior.
+* Fixed densification bugs.
+
 v0.8.8
 * New -smooth-terrain command, which generalizes an elevation raster the way -hillshade `smoothing=` does, for making contours or tints from the same terrain as a hillshade.
 * -hillshade no longer smooths terrain by default. Use `smoothing=1` for the previous default.

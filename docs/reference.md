@@ -1479,7 +1479,9 @@ Project a dataset using a PROJ string, EPSG code or alias. This command affects 
 
 `<crs>` or `crs=`  Target CRS, given as a Proj.4 definition or an alias. Use the [`-projections`](#-projections) command to list available projections and aliases. In some projections that require additional parameters, Mapshaper can fit parameters automatically from the data extent, for example `crs=utm` selects a UTM zone. You can also pass a Proj4 string enclosed in quotes, for example `crs='+proj=utm +zone=27'`.
 
-`densify` Interpolate vertices along long line segments as needed to approximate curved lines.
+`densify` (Deprecated) Densification is now the default, so this option is no longer needed.
+
+`no-densify` Turn off densification. By default, `-proj` adds vertices to long line segments wherever the projection would bend them. With `no-densify`, only the existing vertices are projected, and long segments stay straight.
 
 `match=` Match the projection of the given layer or .prj file.
 
@@ -1535,7 +1537,7 @@ mapshaper us_states.shp \
 # Show the world as two orthographic hemispheres, one above the other, with the
 # lower disk overlapping the upper disk
 mapshaper countries.geojson \
-  -proj hemispheres2 +lon_0=65 +lat_0=15 +lon_1=-95 +lat_1=8 +gap=-0.3 densify \
+  -proj hemispheres2 +lon_0=65 +lat_0=15 +lon_1=-95 +lat_1=8 +gap=-0.3 \
   -graticule outline name=neatline \
   -o target="*" output/
 ```

@@ -2752,7 +2752,8 @@ describe('mapshaper-buffer.js', function () {
   describe('geodesic option for projected data', function () {
     // A polygon and a line near 45N, where web-mercator scale distortion is
     // large. The geodesic buffer of the projected data should match the
-    // geodesic buffer of the lat-long source.
+    // geodesic buffer of the lat-long source. The UTM tests project with
+    // no-densify in both directions, so that the buffers have the same vertices.
     var poly = {type: 'FeatureCollection', features: [{type: 'Feature',
       properties: {}, geometry: {type: 'Polygon',
         coordinates: [[[-100, 44], [-99, 44], [-99, 45], [-100, 45], [-100, 44]]]}}]};
@@ -2778,14 +2779,14 @@ describe('mapshaper-buffer.js', function () {
     it('polygon: geodesic buffer of a UTM dataset matches the lat-long geodesic buffer', async function () {
       var a = await geodesicArea('-i in.json -buffer 50km', poly);
       var b = await geodesicArea(
-        '-i in.json -proj +proj=utm +zone=14 -buffer 50km geodesic -proj wgs84', poly);
+        '-i in.json -proj +proj=utm +zone=14 no-densify -buffer 50km geodesic -proj wgs84 no-densify', poly);
       assert(Math.abs(b - a) / a < 1e-9, 'rel diff ' + Math.abs(b - a) / a);
     })
 
     it('line: geodesic buffer of a UTM dataset matches the lat-long geodesic buffer', async function () {
       var a = await geodesicArea('-i in.json -buffer 25km', line);
       var b = await geodesicArea(
-        '-i in.json -proj +proj=utm +zone=14 -buffer 25km geodesic -proj wgs84', line);
+        '-i in.json -proj +proj=utm +zone=14 no-densify -buffer 25km geodesic -proj wgs84 no-densify', line);
       assert(Math.abs(b - a) / a < 1e-9, 'rel diff ' + Math.abs(b - a) / a);
     })
 
@@ -2794,7 +2795,7 @@ describe('mapshaper-buffer.js', function () {
         properties: {}, geometry: {type: 'Point', coordinates: [-100, 45]}}]};
       var a = await geodesicArea('-i in.json -buffer 50km', pt);
       var b = await geodesicArea(
-        '-i in.json -proj +proj=utm +zone=14 -buffer 50km geodesic -proj wgs84', pt);
+        '-i in.json -proj +proj=utm +zone=14 no-densify -buffer 50km geodesic -proj wgs84 no-densify', pt);
       assert(Math.abs(b - a) / a < 1e-9, 'rel diff ' + Math.abs(b - a) / a);
     })
 

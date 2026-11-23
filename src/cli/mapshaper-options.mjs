@@ -2049,8 +2049,12 @@ export function getOptionParser() {
       describe: 'set source CRS (if unset) using a string, .prj or layer id'
     })
     .option('densify', {
+      // deprecated: densifying is the default
+      type: 'flag'
+    })
+    .option('no-densify', {
       type: 'flag',
-      describe: 'add points along straight segments to approximate curves'
+      describe: 'don\'t add points along straight segments to approximate curves'
     })
     .option('clip-angle', {
       describe: 'use a custom clipping radius (for azimuthal projections)',

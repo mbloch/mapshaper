@@ -55,6 +55,9 @@ export function validateProjOpts(cmd) {
   if (resampling && resampling != 'nearest' && resampling != 'bilinear') {
     stop('Unsupported resampling method:', resampling);
   }
+  if (cmd.options.densify && cmd.options.no_densify) {
+    stop('The densify and no-densify options can not be combined');
+  }
 }
 
 export function validateGridOpts(cmd) {

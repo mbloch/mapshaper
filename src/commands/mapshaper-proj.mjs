@@ -367,7 +367,9 @@ function projCmd(dataset, destInfo, opts) {
   });
 
   withActiveUndoTransaction(null, function() {
-    projectDataset(target, srcInfo.crs, destInfo.crs, opts || {});
+    projectDataset(target, srcInfo.crs, destInfo.crs, Object.assign({}, opts, {
+      densify: !(opts && opts.no_densify)
+    }));
 
     // dataset.info.wkt1 = destInfo.wkt1; // may be undefined
     setDatasetCrsInfo(target, destInfo);

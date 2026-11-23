@@ -35,9 +35,8 @@ export function getProjectedFrameBounds(bbox, project, srcIsLatLng) {
   // Where part of the boundary is outside the projection's domain (e.g. the
   // far side of the globe in an orthographic projection), the frame covers
   // whatever part of its extent does project. Densifying such a boundary would
-  // drop its arcs with unprojectable points, and can fail outright when the
-  // points it probes for an interval don't project; the sampled interior
-  // includes the boundary, at the same spacing.
+  // drop its arcs with unprojectable points; the sampled interior includes the
+  // boundary, at the same spacing.
   var projected = boundaryIsProjectable(b, project) ?
     getProjectedBoundaryBounds(b, project) :
     getProjectedInteriorBounds(b, project);

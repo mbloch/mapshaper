@@ -98,8 +98,12 @@ export function densifyUnprojectedPathByDistance(coords, meters) {
   // stub
 }
 
+// Where no interval can be found -- none of the points probed for one
+// projects, e.g. a view of a multi-view projection that hides all of the
+// arcs -- the arcs are projected without densification.
 export function projectAndDensifyArcs(arcs, proj) {
   var interval = getDefaultDensifyInterval(arcs, proj);
+  var densify = interval > 0 && interval < Infinity;
   var minIntervalSq = interval * interval * 25;
   var p;
   return editArcs(arcs, onPoint);
@@ -110,7 +114,7 @@ export function projectAndDensifyArcs(arcs, proj) {
     if (!p) return false; // signal that current arc contains an error
 
     // Don't try to densify shorter segments (optimization)
-    if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > minIntervalSq) {
+    if (densify && i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > minIntervalSq) {
       densifySegment(prevLng, prevLat,  pp[0],  pp[1], lng, lat, p[0], p[1], proj, interval)
         .forEach(append);
     }
@@ -151,17 +155,14 @@ function findDensifyInterval2(bb, proj) {
   return interval;
 }
 
-// Returns an interval in projected units
+// Returns an interval in projected units, or Infinity if none can be found
 function getDefaultDensifyInterval(arcs, proj) {
-  var xy = getAvgSegment2(arcs),
-      bb = arcs.getBounds(),
-      intervalA = findDensifyInterval(bb, xy, proj),
-      intervalB = findDensifyInterval2(bb, proj),
-      interval = Math.min(intervalA, intervalB);
-  if (interval == Infinity) {
-    error('Densification error');
-  }
-  return interval;
+  var bb = arcs.getBounds();
+  var xy, interval;
+  if (!bb.hasBounds()) return Infinity;
+  xy = getAvgSegment2(arcs);
+  interval = Math.min(findDensifyInterval(bb, xy, proj), findDensifyInterval2(bb, proj));
+  return interval > 0 ? interval : Infinity; // also catches NaN
 }
 
 // Interpolate points into a projected line segment if needed to prevent large
@@ -175,9 +176,10 @@ function densifySegment(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj, interval, 
       lat1 = (lat0 + lat2) / 2,
       p = proj(lng1, lat1),
       distSq;
-  if (!p) return; // TODO: consider if this is adequate for handling proj. errors
-  distSq = geom.pointSegDistSq2(p[0], p[1], x0, y0, x2, y2); // sq displacement
   points = points || [];
+  // An unprojectable midpoint leaves the segment as it is
+  if (!p) return points;
+  distSq = geom.pointSegDistSq2(p[0], p[1], x0, y0, x2, y2); // sq displacement
   // Bisect current segment if the projected midpoint deviates from original
   //   segment by more than the @interval parameter.
   //   ... but don't bisect very small segments to prevent infinite recursion
