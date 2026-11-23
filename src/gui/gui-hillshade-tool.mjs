@@ -12,8 +12,11 @@ import {
   getHillshadeOptions, getHillshadeSliderValue
 } from './gui-hillshade-settings';
 
-// While a slider is dragged, the preview is shaded at a reduced size if the
-// raster is larger than this
+// While a slider is dragged, the most pixels that are shaded at full
+// resolution for each change
+var WINDOW_MAX_PIXELS = 1e6;
+// ... or, on a map in other coordinates than the raster's, the size the whole
+// raster is reduced to (see renderReducedDraft())
 var DRAFT_MAX_PIXELS = 1e6;
 // work that takes longer than this shows a spinner
 var BUSY_DELAY = 250;
@@ -36,11 +39,12 @@ var colorFns = {
 // The panel reads the elevations once, and keeps what takes time to compute:
 // the smoothed terrain for each smoothing level, and the fields of shading
 // (see computeShadingFields()), which depend only on the light, the
-// exaggeration and the smoothing. Other settings recombine the fields, which
-// is fast enough to follow a slider. While a slider is dragged, the preview
-// is made from copies of the terrain and the fields reduced to
-// DRAFT_MAX_PIXELS (see renderDraft()). When it is let go of, the preview is
-// made at full size, with the fields recomputed for the new settings (see
+// exaggeration and the smoothing. Other settings recombine the fields. While
+// a slider is dragged, the part of the raster in view is shaded at full
+// resolution, or if that's more than WINDOW_MAX_PIXELS, a box of that many
+// pixels in the middle of the view, drawn over the last full image (see
+// renderWindowDraft()). When the slider is let go of, the preview is made at
+// full size, with the fields recomputed for the new settings (see
 // renderExact()), which gives the same image as -hillshade.
 export function HillshadeTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
@@ -271,6 +275,7 @@ export function HillshadeTool(gui) {
       reduced: {}, // smoothing level -> reduced copy of the smoothed grid
       fields: {}, // field name -> {key, data}, at full size
       draftFields: {}, // field name -> {key or source, data}, reduced
+      exactRaster: null, // the latest full-size image
       version: 0, // incremented with each change of the settings
       exactRunning: false,
       exactAgain: false,
@@ -427,8 +432,9 @@ export function HillshadeTool(gui) {
       schedulePreview(false);
       return;
     }
-    showPreview(st, internal.writeHillshadeRgba(internal.combineShadingFields(current, grid, shading.settings),
-      grid.valid, shading.style, shading.colors), 1);
+    st.exactRaster = makePreviewRaster(st.terrain.source, internal.writeHillshadeRgba(
+      internal.combineShadingFields(current, grid, shading.settings), grid.valid, shading.style, shading.colors), 1);
+    showPreview(st, st.exactRaster, null);
   }
 
   async function getSmoothedGrid(st, level) {
@@ -467,22 +473,112 @@ export function HillshadeTool(gui) {
     };
   }
 
-  // An image made from reduced copies of the smoothed terrain and the fields,
-  // while a slider is dragged. A slider that changes the light or the
-  // exaggeration reshades the reduced terrain; the other fields are reduced
-  // copies of the latest ones, even if they were computed for another
-  // exaggeration. A field that hasn't been computed is left out until
-  // renderExact() has computed it.
+  // The preview while a slider is dragged
   function renderDraft(st) {
     var shading = getShading(st);
-    var keys = getFieldKeys(shading);
     var full = st.smoothed[shading.smoothing];
-    var s = shading.settings;
-    var grid, current, missing = false;
     if (!full || full.then) {
       requestExact(st);
-      return;
+    } else if (st.exactRaster && !(targetLayer.gui && targetLayer.gui.dynamic_crs)) {
+      renderWindowDraft(st, shading, full);
+    } else {
+      renderReducedDraft(st, shading, full);
     }
+  }
+
+  // The part of the raster in view, or a box of WINDOW_MAX_PIXELS in the
+  // middle of it, shaded at full resolution over the last full image. A
+  // slider that changes the light or the exaggeration reshades the box; the
+  // other fields are copied from the latest ones, even if they were computed
+  // for another exaggeration. A field that hasn't been computed is left out
+  // until renderExact() has computed it.
+  function renderWindowDraft(st, shading, full) {
+    var s = shading.settings;
+    var keys = getFieldKeys(shading);
+    var win = getPreviewWindow(st.terrain.source);
+    var missing = false;
+    var reach, tile, grid, current, tones, core, rgba;
+    if (!win) return;
+    // the shading reach without the fields, which are copied
+    reach = internal.getShadingReach(Object.assign({}, s, {ambient: 0, texture: 0}));
+    tile = {
+      xa: Math.max(0, win.x0 - reach), ya: Math.max(0, win.y0 - reach),
+      xb: Math.min(full.width, win.x1 + reach), yb: Math.min(full.height, win.y1 + reach)
+    };
+    grid = {
+      elev: cropArray(full.elev, full.width, tile),
+      valid: full.valid ? cropArray(full.valid, full.width, tile) : null,
+      width: tile.xb - tile.xa,
+      height: tile.yb - tile.ya,
+      cellWidths: full.cellWidths.subarray(tile.ya, tile.yb),
+      cellHeights: full.cellHeights.subarray(tile.ya, tile.yb)
+    };
+    current = {
+      shade: st.fields.shade && st.fields.shade.key == keys.shade ?
+        cropArray(st.fields.shade.data, full.width, tile) :
+        internal.computeShadingFields(grid, Object.assign({}, s, {ambient: 0, texture: 0})).shade
+    };
+    ['openness', 'texture'].forEach(function(name) {
+      var o = st.fields[name];
+      if (!keys[name]) return;
+      if (o && o.key != keys[name]) missing = true;
+      if (!o || o.key.split(',')[0] != String(shading.smoothing)) {
+        missing = true;
+        return;
+      }
+      current[name] = cropArray(o.data, full.width, tile);
+    });
+    s = Object.assign({}, s, {
+      ambient: current.openness ? s.ambient : 0,
+      texture: current.texture ? s.texture : 0
+    });
+    tones = internal.combineShadingFields(current, grid, s);
+    core = {xa: win.x0 - tile.xa, ya: win.y0 - tile.ya, xb: win.x1 - tile.xa, yb: win.y1 - tile.ya};
+    rgba = internal.writeHillshadeRgba(cropArray(tones, grid.width, core),
+      grid.valid ? cropArray(grid.valid, grid.width, core) : null, shading.style, shading.colors);
+    showPreview(st, st.exactRaster, makeInset(st.terrain.source, rgba, win));
+    if (missing) requestExact(st);
+  }
+
+  // The rectangle of raster pixels to shade while a slider is dragged:
+  // {x0, y0, x1, y1, framed}, or null if the raster is out of view
+  function getPreviewWindow(source) {
+    var ext = gui.map.getExtent();
+    var view = ext.getBounds();
+    var b = source.bbox;
+    var dx = (b[2] - b[0]) / source.width, dy = (b[3] - b[1]) / source.height;
+    var vx0 = clampInt(Math.floor((view.xmin - b[0]) / dx), 0, source.width);
+    var vx1 = clampInt(Math.ceil((view.xmax - b[0]) / dx), 0, source.width);
+    var vy0 = clampInt(Math.floor((b[3] - view.ymax) / dy), 0, source.height);
+    var vy1 = clampInt(Math.ceil((b[3] - view.ymin) / dy), 0, source.height);
+    var vw = vx1 - vx0, vh = vy1 - vy0;
+    var aspect, w, h, cx, cy, x0, y0;
+    if (vw <= 0 || vh <= 0) return null;
+    if (vw * vh <= WINDOW_MAX_PIXELS) {
+      return {x0: vx0, y0: vy0, x1: vx1, y1: vy1, framed: false};
+    }
+    // the shape of the view, in raster pixels
+    aspect = (view.xmax - view.xmin) / dx / ((view.ymax - view.ymin) / dy);
+    w = Math.min(vw, Math.round(Math.sqrt(WINDOW_MAX_PIXELS * aspect)));
+    h = Math.min(vh, Math.floor(WINDOW_MAX_PIXELS / w));
+    w = Math.min(vw, Math.floor(WINDOW_MAX_PIXELS / h));
+    cx = ((view.xmin + view.xmax) / 2 - b[0]) / dx;
+    cy = (b[3] - (view.ymin + view.ymax) / 2) / dy;
+    x0 = clampInt(Math.round(cx - w / 2), vx0, vx1 - w);
+    y0 = clampInt(Math.round(cy - h / 2), vy0, vy1 - h);
+    return {x0: x0, y0: y0, x1: x0 + w, y1: y0 + h, framed: true};
+  }
+
+  // An image made from reduced copies of the smoothed terrain and the fields,
+  // while a slider is dragged on a map that shows the raster in other
+  // coordinates, where a box of the raster wouldn't be a box on the map.
+  // A slider that changes the light or the exaggeration reshades the reduced
+  // terrain; the other fields are reduced copies of the latest ones, as in
+  // renderWindowDraft().
+  function renderReducedDraft(st, shading, full) {
+    var keys = getFieldKeys(shading);
+    var s = shading.settings;
+    var grid, current, missing = false;
     grid = st.draftFactor > 1 ?
       st.reduced[shading.smoothing] || (st.reduced[shading.smoothing] = reduceGrid(full, st.draftFactor)) : full;
     current = {shade: getDraftShade(st, grid, shading, keys.shade)};
@@ -500,8 +596,9 @@ export function HillshadeTool(gui) {
       ambient: current.openness ? s.ambient : 0,
       texture: current.texture ? s.texture : 0
     });
-    showPreview(st, internal.writeHillshadeRgba(internal.combineShadingFields(current, grid, s),
-      grid.valid, shading.style, shading.colors), st.draftFactor);
+    showPreview(st, makePreviewRaster(st.terrain.source, internal.writeHillshadeRgba(
+      internal.combineShadingFields(current, grid, s), grid.valid, shading.style, shading.colors),
+      st.draftFactor), null);
     if (missing) requestExact(st);
   }
 
@@ -529,10 +626,10 @@ export function HillshadeTool(gui) {
     return o.data;
   }
 
-  // @k 1 for the full image, or the reduction factor of a draft
-  function showPreview(st, rgba, k) {
+  // @inset see setRasterHillshadePreview()
+  function showPreview(st, raster, inset) {
     if (st != state) return;
-    setRasterHillshadePreview(targetLayer, makePreviewRaster(st.terrain.source, rgba, k));
+    setRasterHillshadePreview(targetLayer, raster, inset);
     gui.dispatchEvent('map-needs-refresh');
   }
 
@@ -598,6 +695,23 @@ function makePreviewRaster(source, rgba, k) {
   var dx = (b[2] - b[0]) / source.width * k;
   var dy = (b[3] - b[1]) / source.height * k;
   var bbox = k == 1 ? b.concat() : [b[0], b[3] - h * dy, b[0] + w * dx, b[3]];
+  return makeRgbaRaster(rgba, w, h, bbox, {});
+}
+
+// The box of renderWindowDraft(), as setRasterHillshadePreview() takes it
+// @win {x0, y0, x1, y1, framed}, in pixels of the elevation raster @source
+function makeInset(source, rgba, win) {
+  var b = source.bbox;
+  var dx = (b[2] - b[0]) / source.width, dy = (b[3] - b[1]) / source.height;
+  var w = win.x1 - win.x0, h = win.y1 - win.y0;
+  var bbox = [b[0] + win.x0 * dx, b[3] - win.y1 * dy, b[0] + win.x1 * dx, b[3] - win.y0 * dy];
+  // at full resolution, which the map scales down if it's zoomed out
+  var raster = makeRgbaRaster(rgba, w, h, bbox, {maxPixels: w * h});
+  return {preview: raster.view.preview, bbox: bbox, framed: win.framed};
+}
+
+function makeRgbaRaster(rgba, w, h, bbox, previewOpts) {
+  var dx = (bbox[2] - bbox[0]) / w, dy = (bbox[3] - bbox[1]) / h;
   var raster = {
     sourceId: 'hillshade-preview',
     interpretation: 'image',
@@ -614,6 +728,22 @@ function makePreviewRaster(source, rgba, k) {
     },
     view: {recipe: {type: 'rgb', bands: [0, 1, 2, 3], scaling: 'none'}}
   };
-  raster.view.preview = internal.createRasterPreview(raster, {});
+  raster.view.preview = internal.createRasterPreview(raster, previewOpts);
   return raster;
+}
+
+// The pixels of @rect {xa, ya, xb, yb} of @arr, a grid of @width columns
+function cropArray(arr, width, rect) {
+  var w = rect.xb - rect.xa, h = rect.yb - rect.ya;
+  var out = new arr.constructor(w * h);
+  var y, i;
+  for (y = 0; y < h; y++) {
+    i = (rect.ya + y) * width + rect.xa;
+    out.set(arr.subarray(i, i + w), y * w);
+  }
+  return out;
+}
+
+function clampInt(val, min, max) {
+  return Math.max(min, Math.min(max, val));
 }

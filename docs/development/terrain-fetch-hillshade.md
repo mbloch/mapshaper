@@ -1054,11 +1054,16 @@ command's settings from its options (`getHillshadeShading()`), so it shades
 exactly as the command would. It keeps the smoothed terrain for each
 smoothing level and the fields with the settings they were computed for.
 A setting that only recombines (colors, strengths, gamma, aerial) redraws
-at once. While a light or exaggeration slider is dragged on a raster
-larger than 1 million pixels, the preview is made from every k-th pixel
-of the terrain: the shade is recomputed on that, and the latest openness
-and texture fields are reduced and reused, even if they were computed for
-another exaggeration. When the slider is let go of, or a button is
+at once. While a slider is dragged, only the part of the raster in view is
+shaded, at full resolution, and drawn over the last full image. If that
+part is larger than 1 million pixels, a box of 1 million pixels with the
+shape of the view is shaded in the middle of it, with a thin frame. A light
+or exaggeration slider reshades the box (with a margin for the reach of
+the shade), and the latest openness and texture fields are cropped and
+reused, even if they were computed for another exaggeration. On a
+reprojected map, where a box of the raster isn't a box on the map, the
+drag preview is made instead from every k-th pixel of the terrain, so
+that it has about 1 million pixels. When the slider is let go of, or a button is
 clicked, the missing fields are computed at full size, on workers, and the
 preview is the same image that Apply makes (a browser test checks this).
 Only one full-size computation runs at a time; changes in the meantime

@@ -237,8 +237,39 @@ export function DisplayCanvas() {
       }
     }
     if (!preview || !preview.pixels || !bbox) return;
-    drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
+    if (layer.hillshade_inset) {
+      drawRasterWithInset(layer.hillshade_inset, opacity, function() {
+        drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
+      });
+    } else {
+      drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
+    }
   };
+
+  // A full-resolution part of a hillshade being previewed with newer settings
+  // (see setRasterHillshadePreview()). The rest of the hillshade is drawn
+  // around it rather than under it, so a transparent hillshade isn't drawn
+  // twice there.
+  function drawRasterWithInset(inset, opacity, drawRest) {
+    var pixRatio = GUI.getPixelRatio();
+    var t = _ext.getTransform(pixRatio);
+    var p1 = t.transform(inset.bbox[0], inset.bbox[3]);
+    var p2 = t.transform(inset.bbox[2], inset.bbox[1]);
+    _ctx.save();
+    _ctx.beginPath();
+    _ctx.rect(0, 0, _canvas.width, _canvas.height);
+    _ctx.rect(p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+    _ctx.clip('evenodd');
+    drawRest();
+    _ctx.restore();
+    drawRasterPreview(inset.preview, inset.bbox, true, null, opacity);
+    if (inset.framed) {
+      _ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+      _ctx.lineWidth = pixRatio;
+      _ctx.strokeRect(Math.round(p1[0]) + pixRatio / 2, Math.round(p1[1]) + pixRatio / 2,
+        Math.round(p2[0] - p1[0]) - pixRatio, Math.round(p2[1] - p1[1]) - pixRatio);
+    }
+  }
 
   // A recolored copy of a preview that the tone or blend panel is showing,
   // as function(preview, bbox) returning {canvas, width, height}, or null

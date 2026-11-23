@@ -8,13 +8,17 @@ var standIns = new WeakMap(); // elevation layer -> stand-in layer
 
 // @raster a hillshade raster covering the layer: the full image, or a reduced
 //   copy while a slider is being dragged
-export function setRasterHillshadePreview(layer, raster) {
+// @inset optional {preview, bbox, framed}: a full-resolution part of the
+//   hillshade with newer settings, drawn in place of that part of @raster
+//   (see drawRasterLayer()); framed if it doesn't cover the view
+export function setRasterHillshadePreview(layer, raster, inset) {
   var standIn = standIns.get(layer);
   if (!standIn) {
     standIn = {raster_type: 'grid'};
     standIns.set(layer, standIn);
   }
   standIn.raster = raster;
+  standIn.hillshade_inset = inset || null;
 }
 
 export function clearRasterHillshadePreview(layer) {
