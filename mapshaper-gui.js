@@ -15279,7 +15279,14 @@
   // A gray has no hue and black has no saturation either, so those components
   // are kept from @prev; otherwise a gray fed back to the picker (e.g. by a
   // panel echoing the committed color) would reset the hue slider to red.
+  // A color that @prev already makes keeps @prev whole: many HSB values round to
+  // the same RGB, and for a muted color the one read back from RGB can be a
+  // step or two of hue away, which would nudge the square and hue slider on
+  // every echo.
   function hexToPickerHsb(hex, prev) {
+    if (prev && hsbToHex(prev) == hex.toLowerCase()) {
+      return {h: prev.h, s: prev.s, b: prev.b};
+    }
     var hsb = hexToHsb(hex);
     if (prev && (hsb.s === 0 || hsb.b === 0)) hsb.h = prev.h;
     if (prev && hsb.b === 0) hsb.s = prev.s;
@@ -15599,7 +15606,16 @@
     var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
     var colorCell = El('div').addClass('label-split-cell label-color-row').appendTo(row);
     var aside = El('div').addClass('label-split-cell').appendTo(row);
-    var control = {row: row, aside: aside, chit: null, input: null, opacity: null, picker: null};
+    El('span').appendTo(colorCell).text(opts.label);
+    return Object.assign(makeColorControl(colorCell, opts), {row: row, aside: aside});
+  }
+
+  // The field of makeColorRow() and its picker, without the row and caption,
+  // in @parent: {box, chit, input, opacity, picker, setColor(), showColor()}.
+  // opts as for makeColorRow(); opts.label names the field if opts.ariaLabel doesn't.
+  function makeColorControl(parent, opts) {
+    var colorCell = parent;
+    var control = {box: null, chit: null, input: null, opacity: null, picker: null};
 
     // A color from the data can be any CSS color -- short hex, or a name, from
     // the command line -- and the swatch shows it, though only hex can be
@@ -15629,7 +15645,6 @@
       else control.picker.clearColor();
     }
 
-    El('span').appendTo(colorCell).text(opts.label);
     control.chit = El('div').addClass('label-color-chit').attr('role', 'button')
       .on('click', function() {
         control.picker.toggle();
@@ -15642,12 +15657,12 @@
         opts.onColor(color);
       });
     if (opts.noOpacity) {
-      makeColorField(colorCell, control.chit, control.input);
+      control.box = makeColorField(colorCell, control.chit, control.input);
     } else {
-      control.opacity = makeColorOpacityField(colorCell, control.chit, control.input, {
+      Object.assign(control, makeColorOpacityField(colorCell, control.chit, control.input, {
         onSet: opts.onOpacity,
         revert: opts.revert
-      }).opacity;
+      }));
     }
     control.picker = new ColorPicker(colorCell, {
       presetRows: layerColorPresetRows,
@@ -21509,6 +21524,10 @@
   //                                             getSeaScheme(), -classify sea=)
   //   landTransparent: boolean                  (fixed elevations: only the sea
   //                                             is colored)
+  //   landSolidColor: color or null             (fixed elevations: the land is
+  //                                             this one color, over the
+  //                                             scheme's own colors, which
+  //                                             are kept for the menu)
   //   continuous: boolean                       (sequential and diverging)
   //   pivot: 'auto', 'median', 'mean' or a number,
   //   neutral, continuousNeutral: boolean       (a pivot class, for classed
@@ -21571,6 +21590,9 @@
 
   // -classify's default null value for colors, as hex
   var defaultNullColor = '#eeeeee';
+
+  // solid land, until another color is picked
+  var defaultLandSolidColor = '#dddddd';
 
   var minSchemeColors = 2;
   var maxSchemeColors = 12;
@@ -21762,8 +21784,9 @@
     return scheme.continuous ? !!scheme.continuousNeutral : scheme.neutral !== false;
   }
 
+  // solid land is one class
   function isContinuousScheme(scheme) {
-    return scheme.type != 'categorical' && !!scheme.continuous;
+    return scheme.type != 'categorical' && !!scheme.continuous && !scheme.landSolidColor;
   }
 
   // A sequential ramp starts with at least this many stops, since -classify
@@ -22745,7 +22768,8 @@
   // next, and the first class reaching down to the sea (a blend, which only
   // -classify hypsometric= draws, is always continuous)
   function canClassifyElevations(scheme) {
-    return isElevationScheme(scheme) && !isBlendedScheme(scheme) && !isLandTransparent(scheme);
+    return isElevationScheme(scheme) && !isBlendedScheme(scheme) && !isLandTransparent(scheme) &&
+      !getLandSolidColor(scheme);
   }
 
   // The inner breaks of classed elevations: every stop but the first, or for
@@ -22782,20 +22806,39 @@
 
   // The sea of a fixed-elevation scheme, as a fixed-elevation scheme of its
   // own (with a bathymetric preset), for the tiles and the class breaks dialog;
-  // or null if the sea is left out
+  // or null if the sea is left out or is a solid color (see getSeaSolidColor())
   function getSeaScheme(scheme) {
     var sea = scheme.seaScheme;
-    if (!sea) return null;
+    if (!sea || sea.solidColor) return null;
     return Object.assign({type: 'sequential', method: 'elevation', nullColor: null}, sea,
       {field: scheme.field, raster: scheme.raster, bathymetric: true, continuous: sea.continuous !== false});
   }
 
-  // @sea: an edited sea scheme (see getSeaScheme()), or null to leave out the sea
+  // The color of a solid sea (-classify sea-colors=<color>), or null
+  function getSeaSolidColor(scheme) {
+    return scheme.seaScheme && scheme.seaScheme.solidColor || null;
+  }
+
+  // A solid sea of @color; without one, the sea's color, or else the
+  // shallowest color of its ramp (or of the first bathymetric preset), so that
+  // the map changes little
+  function setSeaSolidColor(scheme, color) {
+    var rgb = color ? internal.parseColor(color) : null;
+    var sea = getSeaScheme(scheme);
+    var colors = sea ? getSchemeColors(sea) : getElevationPresetColors(getBathymetricPresetNames()[0]);
+    var hex = rgb ? internal.formatColor(Object.assign({}, rgb, {a: 1})) :
+      getSeaSolidColor(scheme) || toHex(colors[colors.length - 1]);
+    return setSeaScheme(scheme, {solidColor: hex});
+  }
+
+  // @sea: an edited sea scheme (see getSeaScheme()), {solidColor} for a solid
+  // sea, or null to leave out the sea
   function setSeaScheme(scheme, sea) {
     var next = Object.assign({}, scheme, {
-      seaScheme: sea ? {elevationPreset: sea.elevationPreset, preset: sea.preset, stopColors: sea.stopColors || null,
+      seaScheme: !sea ? null : sea.solidColor ? {solidColor: sea.solidColor} : {
+        elevationPreset: sea.elevationPreset, preset: sea.preset, stopColors: sea.stopColors || null,
         stops: sea.stops || null, presetStops: sea.presetStops || null, lightness: getSchemeLightness(sea), n: sea.n,
-        continuous: sea.continuous !== false} : null
+        continuous: sea.continuous !== false}
     });
     // something has to be colored
     if (!sea && scheme.landTransparent) next.landTransparent = false;
@@ -22808,21 +22851,35 @@
     return setSeaScheme(scheme, name ? chooseElevationPreset(getSeaScheme(scheme) || {}, name) : null);
   }
 
-  // The name for the sea's menu: 'Transparent', a preset, or 'Custom'
+  // The name for the sea's menu: 'Transparent', 'Solid', a preset, or 'Custom'
   function getSeaLabel(scheme) {
     var sea = scheme.seaScheme;
-    return !sea ? 'Transparent' : sea.preset || 'Custom';
+    return !sea ? 'Transparent' : sea.solidColor ? 'Solid' : sea.preset || 'Custom';
   }
 
   function isLandTransparent(scheme) {
     return !!scheme.landTransparent;
   }
 
-  // Land without colors leaves only the sea, which then needs some
+  // Land without colors leaves only the sea, which then needs some. Either
+  // way, the land is no longer solid.
   function setLandTransparent(scheme, transparent) {
-    var next = Object.assign({}, scheme, {landTransparent: !!transparent});
+    var next = Object.assign({}, scheme, {landTransparent: !!transparent, landSolidColor: null});
     if (transparent && !next.seaScheme) next = chooseSeaPreset(next, getBathymetricPresetNames()[0]);
     return next;
+  }
+
+  // The color of solid land (-classify land-colors=<color>), or null
+  function getLandSolidColor(scheme) {
+    return isElevationScheme(scheme) && scheme.landSolidColor || null;
+  }
+
+  // Solid land of @color; without one, the land's color, or else a light gray
+  function setLandSolidColor(scheme, color) {
+    var rgb = color ? internal.parseColor(color) : null;
+    var hex = rgb ? internal.formatColor(Object.assign({}, rgb, {a: 1})) :
+      getLandSolidColor(scheme) || defaultLandSolidColor;
+    return Object.assign({}, scheme, {landTransparent: false, landSolidColor: hex});
   }
 
   // The preset for the climate across a set of [lon, lat] points (see
@@ -23122,7 +23179,8 @@
   // spec: {
   //   blend: {name: colors} or null   (a blend: the colors of its presets;
   //                                    presets left out keep their own)
-  //   colors: [...] or null           (one preset's colors)
+  //   colors: [...] or null           (one preset's colors; one color is
+  //                                    solid land)
   //   preset: name or null            (the preset the colors are edited from)
   //   stops: [...] or null            (in the band's units)
   //   classed: boolean                (classes from each stop up to the next,
@@ -23146,6 +23204,10 @@
       edited = Object.keys(edited).length > 0 ? edited : null;
       scheme = Object.assign(scheme, {blended: true, blendColors: edited, preset: edited ? null : blendedPresetName,
         continuous: true});
+    } else if (spec.colors && spec.colors.length == 1) {
+      // solid land keeps the scheme's own colors, for the menu
+      if (!internal.parseColor(spec.colors[0])) return null;
+      scheme = setLandSolidColor(chooseElevationPreset(base, base.elevationPreset || names[0]), spec.colors[0]);
     } else {
       name = findElevationPreset(names, spec.preset, spec.colors) ||
         findElevationPresetWithStops([base.elevationPreset].concat(names), spec, lyr) || base.elevationPreset || names[0];
@@ -23153,7 +23215,7 @@
       if (!scheme) return null;
       scheme.continuous = !spec.classed;
     }
-    if (spec.stops && spec.stops.join() != getElevationSchemeStops(scheme, lyr).join()) {
+    if (spec.stops && !getLandSolidColor(scheme) && spec.stops.join() != getElevationSchemeStops(scheme, lyr).join()) {
       scheme.stops = spec.stops.concat();
     }
     sea = spec.sea ? getSeaSchemeFromSpec(spec.sea, lyr) : null;
@@ -23220,8 +23282,12 @@
       colors && names.find(function(name) { return getElevationPresetColors(name).join() == colors.join(); }) || null;
   }
 
+  // One color is a solid sea
   function getSeaSchemeFromSpec(spec, lyr) {
     var names = getBathymetricPresetNames();
+    if (spec.colors && spec.colors.length == 1) {
+      return internal.parseColor(spec.colors[0]) ? {solidColor: toHex(spec.colors[0])} : null;
+    }
     var name = findElevationPreset(names, spec.preset, spec.colors) ||
       findElevationPresetWithStops(names, spec, lyr) || names[0];
     var sea = applySpecColors(chooseElevationPreset({}, name), name, spec);
@@ -23249,6 +23315,7 @@
       range: null,
       continuous: !(isElevationScheme(scheme) && scheme.continuous === false),
       landTransparent: false,
+      landSolidColor: null,
       lightness: 0,
       n: getFixedPresetStops(name).length
     });
@@ -23521,13 +23588,18 @@
   // they were edited, and land-classed and sea-classed. A blend is
   // land-colors=blended, or its recolored presets by name. Land without colors
   // leaves out land-colors=, and without a sea, land-colors= leaves it out.
+  // Solid land and a solid sea are land-colors= and sea-colors= with their one
+  // color.
   function formatElevationCommand(scheme, opts) {
     var parts = ['-classify', 'field=' + quoteCommandValue(scheme.field)];
     var lyr = opts && opts.layer;
     var land = !isLandTransparent(scheme);
+    var solid = getLandSolidColor(scheme);
     var sea = getSeaScheme(scheme);
     var colors = [];
-    if (land && isBlendedScheme(scheme)) {
+    if (land && solid) {
+      parts.push('land-colors=' + solid);
+    } else if (land && isBlendedScheme(scheme)) {
       // lightness changes every preset's colors
       getBlendRampColors(scheme).forEach(function(ramp) {
         if (scheme.blendColors && scheme.blendColors[ramp.name] || getSchemeLightness(scheme)) {
@@ -23539,10 +23611,12 @@
     } else if (land) {
       parts.push(formatElevationRampOptions('land', scheme, lyr));
     }
-    if (land && !isContinuousScheme(scheme)) parts.push('land-classed');
+    if (land && !solid && !isContinuousScheme(scheme)) parts.push('land-classed');
     if (sea) {
       parts.push(formatElevationRampOptions('sea', sea, lyr));
       if (!isContinuousScheme(sea)) parts.push('sea-classed');
+    } else if (getSeaSolidColor(scheme)) {
+      parts.push('sea-colors=' + getSeaSolidColor(scheme));
     }
     if (getSchemeNullColor(scheme)) parts.push('null-value=' + getSchemeNullColor(scheme));
     if (opts && opts.target) parts.push('target=' + opts.target);
@@ -24272,6 +24346,9 @@
     if (!info) return null;
     colors = getSchemeColors(scheme);
     breaks = info.breaks;
+    if (getLandSolidColor(scheme)) {
+      return [{from: tidy(info.min), to: tidy(info.max), color: getLandSolidColor(scheme)}];
+    }
     if (isElevationScheme(scheme)) {
       // a class from each stop up to the next, as continuous elevations start
       // at the first stop
@@ -24363,12 +24440,16 @@
   // them, which an import takes over the command's, so that they can be edited:
   // {units, stops, colors} for one preset, {units, stops, blend: {name: colors}}
   // with every preset's colors for a blend, and sea: {palette, stops, colors}
-  // or null. Transparent land has only the sea.
+  // or null. Transparent land has only the sea; solid land has one color, at 0.
   // A blend's classes are those of the preset it uses where it can't blend.
   function getElevationExportData(scheme, lyr) {
     var sea = getSeaScheme(scheme);
     var o = {units: getRasterUnitsLabel(lyr)};
-    if (!isLandTransparent(scheme)) {
+    if (getLandSolidColor(scheme)) {
+      // solid land: one color, at sea level
+      o.stops = [0];
+      o.colors = [getLandSolidColor(scheme)];
+    } else if (!isLandTransparent(scheme)) {
       o.stops = getElevationSchemeStops(scheme, lyr).map(tidy);
       if (isBlendedScheme(scheme)) {
         o.blend = {};
@@ -24382,6 +24463,8 @@
       stops: getElevationSchemeStops(sea, lyr).map(tidy),
       colors: getSchemeColors(sea)
     }, isContinuousScheme(sea) ? {} : {classed: true}) : null;
+    // a solid sea: one color, at sea level
+    if (getSeaSolidColor(scheme)) o.sea = {palette: null, stops: [0], colors: [getSeaSolidColor(scheme)]};
     return o;
   }
 
@@ -25452,7 +25535,7 @@
     var tabs = {};
     var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
         fieldLabel, methodRow, methodCell, methodLabel, customizeCell, paletteRow, countCell, paletteLabel,
-        seaRow, seaBtn, seaMenu, seaCustomizeBtn, seaBreaksDialog, customizeBtn, breaksDialog, exportBtns, importBtn, importDialog,
+        seaRow, seaBtn, seaMenu, seaCustomizeBtn, seaColorControl, seaBreaksDialog, customizeBtn, landColorControl, breaksDialog, exportBtns, importBtn, importDialog,
         noFieldsNote, controlsEl, vibranceRow, vibranceInput,
         longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
         rangeEl, rangeStrip, rangeShades, rangeHandles, clearRow,
@@ -25586,6 +25669,17 @@
         }
         renderMethodRow();
       }).addClass('color-scheme-customize-btn');
+      // solid land has its color here instead, like a solid sea
+      landColorControl = makeColorControl(customizeCell, {
+        label: 'Land',
+        noOpacity: true,
+        onColor: function(color) {
+          changeScheme(setLandSolidColor(scheme, color));
+        }
+      });
+      landColorControl.chit.on('click', function() {
+        picker.hide();
+      });
       breaksDialog = new ClassBreaksDialog(gui, {
         reversed: isElevationScheme,
         getScheme: function() { return scheme; },
@@ -25730,6 +25824,17 @@
         }
         render();
       }).addClass('color-scheme-customize-btn');
+      // a solid sea has its color here instead, like the No data color
+      seaColorControl = makeColorControl(seaCustomizeCell, {
+        label: 'Sea',
+        noOpacity: true,
+        onColor: function(color) {
+          changeScheme(setSeaSolidColor(scheme, color));
+        }
+      });
+      seaColorControl.chit.on('click', function() {
+        picker.hide();
+      });
       seaBreaksDialog = new ClassBreaksDialog(gui, {
         title: 'Sea depths',
         reversed: function() { return true; },
@@ -25742,10 +25847,16 @@
 
     function renderSeaControls(elevation) {
       var sea = getSeaScheme(scheme);
+      var solid = getSeaSolidColor(scheme);
       seaRow.classed('hidden', !elevation);
       if (!elevation || !sea) seaBreaksDialog.close();
+      if (!elevation || !solid) seaColorControl.picker.hide();
       if (!elevation) return;
-      renderStripButton(seaBtn, sea ? getSchemeColors(sea) : null, getSeaLabel(scheme), sea && isContinuousScheme(sea) ? sea : null);
+      renderStripButton(seaBtn, sea ? getSchemeColors(sea) : solid ? [solid] : null, getSeaLabel(scheme),
+        sea && isContinuousScheme(sea) ? sea : null);
+      seaCustomizeBtn.el.style.display = solid ? 'none' : '';
+      seaColorControl.box.el.style.display = solid ? '' : 'none';
+      if (solid) seaColorControl.showColor(solid);
       setPanelButtonDisabled(seaCustomizeBtn, !sea);
       seaCustomizeBtn.classed('selected', seaBreaksDialog.isOpen());
       seaBreaksDialog.update();
@@ -25761,12 +25872,17 @@
       }
     }
 
-    // Transparent, and the bathymetric presets; an edited one is Custom
+    // Transparent, a solid color, and the bathymetric presets; an edited one is
+    // Custom
     function renderSeaMenu() {
       var sea = getSeaScheme(scheme);
+      var solid = getSeaSolidColor(scheme);
       seaMenu.empty();
-      addPaletteItem('Transparent', null, !sea, function() {
+      addPaletteItem('Transparent', null, !sea && !solid, function() {
         changeScheme(chooseSeaPreset(scheme, null));
+      }, seaMenu);
+      addPaletteItem('Solid color', [solid || getSeaSolidColor(setSeaSolidColor(scheme))], !!solid, function() {
+        changeScheme(setSeaSolidColor(scheme));
       }, seaMenu);
       if (sea && !sea.preset) {
         addPaletteItem('Custom', getSchemeColors(sea), true, function() {}, seaMenu);
@@ -26007,9 +26123,14 @@
       methodLabel.text(numeric ? 'Breaks' : 'Method');
       methodSelect.attr('aria-label', numeric ? 'Class breaks' : 'Classification method');
       customizeCell.classed('hidden', !numeric);
+      var solid = elevation && getLandSolidColor(scheme);
+      customizeBtn.el.style.display = solid ? 'none' : '';
+      landColorControl.box.el.style.display = solid ? '' : 'none';
+      if (solid) landColorControl.showColor(solid);
+      else landColorControl.picker.hide();
+      if (elevation && (isLandTransparent(scheme) || solid)) breaksDialog.close();
       customizeBtn.classed('selected', breaksDialog.isOpen());
       setPanelButtonDisabled(customizeBtn, elevation && isLandTransparent(scheme));
-      if (elevation && isLandTransparent(scheme)) breaksDialog.close();
     }
 
     // Each tab keeps its own scheme while the panel is open, and starts from a
@@ -26214,6 +26335,10 @@
       var strip;
       if (isElevationScheme(scheme) && isLandTransparent(scheme)) {
         renderStripButton(paletteBtn, null, 'Transparent');
+        return;
+      }
+      if (getLandSolidColor(scheme)) {
+        renderStripButton(paletteBtn, [getLandSolidColor(scheme)], 'Solid');
         return;
       }
       // blended colors are drawn by the command, and have no stops of their own
@@ -26558,9 +26683,14 @@
 
     // Only presets have elevations; an edited one is Custom
     function renderElevationPaletteMenu() {
-      var transparent = isLandTransparent(scheme);
-      addPaletteItem('Transparent', null, transparent, function() {
+      var solid = getLandSolidColor(scheme);
+      // a preset is selected only when the land has its colors
+      var transparent = isLandTransparent(scheme) || !!solid;
+      addPaletteItem('Transparent', null, isLandTransparent(scheme), function() {
         changeScheme(setLandTransparent(scheme, true));
+      });
+      addPaletteItem('Solid color', [getLandSolidColor(setLandSolidColor(scheme))], !!solid, function() {
+        changeScheme(setLandSolidColor(scheme));
       });
       if (!scheme.preset) {
         addPaletteItem(isBlendedScheme(scheme) ? 'Custom blend' : 'Custom',

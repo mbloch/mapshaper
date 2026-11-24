@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shaded relief &middot; mapshaper docs</title>
+<meta name="description" content="A step-by-step guide to making shaded relief maps in Mapshaper&#39;s web app.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <button type="button" class="docs-nav-toggle" aria-expanded="false" aria-controls="docs-sidebar">
+    <span class="docs-nav-toggle-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path d="M4 7h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/>
+      </svg>
+    </span>
+    <span class="docs-nav-toggle-label">Menu</span>
+  </button>
+
+  <aside class="docs-sidebar" id="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/canyon.html">Canyon relief</a></li><li><a href="/docs/examples/globe.html">Globe locator map</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li><li><a href="/docs/examples/ny-state.html">New York map</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/shaded-relief.html" class="is-active">Shaded relief</a></li><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/smoothing.html">Smoothing</a></li><li><a href="/docs/guides/buffering.html">Buffering</a></li><li><a href="/docs/guides/styles-and-symbols.html">Styles and symbols</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Map projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/geojson-for-web-maps.html">Preparing data for web maps</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/geoparquet.html">GeoParquet</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Guides &rsaquo; Shaded relief</div>
+      <h1 id="shaded-relief">Shaded relief</h1>
+<p><img src="/docs/images/shaded-relief-intro.jpg" alt="Aerial imagery of a river canyon in Canyonlands, Utah, blended with a hillshade"></p>
+<p>Mapshaper now has a set of tools for making shaded relief maps:</p>
+<ul>
+<li>the <code>-fetch</code> command downloads elevation data and imagery</li>
+<li>the <code>-resample</code>, <code>-blur</code> and <code>-smooth-terrain</code> commands change the resolution and level of detail of elevation data</li>
+<li>the <strong>hillshade</strong> panel turns an elevation raster into a hillshade</li>
+<li>the <code>-deshadow</code> command removes shadows from aerial imagery</li>
+<li>the <strong>adjust colors</strong> panel modifies the colors and contrast of image layers</li>
+<li>the <strong>blend hillshade</strong> panel combines a hillshade with imagery or a tinted raster</li>
+<li>the <strong>color palette</strong> panel colors an elevation raster with hypsometric tints</li>
+</ul>
+<p>Panels are opened from a layer&#39;s options menu in the layers panel, and commands are typed in the console.</p>
+<h2 id="part-one-create-a-hillshade">Part one: create a hillshade</h2>
+<p>A hillshade is a raster layer that models the landscape with light and shadow, on its own or blended with aerial imagery or other layers. Cartographic hillshades aren&#39;t meant to be realistic renderings of sunlight on the land. They adjust the strength of relief to suit the map, sometimes exaggerating it, sometimes keeping it subtle, and they generalize detail so that terrain is legible and works as a base layer.</p>
+<h3 id="step-one-get-elevation-data-in-a-map-frame">Step one: get elevation data in a map frame</h3>
+<p>A <strong>map frame</strong> is a rectangle that defines the geographical extent of a map, its projection and its output size. When <code>-fetch</code> is run, the area to download, the coordinate system and the resolution are all taken from the frame.</p>
+<p>There are two ways to get started.</p>
+<h4 id="option-one-draw-a-frame-and-download-a-dem-to-fit-it">Option one: draw a frame and download a DEM to fit it</h4>
+<ol>
+<li><p>Turn on a basemap (<strong>Display &rarr; Basemaps</strong>) to draw over, and zoom to your area of interest.</p>
+</li>
+<li><p>Choose <strong>rectangles</strong> from the <strong>Draw</strong> menu in the layers panel. Click one corner of the area you want to map, then click the opposite corner. Drag the handles to adjust the rectangle.</p>
+<p><img src="/docs/images/shaded-relief-draw-frame.jpg" alt="A rectangle with drag handles drawn over a basemap of the Island in the Sky district of Canyonlands, Utah"></p>
+</li>
+<li><p>Reproject the rectangle to the projection you want for the finished map by typing a <code>proj</code> command in the console; for example, <code>proj merc</code> (Mercator, generally appropriate for small areas) or <code>proj lcc</code> (Lambert Conformal Conic, with parameters chosen to suit the extent of the rectangle). See <a href="/docs/guides/projections.html">Map projections</a>.</p>
+</li>
+<li><p>Click <strong>+ New frame</strong> in the layers panel, enter an output width and click <strong>Fit visible layers</strong>.</p>
+<p><img src="/docs/images/shaded-relief-frame-dialog.jpg" alt="The New map frame dialog, with fields for the frame name, output width, aspect ratio and margin, and buttons for fitting the frame to the visible layers or drawing it on the map"></p>
+</li>
+<li><p>Download elevation data for the frame:</p>
+<pre><code class="hljs language-bash">-fetch mapterhorn
+</code></pre>
+<p>The result should look something like this:</p>
+<p><img src="/docs/images/shaded-relief-fetch-dem.png" alt="A fetched elevation raster of a river canyon, drawn in grayscale inside a map frame"></p>
+</li>
+</ol>
+<p><strong>Choosing an elevation source.</strong> Run <code>-fetch sources</code> to see the full list. Many sources require attribution, and <code>-fetch</code> prints the credit to use.</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Coverage</th>
+<th>Resolution</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>mapterhorn</code></td>
+<td>World</td>
+<td>30 m, finer where national lidar is available</td>
+<td>Requires attribution.</td>
+</tr>
+<tr>
+<td><code>tilezen</code></td>
+<td>World</td>
+<td>about 10 m in the U.S., 30-90 m elsewhere</td>
+<td>Mostly public domain.</td>
+</tr>
+<tr>
+<td><code>copernicus</code></td>
+<td>World</td>
+<td>30 m</td>
+<td>Requires attribution.</td>
+</tr>
+<tr>
+<td><code>3dep</code></td>
+<td>United States</td>
+<td>10 m</td>
+<td>Public domain.</td>
+</tr>
+<tr>
+<td><code>3dep-1m</code></td>
+<td>United States</td>
+<td>1 m where there is lidar, 10 m or coarser elsewhere</td>
+<td>Public domain.</td>
+</tr>
+</tbody></table>
+<h4 id="option-two-import-your-own-dem">Option two: import your own DEM</h4>
+<ol>
+<li><p>Import a GeoTIFF containing elevation data.</p>
+</li>
+<li><p>If the DEM isn&#39;t in the projection you want for the map (for example, it uses lat-long coordinates or a different projected coordinate system), reproject it in one of two ways:</p>
+<ul>
+<li>If you already have a frame in the projection you want (made as in <a href="#option-one-draw-a-frame-and-download-a-dem-to-fit-it">option one</a>), drag the DEM into the frame in the layers panel. Mapshaper offers to reproject the DEM to match the frame; click <strong>Yes</strong>, then skip to step 4.</li>
+<li>Otherwise, type a <code>proj</code> command in the console, for example <code>proj merc</code> or <code>proj lcc</code>.</li>
+</ul>
+</li>
+<li><p>Click <strong>+ New frame</strong> and choose <strong>Fit visible layers</strong> to create a frame around the DEM.</p>
+</li>
+<li><p>Match the DEM&#39;s resolution to the frame&#39;s output size. With the DEM layer selected, run <a href="/docs/reference.html#-resample"><code>-resample</code></a> in the console:</p>
+<pre><code class="hljs language-bash">-resample 2x crop
+</code></pre>
+<p><code>2x</code> sets two raster pixels per pixel of the frame, the resolution that <code>-fetch</code> uses by default. <code>1x</code> matches the frame&#39;s pixels, and a value like <code>300dpi</code> sets a resolution for print. <code>crop</code> discards the part of the DEM outside the frame, apart from a small margin (10 pixels by default, settable with <code>bleed=</code>).</p>
+</li>
+</ol>
+<h3 id="step-two-create-a-hillshade-from-the-elevation-layer">Step two: create a hillshade from the elevation layer</h3>
+<p>Select the elevation layer and choose <strong>hillshade</strong> from its options menu. The hillshade panel opens, and the map shows a live preview of the shading. Use the panel&#39;s controls to customize your hillshade and finalize it by clicking <strong>Apply</strong>.</p>
+<p><img src="/docs/images/shaded-relief-hillshade-panel.jpg" alt="The hillshade panel, with Shading, Light, Terrain and Effects controls, beside a grayscale preview of a hillshade of a river canyon"></p>
+<h4 id="shading-opaque-or-transparent">Shading: opaque or transparent</h4>
+<p>The panel&#39;s <strong>Style</strong> setting controls how the hillshade is drawn.</p>
+<ul>
+<li><strong>Opaque</strong> colors every pixel, running from a <em>shadow</em> color through a <em>base</em> color, which is the color of flat ground, to a <em>highlight</em> color.</li>
+<li><strong>Transparent</strong> uses translucent black shadows and white highlights, so the layers below the hillshade show through. Flat ground is fully transparent.</li>
+</ul>
+<p>For the most control over how a hillshade is combined with another layer, make it opaque and use the <strong>blend hillshade</strong> panel (see <a href="#step-two-blend-the-hillshade-with-the-image">part two</a>).</p>
+<p><strong>Making a colored hillshade.</strong> You can use an opaque hillshade with custom shadow, base and highlight colors as a simple background layer for a map. Picking a cool shadow color and a warm highlight color gives the shading a hand-painted look, especially when smoothing is added.</p>
+<p><img src="/docs/images/shaded-relief-colored-hillshade.jpg" alt="The same terrain in the Dolomites in three diagonal bands: a hillshade with blue shadows and pale yellow highlights in the upper left, a pale warm-gray hillshade in the middle, and a hillshade with violet shadows and peach highlights in the lower right"></p>
+<h4 id="light">Light</h4>
+<ul>
+<li><strong>Azimuth</strong> is the direction of the main light source, in degrees clockwise from north. The default of 315° (northwest) lights the map from the upper left, which is the usual convention.</li>
+<li><strong>Altitude</strong> is the angle of the light above the horizon (default 45°, a common convention). Mapshaper&#39;s hillshade function doesn&#39;t cast shadows. Altitude changes the tones of slopes rather than the length of shadows.</li>
+<li><strong>Lighting</strong> sets the fill light. <strong>Hard</strong> uses the main light alone, <strong>Balanced</strong> (the default) adds fainter fill lights around it, and <strong>Soft</strong> adds still more.</li>
+</ul>
+<h4 id="terrain">Terrain</h4>
+<ul>
+<li><strong>Exaggeration</strong> adjusts the vertical scale of the terrain. The slider is centered on an automatic value based on the scale of the map (small-scale maps get more exaggeration).</li>
+<li><strong>Smoothing</strong> (Off, 1-4) removes noisy detail while keeping major landforms sharp. Mapshaper&#39;s smoothing function adapts to the terrain, smoothing more or less according to the average slope in the immediate area. Smoothing changes only the hillshade; to smooth elevations for other uses, like contours or tints, use the <a href="/docs/reference.html#-smooth-terrain"><code>-smooth-terrain</code></a> or <a href="/docs/reference.html#-blur"><code>-blur</code></a> console command. The figure below shows the difference between no smoothing and maximum smoothing.</li>
+</ul>
+<p><img src="/docs/images/shaded-relief-smoothing-compare.jpg" alt="Hilly terrain with no smoothing in the upper left and smoothing 4 in the lower right, divided by a diagonal line; the smoothed side has less fine detail, while the main ridges and valleys stay sharp"></p>
+<h4 id="effects">Effects</h4>
+<ul>
+<li><strong>Ambient</strong> darkens valleys, canyons and other places with a restricted view of the sky, adding depth to the image.</li>
+<li><strong>Texture</strong> adds <a href="https://www.textureshading.com/Home.html"><em>texture shading</em></a>, which emphasizes the pattern of ridges and valleys in uneven terrain.</li>
+<li><strong>Aerial</strong> reduces contrast at low elevations, so that lowlands fade and high mountains stand out.</li>
+<li><strong>Gamma</strong> controls the prominence of subtle terrain relative to major landforms. Values below 1 strengthen faint shading.</li>
+</ul>
+<h4 id="other-options">Other options</h4>
+<p>A few settings are only available in the console:</p>
+<ul>
+<li><code>-hillshade min-elevation=0</code> flattens the sea floor, so that bathymetry isn&#39;t shaded.</li>
+<li><a href="/docs/reference.html#-sharpen"><code>-sharpen</code></a> applies an unsharp mask to the finished hillshade, for a crisper appearance.</li>
+<li><code>-hillshade verbose</code> prints every settable parameter, including the automatic ones.</li>
+</ul>
+<h2 id="part-two-blend-a-hillshade-with-imagery">Part two: blend a hillshade with imagery</h2>
+<h3 id="step-one-prepare-the-imagery">Step one: prepare the imagery</h3>
+<h4 id="fetch-imagery">Fetch imagery</h4>
+<p>With the map frame in place (see <a href="#step-one-get-elevation-data-in-a-map-frame">part one</a>), run <code>-fetch</code> with the name of an imagery source, or import your own imagery.</p>
+<pre><code class="hljs language-bash">-fetch naip
+</code></pre>
+<p>Built-in imagery sources:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Coverage</th>
+<th>Resolution</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>naip</code></td>
+<td>Conterminous U.S.</td>
+<td>0.3-1 m</td>
+<td>Aerial photos. Use <code>year=</code> to choose a year; the default is the newest for each state. Public domain.</td>
+</tr>
+<tr>
+<td><code>usgs</code></td>
+<td>U.S. (world at small scales)</td>
+<td>about 1 m</td>
+<td>Faster than <code>naip</code>, mostly NAIP from 2017-2021. Public domain.</td>
+</tr>
+<tr>
+<td><code>sentinel2</code></td>
+<td>World</td>
+<td>10 m</td>
+<td>Satellite image, season of <code>year=</code> (default is last year). Requires attribution.</td>
+</tr>
+<tr>
+<td><code>landsat</code></td>
+<td>World</td>
+<td>30 m</td>
+<td>Satellite image. Public domain.</td>
+</tr>
+<tr>
+<td><code>eox</code></td>
+<td>World</td>
+<td>10 m</td>
+<td>Cloudless mosaic of Sentinel-2 images. 2018 and later editions are non-commercial.</td>
+</tr>
+<tr>
+<td><code>bluemarble</code></td>
+<td>World</td>
+<td>500 m</td>
+<td>A smooth, cloud-free image for world and continental maps.</td>
+</tr>
+</tbody></table>
+<h4 id="remove-shadows-from-aerial-imagery">Remove shadows from aerial imagery</h4>
+<p>Aerial photos often include shadows cast by the terrain. These tend to clash with the hillshade, which is almost always lit from a different direction. The experimental <a href="/docs/reference.html#-deshadow"><code>-deshadow</code></a> command uses a DEM to find shadowed areas and dark slopes, and relights them to a consistent brightness. With the imagery layer selected, run it with the name of a DEM layer.</p>
+<pre><code class="hljs language-bash">-deshadow dem=mapterhorn
+</code></pre>
+<p>Add <code>despeckle</code> to also brighten small dark spots that are too fine for the DEM to account for. It works best on bare rock and areas without visible tree shadows.</p>
+<p><img src="/docs/images/shaded-relief-deshadow-compare.jpg" alt="Aerial imagery of a river canyon, with the original image in the upper left and the image after -deshadow in the lower right, divided by a diagonal line"></p>
+<p>Composites of images taken at different times of day (like the built-in <code>naip</code> and <code>usgs</code> sources) combine regions with different sun angles. Mapshaper tries to detect these regions and correct each for its own sun angle, but detection isn&#39;t fully reliable. Results are also less reliable on images without distinct shadows.</p>
+<h4 id="adjust-the-colors-of-the-imagery">Adjust the colors of the imagery</h4>
+<p>Most imagery benefits from color adjustment before blending. Select the imagery layer and choose <strong>adjust colors</strong> from its options menu to open the <strong>Color &amp; tone</strong> panel.</p>
+<h3 id="step-two-blend-the-hillshade-with-the-image">Step two: blend the hillshade with the image</h3>
+<p>Select the imagery layer and choose <strong>blend hillshade</strong> from its options menu. The item appears when there&#39;s a hillshade in the same map frame. The panel controls how the hillshade&#39;s shadows and highlights are combined with the image.</p>
+<p><img src="/docs/images/shaded-relief-blend-panel.jpg" alt="The Blend hillshade panel, with Strength, Chroma and Color settings for shadows and highlights, beside a preview of aerial imagery of a glaciated volcano blended with a hillshade"></p>
+<p><strong>Strength</strong> sets the intensity of the shading. <strong>Chroma</strong> controls how the shading affects the image&#39;s colors. At 0, it works like an overlay of translucent black shadows and white highlights, which dulls shadowed areas and makes highlights look hazy; at 1, it works like a luminosity blend mode, changing lightness but keeping the image&#39;s color saturation. <strong>Color</strong> tints the shading wherever chroma is below 1.</p>
+<p><img src="/docs/images/shaded-relief-blend-result.jpg" alt="A river canyon in three diagonal bands: a hillshade in the upper left, the blend of the hillshade with aerial imagery in the middle, and the aerial imagery alone in the lower right"></p>
+<h2 id="part-three-blend-a-hillshade-with-hypsometric-tints">Part three: blend a hillshade with hypsometric tints</h2>
+<p>A <strong>hypsometric tint</strong> uses a color ramp to vary color by elevation. The example below colors lowlands green, highlands tan and the highest peaks white, like a relief map in an atlas.</p>
+<p><img src="/docs/images/shaded-relief-tint-scotland.jpg" alt="A map of northern Scotland, with hypsometric tints blended with a hillshade"></p>
+<p>First, make a hillshade (see <a href="#step-two-create-a-hillshade-from-the-elevation-layer">part one</a>), then choose <strong>color palette</strong> from the DEM&#39;s options menu and pick a hypsometric color ramp from the <strong>Elevation</strong> tab. To fit the colors to the terrain of your map, click <strong>Customize</strong> to open the <strong>Elevations and colors</strong> dialog, where you can move, add, remove and recolor the color stops.</p>
+<p><img src="/docs/images/shaded-relief-elevation-breaks.jpg" alt="The Elevations and colors dialog, with a histogram of elevations, a column of color stops with editable break values and the share of land pixels in each band, beside a mountain range tinted from tan valleys to white peaks"></p>
+<p>Finish by blending the tinted elevation layer with a hillshade, as in <a href="#step-two-blend-the-hillshade-with-the-image">part two</a>.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="/docs/reference.html#-fetch"><code>-fetch</code></a>, <a href="/docs/reference.html#-hillshade"><code>-hillshade</code></a>, <a href="/docs/reference.html#-blend"><code>-blend</code></a>, <a href="/docs/reference.html#-tone"><code>-tone</code></a>, <a href="/docs/reference.html#-deshadow"><code>-deshadow</code></a>, <a href="/docs/reference.html#-resample"><code>-resample</code></a>, <a href="/docs/reference.html#-blur"><code>-blur</code></a>, <a href="/docs/reference.html#-sharpen"><code>-sharpen</code></a>, <a href="/docs/reference.html#-smooth-terrain"><code>-smooth-terrain</code></a> and <a href="/docs/reference.html#-classify"><code>-classify</code></a> in the command reference</li>
+<li><a href="/docs/examples/canyon.html">Canyon relief</a>, a shorter worked example</li>
+<li><a href="/docs/guides/projections.html">Map projections</a></li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/guides/shaded-relief.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#part-one-create-a-hillshade">Part one: create a hillshade</a></li><li class="lvl-3"><a href="#step-one-get-elevation-data-in-a-map-frame">Step one: get elevation data in a map frame</a></li><li class="lvl-3"><a href="#step-two-create-a-hillshade-from-the-elevation-layer">Step two: create a hillshade from the elevation layer</a></li><li class="lvl-2"><a href="#part-two-blend-a-hillshade-with-imagery">Part two: blend a hillshade with imagery</a></li><li class="lvl-3"><a href="#step-one-prepare-the-imagery">Step one: prepare the imagery</a></li><li class="lvl-3"><a href="#step-two-blend-the-hillshade-with-the-image">Step two: blend the hillshade with the image</a></li><li class="lvl-2"><a href="#part-three-blend-a-hillshade-with-hypsometric-tints">Part three: blend a hillshade with hypsometric tints</a></li><li class="lvl-2"><a href="#see-also">See also</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

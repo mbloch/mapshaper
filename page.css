@@ -6222,6 +6222,7 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	background-color: var(--lt-theme-col);
 }
 
+/* a solid sea has a color field instead of the Customize button */
 /* Class breaks dialog (gui-class-breaks-dialog.mjs): to the left of the color
    scheme panel, which is 216px wide with 12px of padding and a border on each
    side, 36px from the right */

@@ -7106,7 +7106,8 @@
   function getRasterSeaTable(palette) {
     var ramp = palette.seaRamp;
     if (!ramp) return null;
-    if (!ramp.classed) {
+    // a solid sea (one color) is one class
+    if (!ramp.classed && ramp.colors.length > 1) {
       return getRasterPaletteTable({type: 'sequential', continuous: true, interpolation: 'oklch',
         breaks: ramp.breaks, colors: ramp.colors});
     }
@@ -39057,11 +39058,11 @@ ${svg}
     return layerObj;
   }
 
+  // The raster is clipped to the frame's visible area, which is wider or taller
+  // than frame.bbox when the bbox's shape differs from the page's rounded size;
+  // clipping to the bbox leaves part of a pixel empty at two edges
   function renderRasterForSVG(raster, frame, opts) {
-    var rasterBbox = getRasterBBox(raster);
-    var rasterBounds = new Bounds(rasterBbox);
-    var clipBounds = new Bounds(frame.bbox);
-    var bbox = intersectBboxes(rasterBounds.toArray(), clipBounds.toArray()) || [0, 0, 0, 0];
+    var bbox = intersectBboxes(getRasterBBox(raster), getFrameViewBounds(frame).toArray()) || [0, 0, 0, 0];
     var svgBbox = transformRasterBboxForSVG(bbox, frame);
     var size = getSvgRasterOutputSize(raster, bbox, svgBbox, opts);
     return {
@@ -39100,11 +39101,17 @@ ${svg}
     };
   }
 
+  function getFrameViewBounds(frame) {
+    var page = getFramePageBounds(frame);
+    return new Bounds(frame.bbox).fillOut(page.width() / page.height());
+  }
+
+  function getFramePageBounds(frame) {
+    return frame.bbox2 ? new Bounds(frame.bbox2) : new Bounds(0, 0, frame.width, frame.height);
+  }
+
   function transformRasterBboxForSVG(bbox, frame) {
-    var srcBounds = new Bounds(frame.bbox);
-    var destBounds = frame.bbox2 ? new Bounds(frame.bbox2) : new Bounds(0, 0, frame.width, frame.height);
-    srcBounds.fillOut(destBounds.width() / destBounds.height());
-    var fwd = srcBounds.getTransform(destBounds, frame.invert_y);
+    var fwd = getFrameViewBounds(frame).getTransform(getFramePageBounds(frame), frame.invert_y);
     var p1 = fwd.transform(bbox[0], bbox[3]);
     var p2 = fwd.transform(bbox[2], bbox[1]);
     return [p1[0], p1[1], p2[0], p2[1]];
@@ -51056,6 +51063,7 @@ ${css.join('\n')}
 
   var FrameMembers = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    coordinateSystemsConflict: coordinateSystemsConflict,
     findLayersNeedingReprojection: findLayersNeedingReprojection,
     getCoordinateSpace: getCoordinateSpace,
     getFrameCrsInfo: getFrameCrsInfo,
@@ -54963,7 +54971,7 @@ ${css.join('\n')}
         type: 'number'
       })
       .option('land-colors', {
-        describe: '[raster] elevation colors: desert, steppe, tropical, temperate, boreal, polar, blended (by climate), atlas, lowland, highland, or a list of colors (with land-breaks=); recolor a blend\'s presets with land-colors=desert:...,polar:...',
+        describe: '[raster] elevation colors: desert, steppe, tropical, temperate, boreal, polar, blended (by climate), atlas, lowland, highland, one color (solid land), or a list of colors (with land-breaks=); recolor a blend\'s presets with land-colors=desert:...,polar:...',
         type: 'colors'
       })
       .option('land-breaks', {
@@ -54975,7 +54983,7 @@ ${css.join('\n')}
         type: 'flag'
       })
       .option('sea-colors', {
-        describe: '[raster] colors of the sea (at or below 0 and open to the edge, or a known inland sea): transparent (default with land-colors=), land, pale, blue, gray, or a list of colors (with sea-breaks=)',
+        describe: '[raster] colors of the sea (at or below 0 and open to the edge, or a known inland sea): transparent (default with land-colors=), land, pale, blue, gray, one color (a solid sea), or a list of colors (with sea-breaks=)',
         type: 'colors'
       })
       .option('sea-breaks', {
@@ -56753,6 +56761,27 @@ ${css.join('\n')}
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
 
+    parser.command('resample')
+      .describe('change the resolution of a raster layer')
+      .option('resolution', {
+        DEFAULT: true,
+        describe: 'raster pixels per frame pixel (e.g. 2x), dots per inch of the frame (150dpi), percentage (50%) or width (4000px)'
+      })
+      .option('crop', {
+        describe: 'crop to the map frame, plus a margin (see bleed=)',
+        type: 'flag'
+      })
+      .option('bleed', {
+        describe: 'margin around the frame when cropping, in frame pixels (default is 10); implies crop',
+        type: 'number'
+      })
+      .option('method', {
+        describe: 'average, bilinear, bicubic, bspline or nearest (default is average when reducing; when enlarging, bspline for elevation and other data, bicubic for 8-bit images; nearest for categories)'
+      })
+      .option('name', nameOpt)
+      .option('target', targetOpt)
+      .option('no-replace', noReplaceOpt);
+
     parser.command('sharpen')
       .describe('sharpen an image or hillshade with an unsharp mask')
       .option('amount', {
@@ -57493,12 +57522,20 @@ ${css.join('\n')}
     return val;
   }
 
+  // Missing dates are written as zeros, spaces or NUL bytes; these and any
+  // other unreadable dates (e.g. "2024    " or "20241301") are imported as null.
   function readDate(bin, size) {
-    var str = bin.readCString(size),
-        yr = str.substr(0, 4),
-        mo = str.substr(4, 2),
-        day = str.substr(6, 2);
-    return new Date(Date.UTC(+yr, +mo - 1, +day));
+    var match = /^(\d{4})(\d{2})(\d{2})$/.exec(bin.readCString(size).trim()),
+        d, mo, day;
+    if (!match) return null;
+    mo = +match[2] - 1;
+    day = +match[3];
+    d = new Date(0);
+    // setUTCFullYear() doesn't map years 0-99 to 1900-1999, unlike Date.UTC()
+    d.setUTCFullYear(+match[1], mo, day);
+    // reject out-of-range months and days instead of rolling them over
+    if (d.getUTCMonth() != mo || d.getUTCDate() != day) return null;
+    return d;
   }
 
   // cf. http://code.google.com/p/stringencoding/
@@ -64770,8 +64807,9 @@ ${css.join('\n')}
 
   // -classify land-colors=: the hypsometric presets as raster palettes, at their
   // elevations (see hypsometric-schemes.mjs), a blend of the climate presets
-  // that varies across the map by climate (see hypsometric-climate.mjs), or
-  // custom colors at elevations of their own.
+  // that varies across the map by climate (see hypsometric-climate.mjs),
+  // custom colors at elevations of their own, or one color (solid land: a
+  // custom palette of one class).
   //
   // A blended palette is an ordinary continuous palette (the ramp of the preset
   // with the most weight across the raster, for anything that draws it without
@@ -64818,8 +64856,9 @@ ${css.join('\n')}
     }
     if (key == CUSTOM_NAME) {
       main = customizeRamp(getCustomRamp(), opts.landColors, opts.landBreaks,
-        {name: 'the land', colors: names.landColors, breaks: names.landBreaks});
-      return Object.assign({band: band}, opts.landClassed ? getRampClasses(main) : main, {hypsometric: CUSTOM_NAME});
+        {name: 'the land', colors: names.landColors, breaks: names.landBreaks, solid: !!opts.landColors && opts.landColors.length == 1});
+      return Object.assign({band: band}, opts.landClassed || main.colors.length == 1 ? getRampClasses(main) : main,
+        {hypsometric: CUSTOM_NAME});
     }
     if (key != BLEND_NAME) {
       preset = getPresetName(key);
@@ -64915,12 +64954,17 @@ ${css.join('\n')}
       out.land = BLEND_NAME;
       out.names.land = 'land-colors=' + BLEND_NAME;
       out.blendColors = lists;
+    } else if (list.length == 1 && !presets.includes(String(list[0]).toLowerCase())) {
+      // one color: solid land
+      if (!parseColor(list[0])) {
+        stop$1('Unknown land-colors= value: ' + list[0] + ' (expected ' + presets.join(', ') + ', a color, or a list of colors)');
+      }
+      if (out.landBreaks) stop$1('land-breaks= works with two or more land colors; one color is solid land');
+      out.land = CUSTOM_NAME;
+      out.landColors = list;
+      out.landBreaks = [0];
     } else if (list.length == 1) {
       key = String(list[0]).toLowerCase();
-      if (!presets.includes(key)) {
-        stop$1(parseColor(key) ? 'land-colors= needs two or more colors, or the name of a preset' :
-          'Unknown land-colors= value: ' + list[0] + ' (expected ' + presets.join(', ') + ', or a list of colors)');
-      }
       out.land = key;
       out.names.land = 'land-colors=' + key;
     } else {
@@ -64937,16 +64981,19 @@ ${css.join('\n')}
   // their depths
   function readSeaColors(list, out) {
     var names = getSeaOptionNames();
-    var key;
     if (listHasRampNames(list)) {
       stop$1('sea-colors= takes a preset or a list of colors, without names');
-    } else if (list.length == 1) {
-      key = String(list[0]).toLowerCase();
-      if (!names.includes(key)) {
-        stop$1(parseColor(key) ? 'sea-colors= needs two or more colors, or the name of a preset' :
-          'Unknown sea-colors= value: ' + list[0] + ' (expected ' + names.join(', ') + ', or a list of colors)');
+    } else if (list.length == 1 && !names.includes(String(list[0]).toLowerCase())) {
+      // one color: a solid sea, at sea level
+      if (!parseColor(list[0])) {
+        stop$1('Unknown sea-colors= value: ' + list[0] + ' (expected ' + names.join(', ') + ', a color, or a list of colors)');
       }
-      out.sea = key;
+      if (out.seaBreaks) stop$1('sea-breaks= works with two or more sea colors; one color is a solid sea');
+      out.sea = CUSTOM_NAME;
+      out.seaColors = list;
+      out.seaBreaks = [0];
+    } else if (list.length == 1) {
+      out.sea = String(list[0]).toLowerCase();
     } else {
       if (!out.seaBreaks) stop$1('sea-colors= with a list of colors needs sea-breaks=, a depth for each color');
       out.sea = CUSTOM_NAME;
@@ -65061,7 +65108,7 @@ ${css.join('\n')}
         stop$1(labels.colors + ' and ' + labels.breaks + ' need the same number of values, a color at each ' + unit);
       }
       n = colors.length;
-      if (n < 2) stop$1(labels.colors + ' needs two or more colors');
+      if (n < 2 && !labels.solid) stop$1(labels.colors + ' needs two or more colors');
     } else if (colors && colors.length != n) {
       stop$1(labels.colors + ' needs ' + n + ' colors, one at each ' + unit + ' of ' + labels.name);
     } else if (breaks && breaks.length != n) {
@@ -65105,6 +65152,8 @@ ${css.join('\n')}
   //                name, and palette.seaRamp = {breaks, colors} its depths, in
   //                the band's units, which color the sea continuously
   //   custom colors, at the depths of sea-breaks=: palette.sea is 'custom'
+  //   one color, a solid sea: also 'custom', a ramp of the color at 0, which
+  //                colors the sea as one class (see getRasterSeaTable())
   // sea-breaks= also moves a preset's depths, which makes it custom too.
   // sea-classed gives the sea classes (seaRamp.classed), which mirror the
   // land's: from each depth down to the next (see getRasterSeaTable()). A
@@ -65119,7 +65168,7 @@ ${css.join('\n')}
     var sea = opts.sea || (opts.land ? 'transparent' : 'land');
     var custom = !!(opts.seaColors || opts.seaBreaks);
     var meters = getVerticalUnitMeters(getRasterGrid(raster).verticalUnits) || 1;
-    var name, stops, ramp;
+    var name, stops, ramp, classed;
     if (sea == CUSTOM_NAME) {
       ramp = {breaks: [], colors: []};
     } else if (sea == 'transparent') {
@@ -65135,7 +65184,8 @@ ${css.join('\n')}
     }
     if (ramp) {
       ramp = custom ? customizeRamp(ramp, opts.seaColors, opts.seaBreaks,
-        {name: name ? names.sea + sea : 'the sea', colors: names.seaColors, breaks: names.seaBreaks, stop: 'depth'}) : ramp;
+        {name: name ? names.sea + sea : 'the sea', colors: names.seaColors, breaks: names.seaBreaks, stop: 'depth',
+          solid: sea == CUSTOM_NAME}) : ramp;
       if (custom) palette.sea = CUSTOM_NAME;
       palette.seaRamp = {breaks: ramp.breaks, colors: ramp.colors};
       if (opts.seaClassed) palette.seaRamp.classed = true;
@@ -65144,10 +65194,11 @@ ${css.join('\n')}
       palette.seaSeeds = getInlandSeaSeeds(crs || null);
     }
     if (palette.land == 'transparent') {
-      if (!palette.seaRamp) stop$1('A palette of only the sea needs sea colors: sea-colors=pale, blue, gray, or a list of colors');
-      palette.breaks = palette.seaRamp.classed ? palette.seaRamp.breaks.slice(0, -1) : palette.seaRamp.breaks.concat();
+      if (!palette.seaRamp) stop$1('A palette of only the sea needs sea colors: sea-colors=pale, blue, gray, a color, or a list of colors');
+      classed = palette.seaRamp.classed || palette.seaRamp.colors.length == 1;
+      palette.breaks = classed ? palette.seaRamp.breaks.slice(0, -1) : palette.seaRamp.breaks.concat();
       palette.colors = palette.seaRamp.colors.concat();
-      if (palette.seaRamp.classed) {
+      if (classed) {
         palette.continuous = false;
         delete palette.interpolation;
       }
@@ -100477,13 +100528,13 @@ ${css.join('\n')}
     getTileUrl: getTileUrl
   });
 
-  var DEFAULT_BLEED = 10; // frame pixels
+  var DEFAULT_BLEED$1 = 10; // frame pixels
   var DEFAULT_WIDTH = 800; // nominal width of a map without a frame
   // The GUI on high-density screens and PNG output draw two device pixels per
   // frame pixel; a coarser raster would be blurred by upsampling.
   var DEFAULT_RASTER_RES = 2;
   var DEFAULT_MAX_TILES = 500;
-  var MAX_OUTPUT_PIXELS = 48e6;
+  var MAX_OUTPUT_PIXELS$1 = 48e6;
   var EXTENT_SAMPLES = 20; // samples along each side of the extent, minus one
   var METERS_PER_DEGREE = 6371008.8 * Math.PI / 180;
 
@@ -100514,7 +100565,7 @@ ${css.join('\n')}
     var targetDataset = target ? target.dataset : null;
     var frame = targetDataset ? resolveFrameForDataset(catalog, targetDataset) : getDefaultFrame(catalog);
     var res = opts.raster_res > 0 ? opts.raster_res : DEFAULT_RASTER_RES;
-    var bleed = opts.bleed >= 0 ? opts.bleed : DEFAULT_BLEED;
+    var bleed = opts.bleed >= 0 ? opts.bleed : DEFAULT_BLEED$1;
     var crsInfo, bbox, widthPx, frameData, unitsPerPx, expanded, width, height;
     if (frame && !opts.bbox) {
       crsInfo = getFrameCrsInfo(catalog, frame) || getDatasetCrsInfo(frame.dataset);
@@ -100547,7 +100598,7 @@ ${css.join('\n')}
     ];
     width = Math.max(1, Math.round((expanded[2] - expanded[0]) / unitsPerPx * res));
     height = Math.max(1, Math.round((expanded[3] - expanded[1]) / unitsPerPx * res));
-    if (width * height > MAX_OUTPUT_PIXELS) {
+    if (width * height > MAX_OUTPUT_PIXELS$1) {
       stop$1('The requested raster is too large (' + width + 'x' + height + ' pixels). Use a smaller raster-res= value');
     }
     return {
@@ -100684,7 +100735,7 @@ ${css.join('\n')}
           width: extent.width,
           height: extent.height,
           raster_res: extent.rasterRes,
-          bleed: opts.bleed >= 0 ? opts.bleed : DEFAULT_BLEED
+          bleed: opts.bleed >= 0 ? opts.bleed : DEFAULT_BLEED$1
         }]
       },
       layers: [lyr]
@@ -112721,6 +112772,604 @@ ${css.join('\n')}
 
   }
 
+  // Resampling of a north-up raster grid onto another north-up grid in the same
+  // coordinate system (see -resample). Each axis gets a table of the source
+  // pixels and weights that make up each output column or row, so the grid is
+  // resampled in two separable passes. Invalid pixels get no weight, and each
+  // output pixel is divided by the weight of the valid pixels it read; passing
+  // the weights through both passes keeps that division exact in 2D.
+  //
+  // Methods:
+  //   average   the source pixels under the output pixel, weighted by area
+  //   bilinear  a triangle filter, widened when reducing so nothing is skipped
+  //   bicubic   Catmull-Rom, widened when reducing like bilinear. Sharp, but
+  //             its negative weights overshoot at sharp edges: a hillshade of
+  //             an enlarged DEM shows sharp crests as beaded lines
+  //   bspline   cubic B-spline, widened like bilinear. Its weights are all
+  //             positive and its slopes change smoothly, so a hillshade of an
+  //             enlarged DEM has neither beads nor bilinear's sawtooth crests;
+  //             it is softer (about a Gaussian of 0.6 source pixels)
+  //   nearest   the source pixel under the output pixel's center
+  //   auto      average when reducing, and @enlargeMethod when enlarging, by
+  //             axis
+
+  var RESAMPLE_METHODS = ['average', 'bilinear', 'bicubic', 'bspline', 'nearest'];
+
+  // With negative bicubic weights, an output pixel next to many invalid pixels
+  // can be left with little weight, and dividing by it would amplify noise
+  var MIN_VALID_WEIGHT = 0.25;
+
+  // @bbox, @width, @height the output grid
+  // @enlargeMethod the method of 'auto' when enlarging (default is bspline)
+  // Returns a new grid; output pixels whose centers fall on invalid or missing
+  // source pixels have a coverage of 0 and samples of 0
+  function resampleRasterGrid(grid, bbox, width, height, methodArg, enlargeMethod) {
+    var method = methodArg || 'auto';
+    var enlarge = enlargeMethod || 'bspline';
+    var rb = grid.bbox;
+    var srcDx = (rb[2] - rb[0]) / grid.width;
+    var srcDy = (rb[3] - rb[1]) / grid.height;
+    var xRatio = (bbox[2] - bbox[0]) / width / srcDx;
+    var yRatio = (bbox[3] - bbox[1]) / height / srcDy;
+    var xTable = getAxisTable((bbox[0] - rb[0]) / srcDx, xRatio, width, grid.width, getAxisMethod(method, xRatio, enlarge));
+    var yTable = getAxisTable((rb[3] - bbox[3]) / srcDy, yRatio, height, grid.height, getAxisMethod(method, yRatio, enlarge));
+    var validity = getRasterValidityMask(grid);
+    var coverage = getResampledCoverage(xTable, yTable, validity, grid.width);
+    var samples = new grid.samples.constructor(width * height * grid.bands);
+    var out;
+    if (method == 'nearest') {
+      copyNearestSamples(grid, samples, xTable, yTable, coverage);
+    } else {
+      resampleBands(grid, samples, xTable, yTable, validity, coverage);
+    }
+    out = Object.assign({}, grid, {
+      width: width,
+      height: height,
+      samples: samples,
+      coverage: coverage,
+      bbox: bbox.concat(),
+      transform: [(bbox[2] - bbox[0]) / width, 0, bbox[0], 0, -(bbox[3] - bbox[1]) / height, bbox[3]]
+    });
+    if (!grid.coverage && coverage.indexOf(0) == -1) delete out.coverage;
+    return out;
+  }
+
+  function getAxisMethod(method, ratio, enlargeMethod) {
+    if (RESAMPLE_METHODS.includes(method)) return method;
+    if (method != 'auto') stop$1('Unsupported resampling method:', method);
+    return ratio < 1 ? enlargeMethod : 'average';
+  }
+
+  // The source pixels and weights of each of @n output pixels along one axis
+  // @start position of the output's first edge, in source pixels
+  // @ratio source pixels per output pixel
+  // @srcN source pixels along the axis
+  // Returns {n, offsets, indexes, weights, centers, min, max}: the entries of
+  // output pixel i are offsets[i] to offsets[i + 1]; centers[i] is the source
+  // pixel under its center (see getCenterPixel()), or -1; min and max bound
+  // the indexes
+  function getAxisTable(start, ratio, n, srcN, method) {
+    var offsets = new Int32Array(n + 1);
+    var centers = new Int32Array(n);
+    var indexes = [], weights = [];
+    var min = srcN, max = -1;
+    var i, u, first, count, sum, j;
+    for (i = 0; i < n; i++) {
+      u = start + (i + 0.5) * ratio;
+      centers[i] = getCenterPixel(u, ratio, srcN);
+      first = indexes.length;
+      addAxisWeights(u, ratio, srcN, method, indexes, weights);
+      count = indexes.length - first;
+      sum = 0;
+      for (j = first; j < first + count; j++) sum += weights[j];
+      for (j = first; j < first + count; j++) {
+        weights[j] /= sum;
+        if (indexes[j] < min) min = indexes[j];
+        if (indexes[j] > max) max = indexes[j];
+      }
+      offsets[i + 1] = indexes.length;
+    }
+    return {
+      n: n,
+      offsets: offsets,
+      indexes: Int32Array.from(indexes),
+      weights: Float64Array.from(weights),
+      centers: centers,
+      min: max < 0 ? 0 : min,
+      max: max
+    };
+  }
+
+  // An output pixel that overlaps the edge of the grid takes the edge pixel,
+  // even if its center is off the grid. Otherwise an output grid aligned to a
+  // frame, which extends up to a pixel beyond the raster, would have a
+  // transparent edge where the raster had partly covered pixels.
+  function getCenterPixel(u, ratio, srcN) {
+    var k = Math.floor(u);
+    if (k < 0) return u + ratio / 2 > 0 ? 0 : -1;
+    if (k >= srcN) return u - ratio / 2 < srcN ? srcN - 1 : -1;
+    return k;
+  }
+
+  // Interpolating filters repeat the edge pixels beyond the grid; averaging
+  // leaves out the part of a footprint that is off the grid
+  function addAxisWeights(u, ratio, srcN, method, indexes, weights) {
+    var first = indexes.length;
+    var lo, hi, radius, support, k, w;
+    if (method == 'nearest') {
+      k = Math.floor(u);
+      if (k >= 0 && k < srcN) addWeight(k, 1, first, indexes, weights);
+    } else if (method == 'average') {
+      lo = u - ratio / 2;
+      hi = u + ratio / 2;
+      for (k = Math.max(0, Math.floor(lo)); k < Math.min(srcN, Math.ceil(hi)); k++) {
+        w = Math.min(hi, k + 1) - Math.max(lo, k);
+        if (w > 0) addWeight(k, w, first, indexes, weights);
+      }
+    } else {
+      radius = Math.max(1, ratio);
+      support = method == 'bilinear' ? 1 : 2;
+      for (k = Math.floor(u - 0.5 - support * radius); k <= Math.ceil(u - 0.5 + support * radius); k++) {
+        w = method == 'bilinear' ? linearWeight((k + 0.5 - u) / radius) :
+          cubicWeight((k + 0.5 - u) / radius, CUBIC_PARAMS[method]);
+        if (w !== 0) addWeight(Math.max(0, Math.min(srcN - 1, k)), w, first, indexes, weights);
+      }
+    }
+  }
+
+  // Mitchell-Netravali B and C
+  var CUBIC_PARAMS = {
+    bicubic: [0, 0.5], // Catmull-Rom
+    bspline: [1, 0]
+  };
+
+  // Indexes arrive in order, so clamped indexes repeat only at the end. Only
+  // the entries of the current output pixel, from @first on, can be merged.
+  function addWeight(k, w, first, indexes, weights) {
+    var last = indexes.length - 1;
+    if (last >= first && indexes[last] == k) {
+      weights[last] += w;
+    } else {
+      indexes.push(k);
+      weights.push(w);
+    }
+  }
+
+  function linearWeight(x) {
+    x = Math.abs(x);
+    return x < 1 ? 1 - x : 0;
+  }
+
+  function cubicWeight(x, params) {
+    var B = params[0], C = params[1];
+    x = Math.abs(x);
+    if (x < 1) return ((12 - 9 * B - 6 * C) * x * x * x + (-18 + 12 * B + 6 * C) * x * x + (6 - 2 * B)) / 6;
+    if (x < 2) return ((-B - 6 * C) * x * x * x + (6 * B + 30 * C) * x * x + (-12 * B - 48 * C) * x + (8 * B + 24 * C)) / 6;
+    return 0;
+  }
+
+  function getResampledCoverage(xTable, yTable, validity, srcWidth) {
+    var coverage = new Uint8Array(xTable.n * yTable.n);
+    var i, j, cx, cy;
+    for (j = 0; j < yTable.n; j++) {
+      cy = yTable.centers[j];
+      if (cy < 0) continue;
+      for (i = 0; i < xTable.n; i++) {
+        cx = xTable.centers[i];
+        if (cx >= 0 && (!validity || validity[cy * srcWidth + cx])) {
+          coverage[j * xTable.n + i] = 1;
+        }
+      }
+    }
+    return coverage;
+  }
+
+  function copyNearestSamples(grid, samples, xTable, yTable, coverage) {
+    var bands = grid.bands;
+    var src = grid.samples;
+    var i, j, p, s, b;
+    for (j = 0; j < yTable.n; j++) {
+      for (i = 0; i < xTable.n; i++) {
+        p = j * xTable.n + i;
+        if (!coverage[p]) continue;
+        s = (yTable.centers[j] * grid.width + xTable.centers[i]) * bands;
+        for (b = 0; b < bands; b++) samples[p * bands + b] = src[s + b];
+      }
+    }
+  }
+
+  // An image's color bands are averaged premultiplied by alpha, so that
+  // transparent pixels don't tint their neighbors
+  function resampleBands(grid, samples, xTable, yTable, validity, coverage) {
+    var win = getSourceWindow(xTable, yTable);
+    var alpha = getRasterDisplayBands(grid).alpha;
+    var isFloat = rasterSamplesAreFloat(grid.samples);
+    var range = getSampleArrayRange(grid.samples);
+    var maxAlpha = isFloat ? 1 : range.max;
+    var channel = new Float32Array(win.width * win.height);
+    var mask = getWindowMask(grid, win, validity);
+    var weightSums = mask ? resampleChannel(mask, win, xTable, yTable) : null;
+    var alphaSums = null;
+    var bandOrder = [];
+    var b, sums;
+    for (b = 0; b < grid.bands; b++) {
+      if (b != alpha) bandOrder.push(b);
+    }
+    if (alpha > -1) bandOrder.unshift(alpha);
+    bandOrder.forEach(function(band) {
+      var premultiply = alphaSums && band != alpha;
+      copyWindowChannel(grid, band, win, mask, premultiply ? alpha : -1, maxAlpha, channel);
+      sums = resampleChannel(channel, win, xTable, yTable);
+      writeBand(grid, samples, band, sums, weightSums, premultiply ? alphaSums : null, maxAlpha,
+        xTable, yTable, coverage, isFloat, range);
+      if (band == alpha) alphaSums = sums;
+    });
+  }
+
+  // The part of the source grid that the tables read, with the tables' indexes
+  // made relative to it
+  function getSourceWindow(xTable, yTable) {
+    return {
+      x: xTable.min,
+      y: yTable.min,
+      width: Math.max(0, xTable.max - xTable.min + 1),
+      height: Math.max(0, yTable.max - yTable.min + 1)
+    };
+  }
+
+  // 1 for valid pixels of the window and 0 for others, or null if all are valid.
+  // Invalid pixels may hold NaN, which a weight of 0 doesn't cancel, so they are
+  // zeroed in the channel too (see copyWindowChannel()).
+  function getWindowMask(grid, win, validity) {
+    var mask = null;
+    var isFloat = rasterSamplesAreFloat(grid.samples);
+    var x, y, s, valid;
+    if (!validity && !isFloat) return null;
+    for (y = 0; y < win.height; y++) {
+      for (x = 0; x < win.width; x++) {
+        s = (win.y + y) * grid.width + win.x + x;
+        valid = !validity || validity[s] > 0;
+        if (valid && isFloat) valid = !gridPixelHasNaN(grid, s);
+        if (!valid && !mask) mask = createFilledArray(win.width * win.height, 1);
+        if (mask) mask[y * win.width + x] = valid ? 1 : 0;
+      }
+    }
+    return mask;
+  }
+
+  function gridPixelHasNaN(grid, pixel) {
+    var s = pixel * grid.bands;
+    for (var b = 0; b < grid.bands; b++) {
+      if (grid.samples[s + b] !== grid.samples[s + b]) return true;
+    }
+    return false;
+  }
+
+  function createFilledArray(n, val) {
+    var arr = new Float32Array(n);
+    arr.fill(val);
+    return arr;
+  }
+
+  function copyWindowChannel(grid, band, win, mask, alpha, maxAlpha, channel) {
+    var src = grid.samples;
+    var bands = grid.bands;
+    var x, y, i, s;
+    for (y = 0; y < win.height; y++) {
+      for (x = 0; x < win.width; x++) {
+        i = y * win.width + x;
+        s = ((win.y + y) * grid.width + win.x + x) * bands;
+        if (mask && mask[i] === 0) {
+          channel[i] = 0;
+        } else {
+          channel[i] = alpha > -1 ? src[s + band] * src[s + alpha] / maxAlpha : src[s + band];
+        }
+      }
+    }
+  }
+
+  // Weighted sums of @channel (a window of the source grid) for each output
+  // pixel. The pass that shrinks the data more goes first, to keep the
+  // intermediate array small.
+  function resampleChannel(channel, win, xTable, yTable) {
+    var out = new Float32Array(xTable.n * yTable.n);
+    var tmp;
+    if (win.height * xTable.n <= yTable.n * win.width) {
+      tmp = new Float32Array(win.height * xTable.n);
+      resampleRows(channel, win.width, win.height, xTable, win.x, tmp);
+      resampleColumns(tmp, xTable.n, yTable, win.y, out);
+    } else {
+      tmp = new Float32Array(yTable.n * win.width);
+      resampleColumns(channel, win.width, yTable, win.y, tmp);
+      resampleRows(tmp, win.width, yTable.n, xTable, win.x, out);
+    }
+    return out;
+  }
+
+  function resampleRows(src, srcWidth, rows, table, offset, dest) {
+    var n = table.n, offsets = table.offsets, indexes = table.indexes, weights = table.weights;
+    var r, i, t, s, sum;
+    for (r = 0; r < rows; r++) {
+      s = r * srcWidth - offset;
+      for (i = 0; i < n; i++) {
+        sum = 0;
+        for (t = offsets[i]; t < offsets[i + 1]; t++) {
+          sum += weights[t] * src[s + indexes[t]];
+        }
+        dest[r * n + i] = sum;
+      }
+    }
+  }
+
+  function resampleColumns(src, width, table, offset, dest) {
+    var offsets = table.offsets, indexes = table.indexes, weights = table.weights;
+    var j, t, i, d, s, w;
+    for (j = 0; j < table.n; j++) {
+      d = j * width;
+      for (t = offsets[j]; t < offsets[j + 1]; t++) {
+        w = weights[t];
+        s = (indexes[t] - offset) * width;
+        for (i = 0; i < width; i++) {
+          dest[d + i] += w * src[s + i];
+        }
+      }
+    }
+  }
+
+  function writeBand(grid, samples, band, sums, weightSums, alphaSums, maxAlpha, xTable, yTable,
+      coverage, isFloat, range) {
+    var bands = grid.bands;
+    var width = xTable.n;
+    var i, j, p, w, val;
+    for (j = 0; j < yTable.n; j++) {
+      for (i = 0; i < width; i++) {
+        p = j * width + i;
+        if (!coverage[p]) continue;
+        w = weightSums ? weightSums[p] : 1;
+        if (w < MIN_VALID_WEIGHT) {
+          val = grid.samples[(yTable.centers[j] * grid.width + xTable.centers[i]) * bands + band];
+        } else if (alphaSums) {
+          val = alphaSums[p] > 0 ? sums[p] * maxAlpha / alphaSums[p] : 0;
+        } else {
+          val = sums[p] / w;
+        }
+        samples[p * bands + band] = isFloat ? val : Math.max(range.min, Math.min(range.max, Math.round(val)));
+      }
+    }
+  }
+
+  var RasterResample = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    RESAMPLE_METHODS: RESAMPLE_METHODS,
+    getAxisTable: getAxisTable,
+    resampleRasterGrid: resampleRasterGrid
+  });
+
+  var DEFAULT_BLEED = 10; // frame pixels
+  var FRAME_PIXELS_PER_INCH = 72;
+  var MAX_OUTPUT_PIXELS = 48e6;
+  // in pixels; keeps a raster edge that is already on the frame's pixel grid
+  // from gaining a sliver of a pixel through rounding error
+  var SNAP_TOLERANCE = 1e-6;
+
+  // Returns a new layer; -resample replaces the target unless + is used
+  cmd.resample = function(lyr, dataset, catalog, opts) {
+    var raster, grid, res, crop, frame, extent, method, out;
+    if (!layerHasRaster(lyr)) {
+      stop$1('Command requires a raster layer');
+    }
+    raster = lyr.raster;
+    grid = getRasterGrid(raster);
+    if (!grid || !grid.samples || !grid.bbox) {
+      stop$1('Raster layer is missing image data');
+    }
+    if (rasterGridIsRotated(grid)) {
+      stop$1('Resampling a rotated or skewed raster is not supported');
+    }
+    res = parseResampleResolution(opts.resolution);
+    crop = !!opts.crop || opts.bleed !== undefined && opts.bleed !== null;
+    if (crop && opts.bleed != null && !(opts.bleed >= 0)) {
+      stop$1('bleed= should be a number of frame pixels, 0 or more');
+    }
+    frame = res.type == 'frame' || crop ? getResampleFrame(catalog, dataset, res) : null;
+    extent = getResampleExtent(grid, res, frame, crop ? getBleed(opts) : -1);
+    method = getResampleMethod(raster, opts.method);
+    warnIfReducedResolution(lyr, grid, extent);
+    out = {
+      raster_type: 'grid',
+      raster: getResampledRaster(raster,
+        resampleRasterGrid(grid, extent.bbox, extent.width, extent.height, method, getEnlargeMethod(grid)), opts)
+    };
+    setOutputLayerName(out, lyr, 'resample', opts);
+    message(formatResampleMessage(lyr, grid, extent));
+    return [out];
+  };
+
+  // Parses the resolution of -resample: raster pixels per frame pixel (2x), dots
+  // per inch of the frame (150dpi), a percentage of the current size (50%) or a
+  // width in pixels (4000px). Returns {type: 'frame', pixelsPerFramePixel},
+  // {type: 'scale', scale} or {type: 'width', width}
+  function parseResampleResolution(arg) {
+    var str = arg === undefined || arg === null ? '' : String(arg).trim().toLowerCase();
+    var match = /^(\d*\.?\d+)\s*(x|dpi|%|px)$/.exec(str);
+    var val = match ? +match[1] : NaN;
+    var hint = 'Use a value like 2x (raster pixels per frame pixel), 150dpi, 50% or 4000px (width)';
+    if (!str) {
+      stop$1('Missing a resolution.', hint);
+    }
+    if (!match || !(val > 0)) {
+      stop$1('Invalid resolution: ' + arg + '.', hint);
+    }
+    if (match[2] == 'x') return {type: 'frame', pixelsPerFramePixel: val};
+    if (match[2] == 'dpi') return {type: 'frame', pixelsPerFramePixel: val / FRAME_PIXELS_PER_INCH};
+    if (match[2] == '%') return {type: 'scale', scale: val / 100};
+    if (val != Math.round(val)) {
+      stop$1('Invalid resolution: ' + arg + '. A width in pixels should be a whole number');
+    }
+    return {type: 'width', width: val};
+  }
+
+  // The output grid: {bbox, width, height}
+  // @frame {bbox, width, height} the frame's area and size in frame pixels, as
+  //   drawn (see getResampleFrame()); needed for frame-relative resolutions and
+  //   for cropping
+  // @bleed margin around the frame in frame pixels when cropping, or -1
+  // Frame-relative resolutions put the output's pixel edges on a grid of 1/n
+  // frame pixels that starts at the frame's top left corner, so the output is
+  // drawn in the frame without being resampled again. Other resolutions keep
+  // the raster's area, or with cropping the source pixels that the frame and
+  // its bleed overlap.
+  function getResampleExtent(grid, res, frame, bleed) {
+    var region = grid.bbox;
+    var framePx, px, bbox, crop, width, height;
+    if (bleed >= 0) {
+      framePx = getFramePixelSize(frame);
+      region = intersectBboxes(grid.bbox, [
+        frame.bbox[0] - bleed * framePx,
+        frame.bbox[1] - bleed * framePx,
+        frame.bbox[2] + bleed * framePx,
+        frame.bbox[3] + bleed * framePx
+      ]);
+      if (!region) stop$1('The raster layer is outside the map frame');
+    }
+    if (res.type == 'frame') {
+      px = getFramePixelSize(frame) / res.pixelsPerFramePixel;
+      bbox = snapBboxToPixelGrid(region, frame.bbox[0], frame.bbox[3], px);
+      width = Math.max(1, Math.round((bbox[2] - bbox[0]) / px));
+      height = Math.max(1, Math.round((bbox[3] - bbox[1]) / px));
+    } else {
+      crop = getRasterCrop(grid, region);
+      bbox = getRasterCropBBox(grid, crop);
+      if (res.type == 'scale') {
+        width = Math.max(1, Math.round(crop.width * res.scale));
+        height = Math.max(1, Math.round(crop.height * res.scale));
+      } else {
+        width = res.width;
+        height = Math.max(1, Math.round(crop.height * res.width / crop.width));
+      }
+    }
+    if (width * height > MAX_OUTPUT_PIXELS) {
+      stop$1('The resampled raster would be too large (' + width + 'x' + height + ' pixels). Use a lower resolution' +
+        (bleed < 0 && frame ? ', or crop to crop it to the map frame' : ''));
+    }
+    return {bbox: bbox, width: width, height: height};
+  }
+
+  function getFramePixelSize(frame) {
+    return (frame.bbox[2] - frame.bbox[0]) / frame.width;
+  }
+
+  // The smallest bbox containing @bbox whose edges are on a grid of @px units
+  // with a corner at @x0, @y0
+  function snapBboxToPixelGrid(bbox, x0, y0, px) {
+    return [
+      x0 + snapFloor((bbox[0] - x0) / px) * px,
+      y0 - snapCeil((y0 - bbox[1]) / px) * px,
+      x0 + snapCeil((bbox[2] - x0) / px) * px,
+      y0 - snapFloor((y0 - bbox[3]) / px) * px
+    ];
+  }
+
+  function snapFloor(x) {
+    var r = Math.round(x);
+    return Math.abs(x - r) < SNAP_TOLERANCE ? r : Math.floor(x);
+  }
+
+  function snapCeil(x) {
+    var r = Math.round(x);
+    return Math.abs(x - r) < SNAP_TOLERANCE ? r : Math.ceil(x);
+  }
+
+  // The frame as it is drawn: its area is filled out to the aspect ratio of its
+  // size in pixels, as export does
+  function getResampleFrame(catalog, dataset, res, crop) {
+    var frame = resolveFrameForDataset(catalog, dataset);
+    var data;
+    if (!frame) {
+      stop$1(res.type == 'frame' ?
+        'A resolution in x or dpi is relative to a map frame. Use -frame to create one, or give a width (e.g. 4000px) or a percentage (e.g. 50%)' :
+        'Cropping requires a map frame. Use -frame to create one');
+    }
+    if (coordinateSystemsConflict(catalog, frame, dataset)) {
+      stop$1('The raster layer and map frame', frame.layer.name || '', 'have different coordinate systems. Use -proj first');
+    }
+    data = getFrameLayerData(frame.layer, frame.dataset.arcs);
+    return {
+      bbox: new Bounds(data.bbox).fillOut(data.width / data.height).toArray(),
+      width: data.width,
+      height: data.height
+    };
+  }
+
+  function getBleed(opts) {
+    return opts.bleed >= 0 ? opts.bleed : DEFAULT_BLEED;
+  }
+
+  function getResampleMethod(raster, arg) {
+    var categorical = rasterAppearsCategorical(raster);
+    if (!arg) return categorical ? 'nearest' : 'auto';
+    if (!RESAMPLE_METHODS.includes(arg)) {
+      stop$1('Unsupported method= value:', arg + '. Use', RESAMPLE_METHODS.join(', ').replace(/, (\w+)$/, ' or $1'));
+    }
+    if (categorical && arg != 'nearest') {
+      stop$1('Categorical rasters can only be resampled with method=nearest');
+    }
+    return arg;
+  }
+
+  // Data rasters, like elevation, are enlarged smoothly (B-spline), since the
+  // sharper bicubic overshoots at sharp crests, which a hillshade shows as
+  // beads. 8-bit images keep bicubic's sharpness. Imported DEMs are labeled as
+  // images, so the sample type tells them apart.
+  function getEnlargeMethod(grid) {
+    var isByte = grid.samples instanceof Uint8Array || grid.samples instanceof Uint8ClampedArray;
+    return isByte ? 'bicubic' : 'bspline';
+  }
+
+  function warnIfReducedResolution(lyr, grid, extent) {
+    var reduced = lyr.raster.reducedResolution;
+    var srcPx = (grid.bbox[2] - grid.bbox[0]) / grid.width;
+    var outPx = (extent.bbox[2] - extent.bbox[0]) / extent.width;
+    if (reduced && outPx < srcPx) {
+      warn('Raster layer [' + (lyr.name || '') + '] was imported at reduced resolution (' +
+        reduced.width + 'x' + reduced.height + ' of ' + reduced.sourceWidth + 'x' + reduced.sourceHeight +
+        ' pixels), so enlarging it adds no detail. ' + FULL_RESOLUTION_HINT);
+    }
+  }
+
+  function formatResampleMessage(lyr, grid, extent) {
+    return 'Resampled [' + (lyr.name || '') + '] from ' + grid.width + 'x' + grid.height + ' to ' +
+      extent.width + 'x' + extent.height + ' pixels';
+  }
+
+  // The source raster with the new grid. The recipe and derivation are copied,
+  // since updateRasterViewForGrid() may change them, and with + the source
+  // layer is kept. The resampled grid is no longer the import's reduced-
+  // resolution copy of its source.
+  function getResampledRaster(src, grid, opts) {
+    var raster = Object.assign({}, src, {
+      grid: grid,
+      view: Object.assign({}, src.view)
+    });
+    fillEmptyRasterPixels(grid, src, opts);
+    if (raster.view.recipe) raster.view.recipe = Object.assign({}, raster.view.recipe);
+    if (raster.derivation) raster.derivation = Object.assign({}, raster.derivation);
+    delete raster.view.preview;
+    delete raster.view.scalingStats;
+    delete raster.reducedResolution;
+    updateRasterViewForGrid(raster);
+    if (runningInBrowser()) {
+      raster.view.preview = createRasterPreview(raster, {});
+    }
+    return raster;
+  }
+
+  var ResampleCommand = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getResampleExtent: getResampleExtent,
+    parseResampleResolution: parseResampleResolution
+  });
+
   // Unsharp masking of 8-bit images, for -sharpen.
   // A transparent (shadow-style) hillshade made by -hillshade is sharpened as
   // the signed tones it was written from (see getHillshadeTones()), so
@@ -115044,7 +115693,7 @@ ${css.join('\n')}
       'filter-islands2', 'filter-points', 'filter-slivers', 'grid', 'grid2',
       'fuzzy-join', 'hillshade', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
       'lines', 'mosaic', 'points', 'polygons', 'rectangles', 'rename-fields',
-      'repel', 'shapes', 'sharpen', 'simplify', 'slice', 'smooth', 'smooth-terrain', 'sort', 'split',
+      'repel', 'resample', 'shapes', 'sharpen', 'simplify', 'slice', 'smooth', 'smooth-terrain', 'sort', 'split',
       'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'tone', 'uniq'
     ].indexOf(name) > -1;
   }
@@ -115299,6 +115948,12 @@ ${css.join('\n')}
           outputLayers = outputLayers.concat(await cmd.smoothTerrain(lyr, targetDataset, opts, job.resumeCommand));
         }
         job.resumeCommand();
+
+      } else if (name == 'resample') {
+        outputLayers = [];
+        for (let lyr of targetLayers) {
+          outputLayers = outputLayers.concat(cmd.resample(lyr, targetDataset, job.catalog, opts));
+        }
 
       } else if (name == 'sharpen' || name == 'tone') {
         outputLayers = [];
@@ -115942,7 +116597,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.8.9";
+  var version = "0.8.10";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -118475,6 +119130,8 @@ ${css.join('\n')}
     RasterColor,
     RasterBlend,
     RasterSharpen,
+    RasterResample,
+    ResampleCommand,
     Deshadow,
     ToneCommand,
     RasterTiles,

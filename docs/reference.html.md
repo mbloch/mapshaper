@@ -117,6 +117,7 @@ mapshaper states.geojson \
 [-deshadow](#-deshadow)
 [-fetch](#-fetch)
 [-hillshade](#-hillshade)
+[-resample](#-resample)
 [-sharpen](#-sharpen)
 [-smooth-terrain](#-smooth-terrain)
 [-tone](#-tone)
@@ -670,13 +671,13 @@ Some options are not available for rasters: `save-as=`, `values=`, `index-field=
 
 Breaks are calculated from a sample of up to one million pixels. Categorical classification requires an integer band; by default the categories are all the band's values. `null-value=` sets the color of nodata pixels, which are transparent by default. `other=` colors values that are not listed in `categories=`. With `continuous quantile`, the gradient is calculated from up to 32 quantiles (or from every value, if the band has few of them).
 
-`land-colors=`  [raster] Color an elevation raster with hypsometric tints, at fixed elevations: the name of a preset, or a list of colors (which needs `land-breaks=`). There are six climate zone presets (`desert`, `steppe`, `tropical`, `temperate`, `boreal` and `polar`) and three miscellaneous presets (`atlas`, `lowland` and `highland`). `blended` mixes the six climate presets by climate zone. The zones are derived from the Köppen-Geiger classification for 1991-2020 (Beck et al. 2023, Scientific Data 10, 724, CC BY 4.0). It is meant for maps of the world and of large regions. To recolor some of the presets of a blend, give each one's name before its colors, e.g. `land-colors=desert:#c9b98a,...,polar:#f4efe6,...`; presets that aren't named keep their own colors. Without `land-colors=`, `sea-colors=` colors only the sea.
+`land-colors=`  [raster] Color an elevation raster with hypsometric tints, at fixed elevations: the name of a preset, a single color (e.g. `land-colors=#dddddd`, for solid land on a bathymetric map), or a list of colors (which needs `land-breaks=`). There are six climate zone presets (`desert`, `steppe`, `tropical`, `temperate`, `boreal` and `polar`) and three miscellaneous presets (`atlas`, `lowland` and `highland`). `blended` mixes the six climate presets by climate zone. The zones are derived from the Köppen-Geiger classification for 1991-2020 (Beck et al. 2023, Scientific Data 10, 724, CC BY 4.0). It is meant for maps of the world and of large regions. To recolor some of the presets of a blend, give each one's name before its colors, e.g. `land-colors=desert:#c9b98a,...,polar:#f4efe6,...`; presets that aren't named keep their own colors. Without `land-colors=`, `sea-colors=` colors only the sea.
 
 `land-breaks=`  [raster] The elevation of each land color, in the band's units, lowest first. With a preset, it moves the preset's elevations, giving every one of them; the presets of a blend share their elevations.
 
 `land-classed`  [raster] Color the land in classes rather than continuously (not with `blended`): each class runs from one elevation up to the next, and the first one also takes everything below its elevation.
 
-`sea-colors=`  [raster] What to do with the sea area of an elevation raster. `transparent` leaves sea areas uncolored (the default with `land-colors=`); `land` colors them like other values; `pale`, `blue` or `gray` colors them by depth, with bathymetric tints at fixed depths; a list of colors (which needs `sea-breaks=`) gives custom tints. The sea is the area at or below 0 that connects to the edge of the raster or to pixels without a value. Basins below sea level enclosed by land, such as the Dead Sea, are not treated as sea. Inland seas that a world map's coarse pixels can enclose (the Mediterranean, Black, Caspian, Baltic and Red Seas, the Persian Gulf, Hudson Bay and a few others) come from a built-in list, even in a DEM without their depths; this needs the raster's coordinate system. Without one, an enclosed basin more than 500 m deep is treated as sea. `sea-colors=` also works with other colors for the land, given by `colors=`.
+`sea-colors=`  [raster] What to do with the sea area of an elevation raster. `transparent` leaves sea areas uncolored (the default with `land-colors=`); `land` colors them like other values; `pale`, `blue` or `gray` colors them by depth, with bathymetric tints at fixed depths; a single color (e.g. `sea-colors=#a6c8e0`) colors them solidly; a list of colors (which needs `sea-breaks=`) gives custom tints. `blue` and `gray` are the names of presets; for solid blue or gray, give a hex color. The sea is the area at or below 0 that connects to the edge of the raster or to pixels without a value. Basins below sea level enclosed by land, such as the Dead Sea, are not treated as sea. Inland seas that a world map's coarse pixels can enclose (the Mediterranean, Black, Caspian, Baltic and Red Seas, the Persian Gulf, Hudson Bay and a few others) come from a built-in list, even in a DEM without their depths; this needs the raster's coordinate system. Without one, an enclosed basin more than 500 m deep is treated as sea. `sea-colors=` also works with other colors for the land, given by `colors=`.
 
 `sea-breaks=`  [raster] The depth of each sea color, in the band's units, deepest first (e.g. `sea-breaks=-6000,-2000,-200,0`). With a preset, it moves the preset's depths, giving every one of them.
 
@@ -2154,7 +2155,7 @@ mapshaper dem.tif -contours interval=100 no-smoothing \
 
 `<dem>` or `dem=`  Elevation layer covering the image (e.g. from `-fetch`).
 
-`despeckle`  Also brighten small dark spots that the elevation data can't explain, such as the shadows of ledges too low to show up in the DEM. Use it for terrain without trees or water, which this option would brighten too.
+`despeckle`  Also brighten small dark spots that the elevation data can't account for.
 
 `verbose`  Print technical details about the correction.
 
@@ -2213,6 +2214,33 @@ Convert an elevation raster to shaded relief. By default, the shading is transpa
 `band=`  Band containing elevation values, numbered from 1 (default is 1).
 
 Common options: `name=` `target=` `+`
+
+### -resample
+
+Change the resolution of a raster layer. This command is useful for preparing an imported elevation raster for running [`-hillshade`](#-hillshade) (which is sensitive to raster resolution).
+
+`<resolution>` or `resolution=`  The new resolution, in one of these forms:
+- `2x`  Raster pixels per frame pixel. `1x` matches the frame's pixels, and `2x` matches PNG output and high-density screens.
+- `300dpi`  Pixels per inch of the frame's size (a frame pixel is 1/72 inch), for print.
+- `50%`  A percentage of the raster's current size.
+- `4000px`  A width in pixels; the height keeps the aspect ratio.
+
+`crop`  Crop the raster to the map frame, plus a margin (see `bleed=`).
+
+`bleed=`  Margin around the frame when cropping, in frame pixels (default is 10). The margin keeps the edge effects of `-hillshade` and `-blur` outside the frame. Implies `crop`.
+
+`method=`  `average`, `bilinear`, `bicubic`, `bspline` or `nearest`. By default, a continuous-value raster is reduced with `average`, an area-weighted average of the source pixels, and enlarged with `bspline`, a smooth interpolation that keeps the enlarged result from looking pixelated. 8-bit images (RGB, RGBA or greyscale, with values from 0 to 255) are enlarged with the crisper `bicubic` method. Categorical rasters, including palette images, use `nearest`.
+
+Common options: `name=` `target=` `+`
+
+#### Examples
+```bash
+# An 800px opaque hillshade for the web at 2x resolution.
+mapshaper dem.tif -frame width=800px -resample 2x crop target=dem -hillshade opaque -o hillshade.png
+
+# An opaque hillshade for a 6-inch-wide print layout, at 300 dpi
+mapshaper dem.tif -frame width=6in -resample 300dpi crop target=dem -hillshade opaque -o hillshade.tif
+```
 
 ### -sharpen
 

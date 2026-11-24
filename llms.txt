@@ -24,6 +24,7 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 
 ## Guides
 
+- [Shaded relief](https://mapshaper.org/docs/guides/shaded-relief.html.md): A step-by-step guide to making shaded relief maps in Mapshaper's web app.
 - [Simplification](https://mapshaper.org/docs/guides/simplification.html.md): How to choose between Visvalingam and Douglas-Peucker, and tips for getting good-looking results from polygon and polyline simplification.
 - [Smoothing](https://mapshaper.org/docs/guides/smoothing.html.md): How Mapshaper's -smooth command generalizes lines while filtering fine detail and preserving corners.
 - [Buffering](https://mapshaper.org/docs/guides/buffering.html.md): How Mapshaper's -buffer command creates geodesic and planar buffers, fills gaps, and builds topological polygon buffers.
