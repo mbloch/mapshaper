@@ -137,14 +137,20 @@ function readBool(bin, size) {
   return val;
 }
 
+// Missing dates are written as zeros, spaces or NUL bytes; these and any
+// other unreadable dates (e.g. "2024    " or "20241301") are imported as null.
 function readDate(bin, size) {
-  var str = bin.readCString(size),
-      yr = str.substr(0, 4),
-      mo = str.substr(4, 2),
-      day = str.substr(6, 2);
-  // DBF writers use zeros, spaces or NUL bytes for missing dates.
-  if (/^[ 0]*$/.test(str)) return null;
-  return new Date(Date.UTC(+yr, +mo - 1, +day));
+  var match = /^(\d{4})(\d{2})(\d{2})$/.exec(bin.readCString(size).trim()),
+      d, mo, day;
+  if (!match) return null;
+  mo = +match[2] - 1;
+  day = +match[3];
+  d = new Date(0);
+  // setUTCFullYear() doesn't map years 0-99 to 1900-1999, unlike Date.UTC()
+  d.setUTCFullYear(+match[1], mo, day);
+  // reject out-of-range months and days instead of rolling them over
+  if (d.getUTCMonth() != mo || d.getUTCDate() != day) return null;
+  return d;
 }
 
 // cf. http://code.google.com/p/stringencoding/

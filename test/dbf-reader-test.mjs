@@ -10,16 +10,39 @@ var Dbf = api.internal.Dbf,
 describe('dbf-reader.js', function () {
   // "Neuchâtel Baden-Württemberg La Gruyère"
 
-  describe('null date fields', function() {
-    ['00000000', '        ', '       0', '\0\0\0\0\0\0\0\0'].forEach(function(value) {
+  describe('date fields', function() {
+    var date = new Date(Date.UTC(2024, 1, 29));
+
+    // Writes @value into the date field of the first of two records
+    function readDates(value) {
+      var buf = Buffer.from(Dbf.exportRecords([{date: date, id: 7}, {date: date, id: 8}]));
+      var offset = buf.readUInt16LE(8) + 1; // header and record deletion flag
+      buf.write(value, offset, 8, 'ascii');
+      return api.internal.importDbfTable(buf).getRecords();
+    }
+
+    ['00000000', '        ', '       0', '\0\0\0\0\0\0\0\0',
+        '2024    ', '202402  ', '20241301', '20240001', '20240230', '20230229',
+        '20240200', '2024-2-9', 'abcdefgh', '+2024022', '2024022\0'].forEach(function(value) {
       it('reads ' + JSON.stringify(value) + ' as null', function() {
-        var date = new Date(Date.UTC(2024, 1, 29));
-        var buf = Buffer.from(Dbf.exportRecords([{date: date, id: 7}, {date: date, id: 8}]));
-        var offset = buf.readUInt16LE(8) + 1; // header and record deletion flag
-        buf.write(value, offset, 8, 'ascii');
-        var rows = api.internal.importDbfTable(buf).getRecords();
-        assert.deepStrictEqual(rows, [{date: null, id: 7}, {date: date, id: 8}]);
+        assert.deepStrictEqual(readDates(value), [{date: null, id: 7}, {date: date, id: 8}]);
       });
+    });
+
+    it('reads valid dates', function() {
+      assert.deepStrictEqual(readDates('19991231')[0].date, new Date(Date.UTC(1999, 11, 31)));
+      assert.deepStrictEqual(readDates('20000229')[0].date, new Date(Date.UTC(2000, 1, 29)));
+    });
+
+    it('does not map years 0-99 to 1900-1999', function() {
+      assert.equal(readDates('00500704')[0].date.toISOString(), '0050-07-04T00:00:00.000Z');
+    });
+
+    it('round-trips a date with a year before 1000', function() {
+      var d = new Date(0);
+      d.setUTCFullYear(812, 11, 25);
+      var rows = api.internal.importDbfTable(Buffer.from(Dbf.exportRecords([{date: d}]))).getRecords();
+      assert.deepStrictEqual(rows, [{date: d}]);
     });
   });
 
