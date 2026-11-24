@@ -36,6 +36,13 @@ describe('gui-color-picker', function() {
       assert.deepEqual(hexToPickerHsb('#ff0000', prev), {h: 0, s: 255, b: 255});
     });
 
+    it('keeps the previous color when it makes the same hex', function() {
+      // h 33 and h 34 both make #d6cfb5, which reads back from RGB as h 33
+      assert.deepEqual(hexToPickerHsb('#d6cfb5'), {h: 33, s: 39, b: 214});
+      assert.deepEqual(hexToPickerHsb('#d6cfb5', {h: 34, s: 39, b: 214}), {h: 34, s: 39, b: 214});
+      assert.deepEqual(hexToPickerHsb('#D6CFB5', {h: 34, s: 39, b: 214}), {h: 34, s: 39, b: 214});
+    });
+
     it('reads a gray as hue 0 without a previous color', function() {
       assert.deepEqual(hexToPickerHsb('#727272'), {h: 0, s: 0, b: 0x72});
     });

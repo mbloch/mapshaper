@@ -546,7 +546,14 @@ export function toSixDigitHex(str) {
 // A gray has no hue and black has no saturation either, so those components
 // are kept from @prev; otherwise a gray fed back to the picker (e.g. by a
 // panel echoing the committed color) would reset the hue slider to red.
+// A color that @prev already makes keeps @prev whole: many HSB values round to
+// the same RGB, and for a muted color the one read back from RGB can be a
+// step or two of hue away, which would nudge the square and hue slider on
+// every echo.
 export function hexToPickerHsb(hex, prev) {
+  if (prev && hsbToHex(prev) == hex.toLowerCase()) {
+    return {h: prev.h, s: prev.s, b: prev.b};
+  }
   var hsb = hexToHsb(hex);
   if (prev && (hsb.s === 0 || hsb.b === 0)) hsb.h = prev.h;
   if (prev && hsb.b === 0) hsb.s = prev.s;

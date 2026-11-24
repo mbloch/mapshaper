@@ -402,6 +402,6 @@ Every step above is a command, so a complete map can be written as a script. Thi
 
 ## See also
 
-- [`-fetch`](/docs/reference.html#-fetch), [`-hillshade`](/docs/reference.html#-hillshade), [`-blend`](/docs/reference.html#-blend), [`-tone`](/docs/reference.html#-tone), [`-deshadow`](/docs/reference.html#-deshadow), [`-sharpen`](/docs/reference.html#-sharpen), [`-smooth-terrain`](/docs/reference.html#-smooth-terrain) and [`-classify`](/docs/reference.html#-classify) in the command reference
+- [`-fetch`](/docs/reference.html#-fetch), [`-hillshade`](/docs/reference.html#-hillshade), [`-blend`](/docs/reference.html#-blend), [`-tone`](/docs/reference.html#-tone), [`-deshadow`](/docs/reference.html#-deshadow), [`-resample`](/docs/reference.html#-resample), [`-sharpen`](/docs/reference.html#-sharpen), [`-smooth-terrain`](/docs/reference.html#-smooth-terrain) and [`-classify`](/docs/reference.html#-classify) in the command reference
 - [Canyon relief](/docs/examples/canyon.html), a shorter worked example
 - [Map projections](/docs/guides/projections.html)
