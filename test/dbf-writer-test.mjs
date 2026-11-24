@@ -373,6 +373,12 @@ describe('dbf-writer.js', function () {
       assert.deepEqual(records2, records);
     })
 
+    it('preserves null and missing dates on round trip', function() {
+      var date = new Date(Date.UTC(2024, 1, 29));
+      var buf = Dbf.exportRecords([{a: date}, {a: null}, {}]);
+      assert.deepStrictEqual(importRecords(buf), [{a: date}, {a: null}, {a: null}]);
+    });
+
     it('booleans', function() {
       var records = [
         {a: true},

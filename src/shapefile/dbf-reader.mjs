@@ -142,6 +142,8 @@ function readDate(bin, size) {
       yr = str.substr(0, 4),
       mo = str.substr(4, 2),
       day = str.substr(6, 2);
+  // DBF writers use zeros, spaces or NUL bytes for missing dates.
+  if (/^[ 0]*$/.test(str)) return null;
   return new Date(Date.UTC(+yr, +mo - 1, +day));
 }
 
