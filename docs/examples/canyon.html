@@ -11,7 +11,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Canyon &middot; mapshaper docs</title>
-<meta name="description" content="Shaded relief example">
+<meta name="description" content="Shaded relief of a canyon in Canyonlands National Park, Utah">
 <link rel="icon" type="image/png" href="/images/icon.png">
 <link rel="stylesheet" href="/docs/_assets/highlight.css">
 <link rel="stylesheet" href="/docs/_assets/docs.css">
@@ -53,30 +53,34 @@
 <p><img src="/docs/examples/data/canyon6.jpg" alt="Finished image"></p>
 <h3 id="steps">Steps</h3>
 <ol>
-<li>Create a map frame with the desired extent, projection and output size, e.g. by drawing a rectangle over Mapshaper&#39;s built-in basemap and running <code>-proj merc</code> for the Mercator projection (generally appropriate for smaller areas), then clicking &quot;+ New frame&quot; in the web UI.</li>
-<li>Load a DEM (<code>-fetch 3dep-1m</code>).</li>
+<li>Draw a rectangle over the basemap, project it (<code>-proj merc</code>) and click <strong>+ New frame</strong>.</li>
 </ol>
-<p><img src="/docs/images/canyon1.jpg" alt="Step 2"></p>
+<p><img src="/docs/images/canyon0.jpg" alt="A rectangle drawn over the basemap"></p>
+<ol start="2">
+<li>Load a DEM: <code>-fetch 3dep-1m</code></li>
+</ol>
+<p><img src="/docs/images/canyon1.jpg" alt="Elevation data"></p>
 <ol start="3">
-<li>Load imagery (<code>-fetch naip</code>).</li>
+<li>Make a hillshade with the <strong>hillshade</strong> panel.</li>
 </ol>
-<p><img src="/docs/images/canyon2.jpg" alt="Step 3"></p>
+<p><img src="/docs/images/canyon5.jpg" alt="Hillshade"></p>
 <ol start="4">
-<li>Remove shadows from the aerial image (requires a DEM) (<code>-deshadow dem=3dep-1m</code>).</li>
+<li>Load imagery: <code>-fetch naip</code></li>
 </ol>
-<p><img src="/docs/images/canyon3.jpg" alt="Step 4"></p>
+<p><img src="/docs/images/canyon2.jpg" alt="Aerial imagery"></p>
 <ol start="5">
-<li>Adjust the color of the imagery (the sliders in the web UI make this easy) (<code class="is-wrappable">-tone lightness=1.49 saturation=1.18 contrast=1.23 hue-shift=0.25</code>)</li>
+<li>Remove shadows from the imagery: <code>-deshadow dem=3dep-1m</code></li>
 </ol>
-<p><img src="/docs/images/canyon4.jpg" alt="Step 5"></p>
+<p><img src="/docs/images/canyon3.jpg" alt="Imagery with shadows removed"></p>
 <ol start="6">
-<li>Create the hillshade (<code class="is-wrappable">-target 3dep-1m -hillshade ambient=0.7 texture=0.1</code>)</li>
+<li>Adjust the colors of the imagery with the <strong>adjust colors</strong> panel.</li>
 </ol>
-<p><img src="/docs/images/canyon5.jpg" alt="Step 6"></p>
+<p><img src="/docs/images/canyon4.jpg" alt="Imagery with adjusted colors"></p>
 <ol start="7">
-<li>Blend the hillshade and the imagery, sharpen a bit (the blend panel in the web UI lets you set blending parameters interactively) (<code class="is-wrappable">-blend 3dep-1m strength=1.15,<wbr>1 chroma=0.9,<wbr>1 -sharpen 0.25</code>)</li>
+<li>Blend the hillshade with the imagery using the <strong>blend hillshade</strong> panel.</li>
 </ol>
-<p><img src="/docs/examples/data/canyon6.jpg" alt="Step 7"></p>
+<p><img src="/docs/examples/data/canyon6.jpg" alt="Imagery blended with the hillshade"></p>
+<p>For details on each step, see the <a href="/docs/guides/shaded-relief.html">Shaded relief</a> guide.</p>
 
       <div class="edit-link">
         <a href="https://github.com/mbloch/mapshaper/edit/master/docs/examples/canyon.md">Edit this page on GitHub</a>

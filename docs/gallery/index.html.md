@@ -14,7 +14,7 @@ A collection of example maps made with Mapshaper. Each tile links to its own pag
     </div>
     <div class="gallery-tile-caption">
       <div class="gallery-tile-title">Canyon relief</div>
-      <div class="gallery-tile-desc">Shaded relief example</div>
+      <div class="gallery-tile-desc">Shaded relief of a canyon in Canyonlands National Park, Utah</div>
     </div>
   </a>
   <a class="gallery-tile" href="/docs/examples/globe.html">

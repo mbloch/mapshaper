@@ -17,7 +17,7 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 ## Examples
 
 - [Basics](https://mapshaper.org/docs/examples/basics.html.md): A scannable collection of short Mapshaper recipes for common GIS tasks — format conversion, joins, simplification, dissolves, projection, classification, web export and more.
-- [Canyon relief](https://mapshaper.org/docs/examples/canyon.html.md): Shaded relief example
+- [Canyon relief](https://mapshaper.org/docs/examples/canyon.html.md): Shaded relief of a canyon in Canyonlands National Park, Utah
 - [Globe locator map](https://mapshaper.org/docs/examples/globe.html.md): A simple locator map in the shape of a globe.
 - [U.S. state map](https://mapshaper.org/docs/examples/us-states.html.md): Simple U.S. state map with random, non-adjacent colors
 - [New York map](https://mapshaper.org/docs/examples/ny-state.html.md): Map of New York and surrounding states, with labels
