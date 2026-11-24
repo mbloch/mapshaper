@@ -12,7 +12,7 @@ DRAFT NOTES (delete before publishing)
 
 # Shaded relief
 
-> **[IMAGE: shaded-relief-intro.jpg]** The finished example: a hillshade blended with aerial imagery (or a tinted world map). This should be the best-looking image on the page.
+![Aerial imagery of a river canyon in Canyonlands, Utah, blended with a hillshade](/docs/images/shaded-relief-intro.jpg)
 
 Mapshaper can build shaded relief maps from start to finish, using the `-fetch` command to download elevation data and imagery and a set of new interactive panels and console commands to transform the source data into shaded relief:
 
@@ -77,7 +77,7 @@ There are two ways to get started.
 
    The new raster layer takes its area, projection and resolution from the frame.
 
-   > **[IMAGE: shaded-relief-fetch-dem.png]** The fetched DEM, drawn in grayscale in the frame.
+   ![A fetched elevation raster of a river canyon, drawn in grayscale inside a map frame](/docs/images/shaded-relief-fetch-dem.png)
 
 **Choosing an elevation source.** Run `-fetch sources` to see the full list.
 
@@ -136,7 +136,7 @@ For the most control over how a hillshade is combined with another layer, make a
 
 **Making a colored hillshade.** An opaque hillshade with a colored base is a quick way to make a stand-alone relief map. Choose a base color (try a light tan or a pale green-gray), and adjust the shadow and highlight colors until the result looks right. A cool shadow color and a warm highlight color give the shading a hand-painted look, especially when smoothing is added.
 
-> **[IMAGE: shaded-relief-colored-hillshade.jpg]** A hillshade with a tan base color.
+![The same terrain in the Dolomites, with a teal hillshade in the upper left and a warm-toned hillshade in the lower right, divided by a diagonal line](/docs/images/shaded-relief-colored-hillshade.jpg)
 
 #### Light
 
@@ -209,7 +209,7 @@ Aerial photos include real shadows, cast by the terrain when the picture was tak
 
 Add `despeckle` to also brighten small dark spots that the DEM doesn't account for, such as the small shadows of features too fine to appear in the DEM. Which shadows count as small depends on the resolution of the imagery. It works best on bare rock and areas with little vegetation.
 
-> **[IMAGE: shaded-relief-deshadow-compare.jpg]** Before and after `-deshadow`: shadows in the canyon are gone, leaving even lighting.
+![Aerial imagery of a river canyon, with the original image in the upper left and the image after -deshadow in the lower right, divided by a diagonal line](/docs/images/shaded-relief-deshadow-compare.jpg)
 
 Shadow removal works best on high-resolution aerial images with distinct shadows, such as canyons and mountains. Composites of images taken at different times of day, such as mosaics of aerial photos, have regions with different sun angles. Mapshaper tries to detect these regions and correct each for its own sun angle, but detection isn't fully reliable, so check the result. Results are also less reliable on images without distinct shadows.
 
@@ -263,13 +263,13 @@ For example, for cool blue-violet shadows and warm highlights, choose `#2a2550` 
 
 **Apply** runs [`-blend`](/docs/reference.html#-blend), which replaces the imagery with the blended image and removes the hillshade layer unless **Keep hillshade** is checked. To adjust a blend, undo it (**⌘Z** / **Ctrl+Z**) and blend again. Blending the output a second time doubles the shading.
 
-> **[IMAGE: shaded-relief-blend-result.jpg]** The finished image, compared with the unblended imagery and the hillshade.
+![A river canyon in three diagonal bands: a hillshade in the upper left, the blend of the hillshade with aerial imagery in the middle, and the aerial imagery alone in the lower right](/docs/images/shaded-relief-blend-result.jpg)
 
 ## Part three: blend a hillshade with hypsometric tints
 
 A **hypsometric tint** colors land by elevation: lowlands green, highlands tan and brown, and the highest peaks white, for example. Combined with a hillshade, tints give the classic look of an atlas relief map.
 
-> **[IMAGE: shaded-relief-tint-intro.jpg]** An atlas-style map: hypsometric tints blended with a hillshade.
+![A map of northern Scotland, with hypsometric tints blended with a hillshade](/docs/images/shaded-relief-tint-scotland.jpg)
 
 ### Coloring an elevation layer
 
@@ -295,7 +295,7 @@ A palette is a display setting that leaves the elevation values unchanged, so th
 4. On the DEM, open **color palette** and choose **Blended** for land and a **Bathymetry** palette for the sea.
 5. Blend the hillshade with the tinted DEM (see below).
 
-> **[IMAGE: shaded-relief-tint-world.jpg]** World map with blended climate-zone tints.
+![A world map in the Equal Earth projection, with hypsometric tints blended with a hillshade](/docs/images/shaded-relief-tint-world.png)
 
 > **[TODO]** Confirm the cleanest way to start a world map session in the web app (what to import so there is a layer to project and fit a frame to). Could use the `-rectangle` command with `bbox=-180,-85,180,85`.
 
