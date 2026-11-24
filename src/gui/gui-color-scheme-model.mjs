@@ -95,6 +95,10 @@ import {
 //                                             getSeaScheme(), -classify sea=)
 //   landTransparent: boolean                  (fixed elevations: only the sea
 //                                             is colored)
+//   landSolidColor: color or null             (fixed elevations: the land is
+//                                             this one color, over the
+//                                             scheme's own colors, which
+//                                             are kept for the menu)
 //   continuous: boolean                       (sequential and diverging)
 //   pivot: 'auto', 'median', 'mean' or a number,
 //   neutral, continuousNeutral: boolean       (a pivot class, for classed
@@ -157,6 +161,9 @@ export var categoricalMethods = [
 
 // -classify's default null value for colors, as hex
 export var defaultNullColor = '#eeeeee';
+
+// solid land, until another color is picked
+var defaultLandSolidColor = '#dddddd';
 
 export var minSchemeColors = 2;
 export var maxSchemeColors = 12;
@@ -348,8 +355,9 @@ export function getSchemeNeutral(scheme) {
   return scheme.continuous ? !!scheme.continuousNeutral : scheme.neutral !== false;
 }
 
+// solid land is one class
 export function isContinuousScheme(scheme) {
-  return scheme.type != 'categorical' && !!scheme.continuous;
+  return scheme.type != 'categorical' && !!scheme.continuous && !scheme.landSolidColor;
 }
 
 // A sequential ramp starts with at least this many stops, since -classify
@@ -1331,7 +1339,8 @@ export function isElevationScheme(scheme) {
 // next, and the first class reaching down to the sea (a blend, which only
 // -classify hypsometric= draws, is always continuous)
 export function canClassifyElevations(scheme) {
-  return isElevationScheme(scheme) && !isBlendedScheme(scheme) && !isLandTransparent(scheme);
+  return isElevationScheme(scheme) && !isBlendedScheme(scheme) && !isLandTransparent(scheme) &&
+    !getLandSolidColor(scheme);
 }
 
 // The inner breaks of classed elevations: every stop but the first, or for
@@ -1368,20 +1377,39 @@ export function layerHasElevations(lyr) {
 
 // The sea of a fixed-elevation scheme, as a fixed-elevation scheme of its
 // own (with a bathymetric preset), for the tiles and the class breaks dialog;
-// or null if the sea is left out
+// or null if the sea is left out or is a solid color (see getSeaSolidColor())
 export function getSeaScheme(scheme) {
   var sea = scheme.seaScheme;
-  if (!sea) return null;
+  if (!sea || sea.solidColor) return null;
   return Object.assign({type: 'sequential', method: 'elevation', nullColor: null}, sea,
     {field: scheme.field, raster: scheme.raster, bathymetric: true, continuous: sea.continuous !== false});
 }
 
-// @sea: an edited sea scheme (see getSeaScheme()), or null to leave out the sea
+// The color of a solid sea (-classify sea-colors=<color>), or null
+export function getSeaSolidColor(scheme) {
+  return scheme.seaScheme && scheme.seaScheme.solidColor || null;
+}
+
+// A solid sea of @color; without one, the sea's color, or else the
+// shallowest color of its ramp (or of the first bathymetric preset), so that
+// the map changes little
+export function setSeaSolidColor(scheme, color) {
+  var rgb = color ? internal.parseColor(color) : null;
+  var sea = getSeaScheme(scheme);
+  var colors = sea ? getSchemeColors(sea) : getElevationPresetColors(getBathymetricPresetNames()[0]);
+  var hex = rgb ? internal.formatColor(Object.assign({}, rgb, {a: 1})) :
+    getSeaSolidColor(scheme) || toHex(colors[colors.length - 1]);
+  return setSeaScheme(scheme, {solidColor: hex});
+}
+
+// @sea: an edited sea scheme (see getSeaScheme()), {solidColor} for a solid
+// sea, or null to leave out the sea
 export function setSeaScheme(scheme, sea) {
   var next = Object.assign({}, scheme, {
-    seaScheme: sea ? {elevationPreset: sea.elevationPreset, preset: sea.preset, stopColors: sea.stopColors || null,
+    seaScheme: !sea ? null : sea.solidColor ? {solidColor: sea.solidColor} : {
+      elevationPreset: sea.elevationPreset, preset: sea.preset, stopColors: sea.stopColors || null,
       stops: sea.stops || null, presetStops: sea.presetStops || null, lightness: getSchemeLightness(sea), n: sea.n,
-      continuous: sea.continuous !== false} : null
+      continuous: sea.continuous !== false}
   });
   // something has to be colored
   if (!sea && scheme.landTransparent) next.landTransparent = false;
@@ -1394,21 +1422,35 @@ export function chooseSeaPreset(scheme, name) {
   return setSeaScheme(scheme, name ? chooseElevationPreset(getSeaScheme(scheme) || {}, name) : null);
 }
 
-// The name for the sea's menu: 'Transparent', a preset, or 'Custom'
+// The name for the sea's menu: 'Transparent', 'Solid', a preset, or 'Custom'
 export function getSeaLabel(scheme) {
   var sea = scheme.seaScheme;
-  return !sea ? 'Transparent' : sea.preset || 'Custom';
+  return !sea ? 'Transparent' : sea.solidColor ? 'Solid' : sea.preset || 'Custom';
 }
 
 export function isLandTransparent(scheme) {
   return !!scheme.landTransparent;
 }
 
-// Land without colors leaves only the sea, which then needs some
+// Land without colors leaves only the sea, which then needs some. Either
+// way, the land is no longer solid.
 export function setLandTransparent(scheme, transparent) {
-  var next = Object.assign({}, scheme, {landTransparent: !!transparent});
+  var next = Object.assign({}, scheme, {landTransparent: !!transparent, landSolidColor: null});
   if (transparent && !next.seaScheme) next = chooseSeaPreset(next, getBathymetricPresetNames()[0]);
   return next;
+}
+
+// The color of solid land (-classify land-colors=<color>), or null
+export function getLandSolidColor(scheme) {
+  return isElevationScheme(scheme) && scheme.landSolidColor || null;
+}
+
+// Solid land of @color; without one, the land's color, or else a light gray
+export function setLandSolidColor(scheme, color) {
+  var rgb = color ? internal.parseColor(color) : null;
+  var hex = rgb ? internal.formatColor(Object.assign({}, rgb, {a: 1})) :
+    getLandSolidColor(scheme) || defaultLandSolidColor;
+  return Object.assign({}, scheme, {landTransparent: false, landSolidColor: hex});
 }
 
 // The preset for the climate across a set of [lon, lat] points (see
@@ -1708,7 +1750,8 @@ export function setElevationChipColor(scheme, names, i, color) {
 // spec: {
 //   blend: {name: colors} or null   (a blend: the colors of its presets;
 //                                    presets left out keep their own)
-//   colors: [...] or null           (one preset's colors)
+//   colors: [...] or null           (one preset's colors; one color is
+//                                    solid land)
 //   preset: name or null            (the preset the colors are edited from)
 //   stops: [...] or null            (in the band's units)
 //   classed: boolean                (classes from each stop up to the next,
@@ -1732,6 +1775,10 @@ export function getElevationSchemeFromSpec(base, spec, lyr) {
     edited = Object.keys(edited).length > 0 ? edited : null;
     scheme = Object.assign(scheme, {blended: true, blendColors: edited, preset: edited ? null : blendedPresetName,
       continuous: true});
+  } else if (spec.colors && spec.colors.length == 1) {
+    // solid land keeps the scheme's own colors, for the menu
+    if (!internal.parseColor(spec.colors[0])) return null;
+    scheme = setLandSolidColor(chooseElevationPreset(base, base.elevationPreset || names[0]), spec.colors[0]);
   } else {
     name = findElevationPreset(names, spec.preset, spec.colors) ||
       findElevationPresetWithStops([base.elevationPreset].concat(names), spec, lyr) || base.elevationPreset || names[0];
@@ -1739,7 +1786,7 @@ export function getElevationSchemeFromSpec(base, spec, lyr) {
     if (!scheme) return null;
     scheme.continuous = !spec.classed;
   }
-  if (spec.stops && spec.stops.join() != getElevationSchemeStops(scheme, lyr).join()) {
+  if (spec.stops && !getLandSolidColor(scheme) && spec.stops.join() != getElevationSchemeStops(scheme, lyr).join()) {
     scheme.stops = spec.stops.concat();
   }
   sea = spec.sea ? getSeaSchemeFromSpec(spec.sea, lyr) : null;
@@ -1806,8 +1853,12 @@ function findElevationPreset(names, preset, colors) {
     colors && names.find(function(name) { return getElevationPresetColors(name).join() == colors.join(); }) || null;
 }
 
+// One color is a solid sea
 function getSeaSchemeFromSpec(spec, lyr) {
   var names = getBathymetricPresetNames();
+  if (spec.colors && spec.colors.length == 1) {
+    return internal.parseColor(spec.colors[0]) ? {solidColor: toHex(spec.colors[0])} : null;
+  }
   var name = findElevationPreset(names, spec.preset, spec.colors) ||
     findElevationPresetWithStops(names, spec, lyr) || names[0];
   var sea = applySpecColors(chooseElevationPreset({}, name), name, spec);
@@ -1835,6 +1886,7 @@ function chooseElevationPreset(scheme, name) {
     range: null,
     continuous: !(isElevationScheme(scheme) && scheme.continuous === false),
     landTransparent: false,
+    landSolidColor: null,
     lightness: 0,
     n: getFixedPresetStops(name).length
   });
@@ -2107,13 +2159,18 @@ function formatCategoryNamesOption(scheme, lyr) {
 // they were edited, and land-classed and sea-classed. A blend is
 // land-colors=blended, or its recolored presets by name. Land without colors
 // leaves out land-colors=, and without a sea, land-colors= leaves it out.
+// Solid land and a solid sea are land-colors= and sea-colors= with their one
+// color.
 function formatElevationCommand(scheme, opts) {
   var parts = ['-classify', 'field=' + quoteCommandValue(scheme.field)];
   var lyr = opts && opts.layer;
   var land = !isLandTransparent(scheme);
+  var solid = getLandSolidColor(scheme);
   var sea = getSeaScheme(scheme);
   var colors = [];
-  if (land && isBlendedScheme(scheme)) {
+  if (land && solid) {
+    parts.push('land-colors=' + solid);
+  } else if (land && isBlendedScheme(scheme)) {
     // lightness changes every preset's colors
     getBlendRampColors(scheme).forEach(function(ramp) {
       if (scheme.blendColors && scheme.blendColors[ramp.name] || getSchemeLightness(scheme)) {
@@ -2125,10 +2182,12 @@ function formatElevationCommand(scheme, opts) {
   } else if (land) {
     parts.push(formatElevationRampOptions('land', scheme, lyr));
   }
-  if (land && !isContinuousScheme(scheme)) parts.push('land-classed');
+  if (land && !solid && !isContinuousScheme(scheme)) parts.push('land-classed');
   if (sea) {
     parts.push(formatElevationRampOptions('sea', sea, lyr));
     if (!isContinuousScheme(sea)) parts.push('sea-classed');
+  } else if (getSeaSolidColor(scheme)) {
+    parts.push('sea-colors=' + getSeaSolidColor(scheme));
   }
   if (getSchemeNullColor(scheme)) parts.push('null-value=' + getSchemeNullColor(scheme));
   if (opts && opts.target) parts.push('target=' + opts.target);

@@ -263,7 +263,16 @@ export function makeColorRow(parent, opts) {
   var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
   var colorCell = El('div').addClass('label-split-cell label-color-row').appendTo(row);
   var aside = El('div').addClass('label-split-cell').appendTo(row);
-  var control = {row: row, aside: aside, chit: null, input: null, opacity: null, picker: null};
+  El('span').appendTo(colorCell).text(opts.label);
+  return Object.assign(makeColorControl(colorCell, opts), {row: row, aside: aside});
+}
+
+// The field of makeColorRow() and its picker, without the row and caption,
+// in @parent: {box, chit, input, opacity, picker, setColor(), showColor()}.
+// opts as for makeColorRow(); opts.label names the field if opts.ariaLabel doesn't.
+export function makeColorControl(parent, opts) {
+  var colorCell = parent;
+  var control = {box: null, chit: null, input: null, opacity: null, picker: null};
 
   // A color from the data can be any CSS color -- short hex, or a name, from
   // the command line -- and the swatch shows it, though only hex can be
@@ -293,7 +302,6 @@ export function makeColorRow(parent, opts) {
     else control.picker.clearColor();
   }
 
-  El('span').appendTo(colorCell).text(opts.label);
   control.chit = El('div').addClass('label-color-chit').attr('role', 'button')
     .on('click', function() {
       control.picker.toggle();
@@ -306,12 +314,12 @@ export function makeColorRow(parent, opts) {
       opts.onColor(color);
     });
   if (opts.noOpacity) {
-    makeColorField(colorCell, control.chit, control.input);
+    control.box = makeColorField(colorCell, control.chit, control.input);
   } else {
-    control.opacity = makeColorOpacityField(colorCell, control.chit, control.input, {
+    Object.assign(control, makeColorOpacityField(colorCell, control.chit, control.input, {
       onSet: opts.onOpacity,
       revert: opts.revert
-    }).opacity;
+    }));
   }
   control.picker = new ColorPicker(colorCell, {
     presetRows: layerColorPresetRows,

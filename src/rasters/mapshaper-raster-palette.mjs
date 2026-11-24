@@ -86,7 +86,8 @@ function getCachedTable(key, build) {
 export function getRasterSeaTable(palette) {
   var ramp = palette.seaRamp;
   if (!ramp) return null;
-  if (!ramp.classed) {
+  // a solid sea (one color) is one class
+  if (!ramp.classed && ramp.colors.length > 1) {
     return getRasterPaletteTable({type: 'sequential', continuous: true, interpolation: 'oklch',
       breaks: ramp.breaks, colors: ramp.colors});
   }

@@ -564,7 +564,9 @@ apart from the panel, so that a command could use it later.
   `units` (the band's), `stops` (in those units), the colors at the stops
   (`colors` for one preset; for a blend, `blend`, with every preset's
   colors, recolored or not), and `sea` (`palette`, `stops` and `colors`,
-  or null). Transparent land has only `units` and `sea`. A blend's
+  or null; a solid sea has one color, at 0, and so does solid land, in
+  `colors` and `stops`). Transparent land has only
+  `units` and `sea`. A blend's
   `classes` and `expression` are those of the preset it uses where it can't
   blend; a web map can't mix the presets by climate.
 - Continuous quantile colors are placed by rank, which stops at values can

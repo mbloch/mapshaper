@@ -547,7 +547,20 @@ tested.
    (`seaRamp.classed`) mirrors the classed land: each class runs from a
    stop down to the next deeper one, so a value at a stop takes the stop's
    color (`getSeaClassTable()`); the class breaks dialog counts and draws
-   the sea's classes the same way.
+   the sea's classes the same way. One color, `sea-colors=<color>`, is a
+   solid sea: a custom ramp of the color at 0 (`seaRamp = {breaks: [0],
+   colors: [color]}`), drawn as one class. In the panel it is
+   `scheme.seaScheme = {solidColor}` (`getSeaSolidColor()`,
+   `setSeaSolidColor()`, for which `getSeaScheme()` is null): Solid color
+   in the Sea menu, whose color field takes the place of the Customize
+   button, as the No data row's does. Its default is the shallowest color
+   of the sea's ramp, or of the first bathymetric preset. Solid land,
+   `land-colors=<color>`, is the same for the land, for bathymetric maps: a
+   custom palette of the color at 0, as one class. In the panel it is
+   `scheme.landSolidColor` (`getLandSolidColor()`, `setLandSolidColor()`),
+   over the scheme's own colors, which stay for the menu; Solid color in
+   the Land menu, with its color field in place of Customize, starting
+   from a light gray.
 7. Later: a command that renders a raster's display into RGB pixels (colored
    GeoTIFFs, `-tone` on palette rasters), GeoTIFF `ColorMap` import as a default categorical palette (NLCD
    and other palette TIFFs), category labels from raster attribute tables,

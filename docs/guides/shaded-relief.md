@@ -26,7 +26,7 @@ The interactive panels run ordinary Mapshaper commands under the hood. You can v
 
 ## Before you start
 
-**Finding the tools.** Panels are opened from a layer's menu in the layers panel (the menu button at the right of the layer's entry). Each is only offered on layers where it makes sense, so if a menu item is missing, check that the right layer is selected.
+**Finding the tools.** Panels are opened from a layer's menu in the layers panel (the menu button at the right of the layer's entry).
 
 | To do this | Open this on the layer | On this kind of layer |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ The interactive panels run ordinary Mapshaper commands under the hood. You can v
 | Color elevations with a tint | **color palette** | an elevation raster |
 | Blend a hillshade with another raster | **blend hillshade** | an image or a tinted raster, in the same frame as a hillshade |
 
-**Commands without panels.** `-fetch` and `-deshadow` have no panel. Run them from the console (pressing the **space bar** opens the console). In the console the leading `-` is optional for a single command, e.g. `fetch 3dep-1m`.
+**Commands without panels.** `-fetch` and `-deshadow` are run from the console (press the **space bar** to open it). The leading `-` is optional for a single console command, e.g. `fetch 3dep-1m`.
 
 ## Part one: create a hillshade
 
@@ -55,27 +55,27 @@ There are two ways to get started.
 
 #### Option one: draw a frame and download a DEM to fit it
 
-1. Turn on a basemap (**Display &rarr; Basemaps**) to give yourself something to draw over, and zoom to your area of interest.
+1. Turn on a basemap (**Display &rarr; Basemaps**) to draw over, and zoom to your area of interest.
 
    > **[IMAGE: shaded-relief-frame-1-basemap.png]** The basemap with the area of interest in view.
 
-2. Draw a rectangle around the area you want to map: choose **rectangle tool** from the arrow menu, then shift-drag on the map. This creates a layer containing your rectangle.
+2. Choose **rectangle tool** from the arrow menu and shift-drag to draw a rectangle around the area you want to map.
 
-3. Project the rectangle into the projection you want for the finished map. Open the console and run a [`-proj`](/docs/reference.html#-proj) command, for example `proj merc` (Mercator, generally appropriate for small areas), `proj albersusa` for the contiguous U.S., or `proj eqearth` for a world map. See [Map projections](/docs/guides/projections.html) for more.
+3. Project the rectangle into the projection you want for the finished map, e.g. `proj merc` (Mercator, generally appropriate for small areas), `proj albersusa` for the contiguous U.S., or `proj eqearth` for a world map. See [Map projections](/docs/guides/projections.html).
 
    > **[TODO]** Confirm the best recommendation for readers choosing a projection (maybe link to a short list of good defaults by map scale).
 
-4. Click **+ New frame** in the layers panel. In the dialog, give the frame an **Output width** (e.g. `1200px`), optionally an **Aspect ratio** (e.g. `3:2`), and click **Fit visible layers** to fit the frame to your rectangle. (**Draw on the map** lets you draw the frame directly instead.)
+4. Click **+ New frame** in the layers panel, enter an output width (e.g. `1200px`) and click **Fit visible layers**.
 
    > **[IMAGE: shaded-relief-frame-2-dialog.png]** The New map frame dialog.
 
-5. Download elevation data for the frame. In the console, run `fetch` with the name of an elevation source:
+5. Download elevation data for the frame:
 
    ```bash
    -fetch mapterhorn
    ```
 
-   A new raster layer appears at the bottom of the frame. The area, the projection and the resolution all come from the frame, so the new layer is already in the map's projection, with enough resolution for the output size.
+   The new raster layer takes its area, projection and resolution from the frame.
 
    > **[IMAGE: shaded-relief-fetch-dem.png]** The fetched DEM, drawn in grayscale in the frame.
 
@@ -91,79 +91,74 @@ There are two ways to get started.
 
 > **[TODO]** Confirm the "good first choice" recommendation and add a sentence on how many tiles/how long a typical fetch takes. `max-tiles=` (default 500) stops runaway downloads; mention it here or in a tip.
 
-**Tips**
-
-- Run `-fetch` *after* you create the frame and project your data. A fetched raster is a snapshot of the frame at the time of the download. If you change the projection or resize the frame afterward, the raster is left at the wrong resolution, and you should fetch again.
-- `-fetch` downloads a little extra data around the frame (`bleed=`, 10 pixels by default), so that smoothing and shading don't produce artifacts at the edges. The extra area is cropped when you export.
-- Fetched rasters have two pixels for each pixel of the frame (`raster-res=2`), so that maps look sharp on high-density screens and in PNG output.
+Run `-fetch` *after* creating the frame and projecting your data. A fetched raster is a snapshot of the frame at the time of the download, so if you change the projection or resize the frame afterward, fetch again.
 
 #### Option two: import your own DEM
 
-If you already have a DEM, such as a GeoTIFF from a national mapping agency, [OpenTopography](https://opentopography.org/) or another source, you can use it instead of `-fetch`.
+A DEM from a national mapping agency, [OpenTopography](https://opentopography.org/) or another source can be used instead of `-fetch`.
 
-1. Import the GeoTIFF, by drag and drop or with the **Add files** button.
+1. Import the GeoTIFF. Select **with advanced options** in the import dialog and add `raster-type=continuous`, which keeps nodata pixels from being mixed with real values when the DEM is reprojected.
 
-   Select **with advanced options** in the import dialog and add `raster-type=continuous`. This marks the file as containing measurements rather than a picture, so that reprojecting it doesn't mix nodata pixels with real values.
+2. If the DEM is in lat-long coordinates, reproject it, e.g. `proj albersusa` or `proj merc`. Make the hillshade after reprojecting, so that the light direction is fixed relative to the page and the shading matches the output pixel size.
 
-2. If the DEM is in lat-long coordinates (most are), reproject it to the projection you want for the map. For example, `proj albersusa` or `proj merc`. A hillshade should be made *after* reprojecting, so that the light direction stays fixed relative to the page and the shading matches the output pixel size.
+3. If the DEM covers a much larger area than the map, clip it with the rectangle tool or [`-clip`](/docs/reference.html#-clip) to reduce processing time. (Step 5 can also crop the DEM to the frame.)
 
-3. Large DEMs are slow to process and most of their pixels will be outside your map. If your DEM covers a much larger area than you need, clip it first, using the rectangle tool or [`-clip`](/docs/reference.html#-clip).
-
-4. Click **+ New frame** and choose **Fit visible layers** to create a frame around the DEM. (The frame's extent and projection are the DEM's. You can resize the frame afterward with **resize frame** in the frame's menu.)
+4. Click **+ New frame** and choose **Fit visible layers** to create a frame around the DEM.
 
    > **[IMAGE: shaded-relief-import-dem.png]** An imported DEM with a frame.
 
-Elevation data from `-fetch` and imported DEMs work the same way in the rest of this guide.
+5. Match the DEM's resolution to the frame. A hillshade's appearance depends on raster resolution, because smoothing, ambient darkening and texture shading work over distances measured in pixels, and the automatic exaggeration is based on the ground size of a pixel. With the DEM layer selected, run [`-resample`](/docs/reference.html#-resample) in the console:
+
+   ```bash
+   -resample 2x crop
+   ```
+
+   `2x` sets two raster pixels per pixel of the frame, the resolution `-fetch` uses. `1x` matches the frame's pixels, and a value like `300dpi` sets a resolution for print. `crop` discards the part of the DEM outside the frame, apart from a small margin (`bleed=`, 10 pixels by default) that keeps edge effects out of the hillshade.
+
+Elevation data from `-fetch` is already at the frame's resolution and cropped to the frame, so it doesn't need this step. From here on, fetched and imported DEMs are handled the same way.
 
 ### Step two: create a hillshade from the elevation layer
 
-Select the elevation layer and choose **hillshade** from its menu. The hillshade panel opens, and the map shows a live preview of the shading. Drag a slider to see the effect on the part of the map in view; when you release it, the entire raster is updated. Nothing is changed until you click **Apply**.
+Select the elevation layer and choose **hillshade** from its menu. The hillshade panel opens, and the map shows a live preview of the shading. Use the panel's controls to customize your hillshade and finalize it by clicking **Apply**. **Keep elevation** (checked by default) keeps the DEM, which is needed for tints and for `-deshadow`.
 
 > **[IMAGE: shaded-relief-panel-overview.png]** The hillshade panel beside a preview of the map.
-
-When you click **Apply**, Mapshaper runs a [`-hillshade`](/docs/reference.html#-hillshade) command and adds a layer named "hillshade". **Keep elevation** (checked by default) keeps the DEM in the layers panel; you'll need it later to make hypsometric tints, or to remove shadows from imagery. Press **Cancel** or the **x** to close the panel without making changes.
 
 #### Shading: opaque or transparent
 
 The panel's **Style** setting controls how the hillshade is drawn.
 
-- **Opaque** colors every pixel, running from a *shadow* color through a *base* color (flat ground) to a *highlight* color. The hillshade is a complete image on its own, and it's the best input for blending with other layers (see parts two to four). It's also the way to make a colored hillshade to use as a base layer. The panel starts on this style.
-- **Transparent** is drawn with black shadows and white highlights, and flat ground is fully transparent, so the layers below the hillshade show through. Use this style when you want to overlay the hillshade on a layer without blending, for example on a basemap or on a map of land cover.
+- **Opaque** colors every pixel, running from a *shadow* color through a *base* color, which is the color of flat ground, to a *highlight* color.
+- **Transparent** is drawn translucent black shadows and white highlights, so the layers below the hillshade show through. Flat ground is fully transparent.
+
+For the most control over how a hillshade is combined with another layer, make an opaque hillshade and blend the layers using the "Blend hillshade" panel.
 
 > **[IMAGE: shaded-relief-style-compare.jpg]** The same terrain in the two styles: opaque (left) and transparent over a colored layer (right).
 
-The sliders and colors depend on the style:
-
-- **Opaque:** **Base** is the color of flat ground. **Shadow** and **Highlight** colors are derived from the base color until you choose them yourself ("auto" appears in their fields). The **Shadows** and **Highlights** sliders adjust how far the shading goes from the base color toward its shadow and highlight colors, so they control contrast.
-- **Transparent:** **Shadows** sets the opacity of the darkest shadows. **Highlights** sets the opacity of the brightest highlights, relative to the shadows. **Shadow** and **Highlight** are the colors of the shading, black and white by default.
-
-**Making a colored hillshade.** An opaque hillshade with a colored base is a quick way to make a stand-alone relief map. Choose a base color (try a light tan or a pale green-gray), and adjust the shadow and highlight colors until the result looks right. A cool shadow color and a warm highlight color give the shading a hand-painted look.
+**Making a colored hillshade.** An opaque hillshade with a colored base is a quick way to make a stand-alone relief map. Choose a base color (try a light tan or a pale green-gray), and adjust the shadow and highlight colors until the result looks right. A cool shadow color and a warm highlight color give the shading a hand-painted look, especially when smoothing is added.
 
 > **[IMAGE: shaded-relief-colored-hillshade.jpg]** A hillshade with a tan base color.
 
 #### Light
 
-- **Azimuth** is the direction of the main light, in degrees clockwise from north. The default of 315° (northwest) lights the map from the upper left, the usual convention. Lighting from the south can make valleys look like ridges (the effect is called relief inversion), so the slider doesn't go there.
-- **Altitude** is the angle of the light above the horizon. Lower values give longer, darker shadows and fewer highlights. Higher values give flatter lighting.
-- **Lighting** controls how the main light is supplemented by fainter lights from other directions. **Hard** uses the main light alone, for the most contrast. **Balanced** (the default) adds fill lights to soften shadows. **Soft** adds still more, which brightens slopes that face away from the light and shows more midtones.
+- **Azimuth** is the direction of the main light, in degrees clockwise from north. The default of 315° (northwest) lights the map from the upper left, which is the usual convention.
+- **Altitude** is the angle of the light above the horizon (default 45°, a common convention). Mapshaper doesn't cast shadows, so altitude changes tones rather than the length of shadows.
+- **Lighting** adds fainter fill lights around the main light. **Hard** uses the main light alone, **Balanced** (the default) softens contrast, and **Soft** adds still more fill light, brightening slopes that face away from the main light.
 
 > **[IMAGE: shaded-relief-light-compare.jpg]** Hard, balanced and soft lighting, side by side.
 
 #### Terrain
 
-- **Exaggeration** multiplies the vertical scale of the terrain. The slider is centered on an automatic value that depends on the scale of the map: relief flattens out as maps get smaller, so small-scale maps need more exaggeration (1 at 50 meters per pixel and finer, about 4.5 at 1 km per pixel, capped at 10). The readout shows the exaggeration in use, and each whole unit along the slider doubles or halves it.
-- **Smoothing** (Off, 1-4) removes noise and small landforms while keeping ridges and valleys sharp. Higher levels remove larger features. Level 1 often looks a little cleaner than no smoothing, especially with high-resolution data, and higher levels suit maps that cover large areas. Smoothing only changes the hillshade. To smooth elevations for other uses, like contours or tints, use [`-smooth-terrain`](/docs/reference.html#-smooth-terrain).
+- **Exaggeration** multiplies the vertical scale of the terrain. The slider is centered on an automatic value based on the scale of the map (small-scale maps get more exaggeration), and the readout shows the value in use.
+- **Smoothing** (Off, 1-4) removes noise and small landforms while keeping ridges and valleys sharp. Higher levels remove larger features. Smoothing only changes the hillshade. To smooth elevations for other uses, like contours or tints, use [`-smooth-terrain`](/docs/reference.html#-smooth-terrain).
 
 > **[IMAGE: shaded-relief-smoothing-compare.jpg]** A mountainous area at smoothing Off, 1, 2 and 3 (or similar).
 
 #### Effects
 
-Effects add depth to the basic hillshade.
-
-- **Ambient** darkens places with a restricted view of the sky: valleys, canyons and the bases of cliffs. Ridges are slightly lightened. It adds a sense of depth that a single light can't (default 0.5).
-- **Texture** adds *texture shading*, which emphasizes the pattern of ridges and valleys in rugged terrain, even where they are not oriented to the light (default 0).
-- **Aerial** reduces contrast at low elevations, so that the lowlands fade and high mountains stand out, like atmospheric haze (default 0).
-- **Gamma** sets the shape of the tone curve where slopes meet flat ground. Values below 1 strengthen faint shading, so that gentle terrain is more visible (default 0.7).
+- **Ambient** darkens valleys, canyons and other places with a restricted view of the sky, adding depth that a single light can't.
+- **Texture** adds *texture shading*, which emphasizes the pattern of ridges and valleys in rugged terrain, even where they are not oriented to the light.
+- **Aerial** reduces contrast at low elevations, so that lowlands fade and high mountains stand out, like atmospheric haze.
+- **Gamma** sets the shape of the tone curve where slopes meet flat ground. Values below 1 strengthen faint shading, so that gentle terrain is more visible.
 
 > **[IMAGE: shaded-relief-effects-compare.jpg]** The same terrain with ambient, texture and aerial added one at a time.
 
@@ -174,24 +169,22 @@ Effects add depth to the basic hillshade.
 A few settings have no sliders and are available in the console:
 
 - `-hillshade min-elevation=0` flattens the sea floor at sea level, which keeps the sea clear of shading.
-- [`-sharpen`](/docs/reference.html#-sharpen) sharpens the finished hillshade with an unsharp mask. A light touch (`-sharpen 0.25`, the default) brings out crisp ridgelines on high-resolution maps.
+- [`-sharpen`](/docs/reference.html#-sharpen) applies an unsharp mask to the finished hillshade, which brings out ridgelines on high-resolution maps.
 - `-hillshade verbose` prints every setting, including the automatic ones.
 
 ## Part two: blend a hillshade with imagery
 
-Draping a transparent hillshade over a satellite image often looks muddy. Shadows desaturate the colors and the highlights lay a white haze over them. The **blend hillshade** panel combines the two layers pixel by pixel, so the hillshade adjusts the lightness of the image while the colors stay true.
+Draping a transparent hillshade over a satellite image often looks muddy: shadows desaturate the colors and highlights lay a white haze over them. The **blend hillshade** panel combines the two layers pixel by pixel, so the hillshade adjusts the lightness of the image while the colors stay true.
 
 ### Step one: prepare the imagery
 
 #### Fetch imagery for the frame
 
-Make sure the map frame exists (see [part one](#step-one-get-elevation-data-in-a-map-frame)), then run `-fetch` with the name of an imagery source:
+With the map frame in place (see [part one](#step-one-get-elevation-data-in-a-map-frame)), run `-fetch` with the name of an imagery source:
 
 ```bash
 -fetch naip
 ```
-
-The new image layer is in the same frame as the DEM, with the same projection and resolution, so the two layers line up exactly.
 
 > **[IMAGE: shaded-relief-fetch-imagery.jpg]** NAIP aerial imagery in the frame.
 
@@ -208,76 +201,59 @@ The new image layer is in the same frame as the DEM, with the same projection an
 
 #### Remove shadows from aerial imagery
 
-Aerial photos include real shadows, cast by the terrain at the time the picture was taken. These clash with the shadows of the hillshade, which is lit from a different direction. The experimental [`-deshadow`](/docs/reference.html#-deshadow) command uses the DEM to find shadowed areas and dark slopes, and relights them to a consistent brightness.
-
-Select the imagery layer and, in the console, run `-deshadow` with the name of the DEM layer (the layer that `-fetch` created, named after its source):
+Aerial photos include real shadows, cast by the terrain when the picture was taken. These clash with the shading of the hillshade, which is lit from a different direction. The experimental [`-deshadow`](/docs/reference.html#-deshadow) command uses the DEM to find shadowed areas and dark slopes, and relights them to a consistent brightness. With the imagery layer selected, run it with the name of the DEM layer (named after its source):
 
 ```bash
 -deshadow dem=mapterhorn
 ```
 
-Add `despeckle` to also brighten small dark spots the DEM can't explain, such as the shadows of low ledges. Only use it on terrain without trees or water, which `despeckle` would brighten too.
+Add `despeckle` to also brighten small dark spots that the DEM doesn't account for, such as the small shadows of features too fine to appear in the DEM. Which shadows count as small depends on the resolution of the imagery. It works best on bare rock and areas with little vegetation.
 
 > **[IMAGE: shaded-relief-deshadow-compare.jpg]** Before and after `-deshadow`: shadows in the canyon are gone, leaving even lighting.
 
-Shadow removal works best on high-resolution aerial images with a distinct shadow pattern, such as canyons and mountains. Results are less reliable on mosaics of images taken at different times of day, and on images without distinct shadows. Skip this step for satellite imagery from `sentinel2` or `eox`, which tends to be taken at midday with little shadow.
+Shadow removal works best on high-resolution aerial images with distinct shadows, such as canyons and mountains. Composites of images taken at different times of day, such as mosaics of aerial photos, have regions with different sun angles. Mapshaper tries to detect these regions and correct each for its own sun angle, but detection isn't fully reliable, so check the result. Results are also less reliable on images without distinct shadows.
 
-> **[TODO]** Confirm that the satellite-imagery advice is true and consistent with how -deshadow behaves on `eox`/`sentinel2`/`landsat`.
+> **[TODO]** Test `-deshadow` on `eox`, `sentinel2` and `landsat` imagery in a few regions (including high latitudes) and say which, if any, it helps.
 
-The DEM has to cover the image and must still be present, so don't skip **Keep elevation** when you make the hillshade (or run `-deshadow` first).
+The DEM must still be present when `-deshadow` runs, so keep the elevation layer when making the hillshade (or run `-deshadow` first).
 
 #### Adjust the colors of the imagery
 
-Select the imagery layer and choose **adjust colors** from its menu to open the **Color & tone** panel. Its sliders change:
-
-- **Lightness** darkens (below 1) or lightens the image
-- **Saturation** makes colors more or less vivid (0 is gray)
-- **Contrast** spreads or flattens lightness around the image's midpoint
-- **Gamma** lightens or darkens midtones
-- **Hue** shifts all hues toward yellow-tan (positive values) or away from it (negative values)
-- **Opacity** makes the image more or less transparent
+Select the imagery layer and choose **adjust colors** to open the **Color & tone** panel. **Apply** commits the change as a [`-tone`](/docs/reference.html#-tone) command.
 
 > **[IMAGE: shaded-relief-tone-panel.png]** The Color & tone panel.
 
-Look for an image that's a little brighter, more colorful and lower in contrast than the final result you want. The hillshade supplies the contrast, and shading lowers lightness. If the image is dark before you blend it, shadows will have little room to show. The Canyon example used `-tone lightness=1.49 saturation=1.18 contrast=1.23 hue-shift=0.25`, and the sliders are an easy way to find the right values for a particular image. Click **Apply** to commit the change as a [`-tone`](/docs/reference.html#-tone) command.
+Aim for an image that is a little brighter, more colorful and lower in contrast than the final result you want: the hillshade supplies the contrast, and shading lowers lightness. If the image is dark before blending, shadows have little room to show. The Canyon example used `-tone lightness=1.49 saturation=1.18 contrast=1.23 hue-shift=0.25`.
 
 ### Step two: blend the hillshade with the image
 
-Make a hillshade, as described in [part one](#step-two-create-a-hillshade-from-the-elevation-layer). Opaque hillshades blend best. If you have not made one yet, select the DEM layer, open the hillshade panel and click **Apply**.
-
-Then select the imagery layer and choose **blend hillshade** from its menu. (The item appears when a hillshade is in the same frame as the imagery.) The **Hillshade** menu at the top of the panel picks which hillshade to use; the map shows a live preview.
+Make an opaque hillshade (see [part one](#step-two-create-a-hillshade-from-the-elevation-layer)), then select the imagery layer and choose **blend hillshade** from its menu. The item appears when a hillshade is in the same frame as the imagery.
 
 > **[IMAGE: shaded-relief-blend-panel.png]** The blend hillshade panel beside a preview.
 
-The panel has a **Shadows** section and a **Highlights** section, each with **Strength**, **Chroma** and **Color** settings, so you can control the way light and dark areas are treated separately.
+The **Shadows** and **Highlights** sections each have **Strength**, **Chroma** and **Color** settings.
 
-#### Shadow and highlight strength
+#### Strength
 
-**Strength** multiplies the opacity of the shading. At 1 (the default), the shading has the same lightness as the hillshade drawn over the image. At 0, the shading is turned off. Values above 1 make it stronger (up to 2).
-
-- If the shadows look weak, particularly on dark imagery such as forest, raise the shadow strength.
-- If the highlights look blown-out on light ground, lower the highlight strength.
+**Strength** multiplies the opacity of the shading: 0 turns it off, 1 is the hillshade as drawn, and higher values strengthen it. Raise the shadow strength on dark imagery such as forest, where shadows are faint.
 
 #### Chroma
 
 **Chroma** controls how much of the image's own color is kept under the shading.
 
-- At **0**, shading works like an ordinary overlay: it blends with the image as semi-transparent black or white. Shadows make the colors darker and duller, and highlights make them paler and hazy.
+- At **0**, shading works like an ordinary overlay of semi-transparent black or white. Shadows darken and dull the colors, and highlights make them pale and hazy.
 - At **1**, the image keeps its original hue and saturation, and the shading only changes lightness (similar to the *luminosity* blend mode in graphics programs). Shadowed forest stays green, and sunlit slopes are brighter without turning milky.
-- Between 0 and 1 gives a proportional mix.
-- Values above 1 boost saturation beyond the image's original colors, up to 2.
+- Values above 1 boost saturation beyond the image's original colors.
 
-The defaults are 0 for shadows (shadows look like shadows) and 1 for highlights (no haze). Try raising the shadow chroma to 0.5 or higher if shadows make the map look dull.
+The defaults are 0 for shadows and 1 for highlights, so that highlights have no haze. Raise the shadow chroma to 0.5 or higher if shadows make the map look dull.
 
 > **[IMAGE: shaded-relief-chroma-compare.jpg]** Shadow chroma at 0, 0.5 and 1.
 
 #### Tinting the shading
 
-Each section's **Color** field sets the color of the shading. It starts out as the hillshade's own color (black shadows and white highlights, or the colors of the opaque ramp). Choose a different color to tint it.
+Each section's **Color** sets the color of the shading. A color's hue appears wherever chroma is below 1, so lower the chroma when tinting. Its lightness matters at every setting: a lighter shadow color makes shadows fainter.
 
-A color's *hue* appears wherever chroma is below 1 (at chroma 1, the image's own color takes over), so lower the chroma at the same time. Its *lightness* matters at every setting. A lighter shadow color makes shadows fainter.
-
-For example, to give the shadows a cool blue-violet tint and the highlights a warm glow, choose `#2a2550` for the shadows and `#fff3d6` for the highlights, and set both chroma values to about 0.5. This is the classic cartographic combination of warm light and cool shadow.
+For example, for cool blue-violet shadows and warm highlights, choose `#2a2550` for the shadows and `#fff3d6` for the highlights, and set both chroma values to about 0.5.
 
 > **[IMAGE: shaded-relief-tinted-shadows.jpg]** Neutral shading compared with cool, blue-green and purple shadow tints.
 
@@ -285,44 +261,38 @@ For example, to give the shadows a cool blue-violet tint and the highlights a wa
 
 #### Finishing
 
-Click **Apply** to run [`-blend`](/docs/reference.html#-blend). The imagery layer is replaced by the blended image, and the hillshade layer is removed unless you check **Keep hillshade**.
-
-Blending happens in place, so adjusting a blend means undoing it (**⌘Z** / **Ctrl+Z**) and blending again with new settings. Blending its own output a second time would double the shading.
+**Apply** runs [`-blend`](/docs/reference.html#-blend), which replaces the imagery with the blended image and removes the hillshade layer unless **Keep hillshade** is checked. To adjust a blend, undo it (**⌘Z** / **Ctrl+Z**) and blend again. Blending the output a second time doubles the shading.
 
 > **[IMAGE: shaded-relief-blend-result.jpg]** The finished image, compared with the unblended imagery and the hillshade.
 
 ## Part three: blend a hillshade with hypsometric tints
 
-A **hypsometric tint** colors the land by elevation: lowlands green, highlands tan and brown, and the highest peaks white, for example. Combined with a hillshade, tints give the classic look of an atlas relief map.
+A **hypsometric tint** colors land by elevation: lowlands green, highlands tan and brown, and the highest peaks white, for example. Combined with a hillshade, tints give the classic look of an atlas relief map.
 
 > **[IMAGE: shaded-relief-tint-intro.jpg]** An atlas-style map: hypsometric tints blended with a hillshade.
 
 ### Coloring an elevation layer
 
-1. Select the DEM layer and choose **color palette** from its menu to open the color palette panel. Click the **Elevation** tab.
+1. Select the DEM layer and choose **color palette** from its menu. Click the **Elevation** tab.
 2. Choose a palette from the palette menu:
 
-   - **Transparent** leaves the land uncolored.
-   - **Climate zones** are tints for different kinds of climate: *desert*, *steppe*, *tropical*, *temperate*, *boreal* and *polar*. Natural landscapes look different in different climates, so a single set of colors doesn't work everywhere. A temperate palette passes from green lowlands to brown highlands, while a desert one uses tans and ochers.
-   - **Blended** (offered when the raster's location is known) mixes the climate palettes according to the climate at each location. It's designed for maps of the world and of large regions.
+   - **Climate zones** (*desert*, *steppe*, *tropical*, *temperate*, *boreal* and *polar*) are tints suited to different climates.
+   - **Blended** mixes the climate palettes according to the climate at each location. It's designed for maps of the world and of large regions, and is offered when the raster's location is known.
    - **Other** has the general-purpose *atlas*, *lowland* and *highland* palettes.
+   - **Transparent** leaves the land uncolored.
 
-3. The **Sea** menu colors the ocean: **Transparent** leaves it uncolored; the **Bathymetry** palettes tint it by depth in blue, pale or gray shades. (The sea is the area at or below sea level that connects to the edge of the map; lakes and basins below sea level, such as the Dead Sea, are not tinted as sea.)
+3. The **Sea** menu colors the ocean by depth (**Bathymetry** palettes) or leaves it uncolored (**Transparent**). The sea is the area at or below sea level that connects to the edge of the map. Lakes and basins below sea level, such as the Dead Sea, are not tinted as sea.
 
-The palette doesn't change the elevation values. It's a display setting, and the DEM can still be used to make hillshades and contours.
-
-The panel creates a [`-classify`](/docs/reference.html#-classify) command, e.g. `-classify land-colors=temperate sea-colors=blue`.
+A palette is a display setting that leaves the elevation values unchanged, so the DEM can still be used for hillshades and contours. The panel creates a [`-classify`](/docs/reference.html#-classify) command, e.g. `-classify land-colors=temperate sea-colors=blue`.
 
 > **[IMAGE: shaded-relief-palette-panel.png]** The color palette panel with the Elevation tab showing.
 
 ### Example: a world map
 
-World maps are the easiest place to start, because the **Blended** palette is designed for them.
-
-1. Set up a frame in a world projection (for example `proj eqearth`) with a width of about 1200px. See [part one](#option-one-draw-a-frame-and-download-a-dem-to-fit-it).
-2. `-fetch tilezen` (or `mapterhorn`) to download a DEM at a resolution suited to the frame.
-3. Make a hillshade with **Keep elevation** checked. At small scales the automatic exaggeration is high, which is what makes continents look three-dimensional. Increase **Smoothing** to remove fine detail that doesn't belong at this scale.
-4. On the DEM, open **color palette**, and choose **Blended** for land and a **Bathymetry** palette for the sea.
+1. Create a frame in a world projection (for example `proj eqearth`) about 1200px wide. See [part one](#option-one-draw-a-frame-and-download-a-dem-to-fit-it).
+2. `-fetch tilezen` (or `mapterhorn`).
+3. Make a hillshade with **Keep elevation** checked. At small scales the automatic exaggeration is high, which makes continents look three-dimensional. Increase **Smoothing** to remove detail that doesn't belong at this scale.
+4. On the DEM, open **color palette** and choose **Blended** for land and a **Bathymetry** palette for the sea.
 5. Blend the hillshade with the tinted DEM (see below).
 
 > **[IMAGE: shaded-relief-tint-world.jpg]** World map with blended climate-zone tints.
@@ -331,20 +301,9 @@ World maps are the easiest place to start, because the **Blended** palette is de
 
 ### Example: a regional map with custom elevation breaks
 
-Preset tints have fixed elevations, and a particular area might suit different ones. On a map of the Colorado Plateau, the useful color changes fall between 1500 and 2500 meters, while on a map of the Netherlands they fall between 0 and 50.
+Preset tints have fixed elevations, and a particular area may suit different ones. On a map of the Colorado Plateau, the useful color changes fall between 1500 and 2500 meters, while on a map of the Netherlands they fall between 0 and 50.
 
-Click **Customize** next to the palette to open the **Elevations and colors** dialog. It shows a histogram of the DEM's elevations, with a handle for each color stop, and a table of the stops. You can:
-
-- move a stop to a different elevation
-- click a color to change it
-- add or delete stops
-- click **Fit to data** to stretch the stops across the DEM's elevation range
-- adjust the **Lightness** of the whole palette
-- switch between continuous colors and classes (the toggle button), where each class runs from one elevation up to the next
-
-> **[TODO]** Check this list against the dialog's current behavior (how stops are moved and added) and add a screenshot callout for each control.
-
-The command-line equivalent is `land-colors=` with `land-breaks=`, which lists the elevation of each color, lowest first:
+**Customize** opens the **Elevations and colors** dialog, where color stops can be moved, added, deleted and recolored. The command-line equivalent is `land-colors=` with `land-breaks=`, which lists the elevation of each color, lowest first:
 
 ```bash
 -classify land-colors=#b2c9ba,#e8dcb5,#c8a47e,#8a6b4f,#f4efe6 land-breaks=0,300,900,1800,3000
@@ -356,24 +315,19 @@ The command-line equivalent is `land-colors=` with `land-breaks=`, which lists t
 
 ### Blending a hillshade with the tints
 
-The blend hillshade panel works on a raster that is displayed in color, which includes an elevation raster with a palette. Before you blend, **duplicate the DEM** (**duplicate layer** in its menu) and apply the palette to the copy. Blending replaces its target with a new image, so the copy keeps your original elevations (you need them for other hillshades, contours and tints).
+The blend hillshade panel works on rasters displayed in color, which includes an elevation raster with a palette. Blending replaces its target with a new image, so **duplicate the DEM** (**duplicate layer** in its menu) and apply the palette to the copy to keep the original elevations.
 
-Then select the tinted layer, open **blend hillshade**, choose the hillshade, and adjust the settings as in [part two](#step-two-blend-the-hillshade-with-the-image). A few tips for tints:
-
-- Tinted terrain is usually lighter than imagery, so shadows show up clearly with the default strength of 1. A chroma of 0.5 to 1 for shadows helps keep the tint colors from dulling in the dark areas.
-- A lightly warm highlight color and a cool shadow color work especially well on tints.
+Then select the tinted layer, open **blend hillshade** and adjust the settings as in [part two](#step-two-blend-the-hillshade-with-the-image). Tinted terrain is usually lighter than imagery, so shadows show clearly at the default strength. A shadow chroma of 0.5 to 1 keeps tint colors from dulling in dark areas.
 
 > **[IMAGE: shaded-relief-tint-blend-compare.jpg]** A tint alone, a hillshade alone, and the blend.
 
 ### Overlaying tinted water and transparent land
 
-To color the sea without coloring the land, choose **Transparent** for the land palette and a **Bathymetry** palette for the sea (`-classify sea-colors=blue`). The result is a layer in which only the water is colored. The land is transparent.
-
-This is useful when the land is drawn some other way, for example with blended imagery, or with a transparent hillshade, and you want only the ocean tinted by depth.
+Choosing **Transparent** for the land palette and a **Bathymetry** palette for the sea (`-classify sea-colors=blue`) makes a layer in which only the water is colored. This is useful when the land is drawn some other way, for example with blended imagery, and only the ocean should be tinted by depth.
 
 1. Make a hillshade and a land layer (imagery or a tint) and blend them.
 2. Duplicate the DEM and give the copy a sea-only palette.
-3. Stack the sea layer above the land. To let the shading and land color show through the water, lower the sea layer's opacity in the console, e.g. `-style opacity=0.6`.
+3. Stack the sea layer above the land. To let the land show through the water, lower the sea layer's opacity in the console, e.g. `-style opacity=0.6`.
 
 > **[IMAGE: shaded-relief-water-overlay.jpg]** Blended land with a depth-tinted sea overlaid.
 
@@ -381,35 +335,35 @@ This is useful when the land is drawn some other way, for example with blended i
 
 ## Part four: blend a hillshade with a choropleth map
 
-A choropleth map colors areas, like counties or countries, by a data value. Shaded relief can show the landscape under the data. If you place a plain transparent hillshade over the colors, it tends to wash out the classes, so blend the hillshade with the colors instead.
+A transparent hillshade placed over a choropleth map tends to wash out the data classes. Blending the hillshade with the colors keeps them legible.
 
-The blend hillshade *panel* works on rasters, so for polygon layers you use the [`-blend`](/docs/reference.html#-blend) command in the console. It draws the layers you name, at the hillshade's resolution, and blends them in the same way as an image.
+The blend hillshade *panel* works on rasters, so polygon layers are blended with the [`-blend`](/docs/reference.html#-blend) command in the console. It draws the named layers at the hillshade's resolution and blends them in the same way as an image.
 
-1. Import your polygons, project them, and create a frame (see [part one](#step-one-get-elevation-data-in-a-map-frame)). The polygons must be in the same projection as the hillshade.
-2. `-fetch` a DEM and make an opaque hillshade of it in the **hillshade** panel. Choose gentle settings: lower **Shadows** and **Highlights**, and a bit of **Smoothing**. Strong shading in a choropleth competes with the data colors.
+1. Import your polygons, project them, and create a frame (see [part one](#step-one-get-elevation-data-in-a-map-frame)). The polygons and the hillshade must be in the same projection.
+2. `-fetch` a DEM and make an opaque hillshade of it. Use gentle settings (lower **Shadows** and **Highlights**, a bit of **Smoothing**), since strong shading competes with the data colors.
 3. Color the polygons with the **color palette** panel or with [`-classify`](/docs/reference.html#-classify).
-4. Select the polygon layer, and run:
+4. Select the polygon layer, and run (`hillshade` is the name of the hillshade layer):
 
    ```bash
    -blend hillshade target=counties
    ```
 
-   `hillshade` is the name of the hillshade layer. The polygon layer is replaced by a raster image, and the hillshade layer is removed.
+   The polygon layer is replaced by a raster image, and the hillshade layer is removed.
 
 > **[IMAGE: shaded-relief-choropleth.jpg]** A choropleth map of counties blended with shaded relief.
 
-**Keeping the vector layers.** The blended result is a raster, so the polygons are no longer editable vector shapes. If you want to keep the original layers, add `overlay`:
+**Keeping the vector layers.** Add `overlay` to keep the polygons as vector layers:
 
 ```bash
 -blend hillshade target=counties overlay
 ```
 
-An overlay is a layer that, drawn above the polygons, produces the blended look. The polygons remain vector layers: crisp at any zoom, editable and exported as paths. The overlay has to stay directly above them, and if you restyle the polygons you have to run `-blend` again.
+The overlay is a layer that produces the blended look when drawn directly above the polygons. The polygons stay crisp, editable and exportable as paths. If you restyle them, run `-blend` again.
 
-**Tips for choropleths**
+**Tips**
 
-- Chroma 1 keeps the exact hues of the color scheme, so readers can match map colors to the legend, but light and dark colors still change. Lower **strength** (try 0.5 to 0.7) so that shading doesn't make a light class look like a dark one.
-- List several layers in `target=` to draw them together, e.g. `target=counties,lakes`. Labels and fine lines drawn into the blend are shaded as well, so leave layers that should stay crisp out of the list and put them above the result.
+- At chroma 1 the hues of the color scheme are unchanged, so map colors still match the legend, but shading still changes lightness. Lower **strength** (try 0.5 to 0.7) so that a light class in shadow doesn't look like a dark class.
+- Several layers can be drawn together, e.g. `target=counties,lakes`. Labels and fine lines in the list are shaded as well, so leave out layers that should stay crisp and place them above the result.
 
 > **[TODO]** Pick the example map (e.g. a state or county map by a data value). Verify that the `-blend ... target=` examples work in the web console with a framed layer, and decide whether to mention the `-style` and `-classify` steps in more detail.
 
@@ -439,16 +393,11 @@ Every step above is a command, so a complete map can be written as a script. Thi
 
 > **[TODO]** The `-rectangle bbox=` is a placeholder area (the frame commands up to `-frame` were tested, but `-fetch` and everything after it were not). Replace the bbox with the canyon example's real extent, and test the script from start to finish: the layer names (`dem`, `imagery`), the `target=` options, and the export of a framed raster to PNG.
 
-Run the same script on a different area by changing the frame and the source names. For a map that mixes tints, imagery and polygons, repeat the blending steps for each layer.
-
 ## Tips and troubleshooting
 
-- **The hillshade or blend menu item is missing.** The **hillshade** panel is offered on elevation rasters. **blend hillshade** requires a hillshade in the same frame as the target, in the same projection, and a target that is displayed in color (an image, or an elevation raster with a palette). Select the layer you want to change first.
-- **The fetch took a long time or stopped.** Large areas at high resolution need a lot of tiles. `-fetch` stops at `max-tiles=` (500 by default). Use a lower-resolution source, a smaller frame, or a smaller `raster-res=` before raising the limit.
-- **The image has soft or blocky edges.** The raster's resolution was set when you fetched it. If you made the frame larger or changed the projection after fetching, fetch again.
-- **The map looks flat.** Raise **Exaggeration**, lower **Altitude**, or try **Hard** lighting. Check that **Smoothing** isn't set too high for the scale of the map.
-- **The map looks too busy.** Raise **Smoothing**, lower **Texture** and **Ambient**, or try **Soft** lighting.
-- **Valleys look like ridges.** The light is coming from the south or from below the horizon. Set **Azimuth** back to 315° (northwest).
+- **The hillshade or blend menu item is missing.** **hillshade** is offered on elevation rasters. **blend hillshade** requires a hillshade in the same frame and projection as the target, and a target displayed in color (an image, or an elevation raster with a palette). Select the layer you want to change first.
+- **A fetch is slow or stops.** Large areas at high resolution need many tiles, and `-fetch` stops at `max-tiles=` (500 by default). Try a lower-resolution source or a smaller frame before raising the limit.
+- **The image has soft or blocky edges.** The resolution was set when the raster was fetched. If the frame was enlarged or the projection changed afterward, fetch again.
 - **Credit your sources.** Many elevation and imagery sources require attribution, and `-fetch` prints the credit to use. A few (for example, `eox` imagery from 2018 on) restrict commercial use.
 
 ## See also

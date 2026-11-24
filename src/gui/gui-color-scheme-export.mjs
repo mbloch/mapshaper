@@ -3,7 +3,7 @@ import {
   getSchemeBreaks, getSchemeColors, getAppliedColors, getCategories, getSchemeNullColor,
   getContinuousTileStops, getCenterTile, getDivergingTileUse, isContinuousScheme, formatSchemeCommand,
   getCategoryName, isElevationScheme, isBlendedScheme, isLandTransparent, getBlendRampColors,
-  getElevationSchemeStops, getSeaScheme
+  getElevationSchemeStops, getSeaScheme, getSeaSolidColor, getLandSolidColor
 } from './gui-color-scheme-model';
 import { getRasterUnitsLabel } from './gui-raster-band-values';
 
@@ -43,6 +43,9 @@ function getClassedClasses(scheme, lyr) {
   if (!info) return null;
   colors = getSchemeColors(scheme);
   breaks = info.breaks;
+  if (getLandSolidColor(scheme)) {
+    return [{from: tidy(info.min), to: tidy(info.max), color: getLandSolidColor(scheme)}];
+  }
   if (isElevationScheme(scheme)) {
     // a class from each stop up to the next, as continuous elevations start
     // at the first stop
@@ -134,12 +137,16 @@ function getSchemeCommand(scheme, lyr) {
 // them, which an import takes over the command's, so that they can be edited:
 // {units, stops, colors} for one preset, {units, stops, blend: {name: colors}}
 // with every preset's colors for a blend, and sea: {palette, stops, colors}
-// or null. Transparent land has only the sea.
+// or null. Transparent land has only the sea; solid land has one color, at 0.
 // A blend's classes are those of the preset it uses where it can't blend.
 function getElevationExportData(scheme, lyr) {
   var sea = getSeaScheme(scheme);
   var o = {units: getRasterUnitsLabel(lyr)};
-  if (!isLandTransparent(scheme)) {
+  if (getLandSolidColor(scheme)) {
+    // solid land: one color, at sea level
+    o.stops = [0];
+    o.colors = [getLandSolidColor(scheme)];
+  } else if (!isLandTransparent(scheme)) {
     o.stops = getElevationSchemeStops(scheme, lyr).map(tidy);
     if (isBlendedScheme(scheme)) {
       o.blend = {};
@@ -153,6 +160,8 @@ function getElevationExportData(scheme, lyr) {
     stops: getElevationSchemeStops(sea, lyr).map(tidy),
     colors: getSchemeColors(sea)
   }, isContinuousScheme(sea) ? {} : {classed: true}) : null;
+  // a solid sea: one color, at sea level
+  if (getSeaSolidColor(scheme)) o.sea = {palette: null, stops: [0], colors: [getSeaSolidColor(scheme)]};
   return o;
 }
 

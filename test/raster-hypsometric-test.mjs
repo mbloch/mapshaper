@@ -77,7 +77,6 @@ describe('-classify land-colors=', function() {
     var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
     var point = {'in.json': {type: 'Point', coordinates: [0, 0]}};
     await assert.rejects(runCommand(catalog, '-classify land-colors=tundra'), /Unknown land-colors= value/);
-    await assert.rejects(runCommand(catalog, '-classify land-colors=red'), /two or more colors, or the name of a preset/);
     await assert.rejects(runCommand(catalog, '-classify land-colors=desert method=quantile'), /do not work with method=/);
     await assert.rejects(runCommand(catalog, '-classify land-colors=desert continuous'), /do not work with continuous/);
     await assert.rejects(runCommand(catalog, '-classify land-colors=desert outer-breaks=0,10'), /land-breaks= gives every elevation/);
@@ -387,7 +386,6 @@ describe('sea-colors=', function() {
     assert.equal(getPalette(catalog).sea, 'transparent');
     await runCommand(catalog, '-classify field=band1 colors=greens classes=3');
     assert.equal(getPalette(catalog).sea, undefined);
-    await assert.rejects(runCommand(catalog, '-classify land-colors=desert sea-colors=green'), /sea-colors= needs two or more colors/);
     await assert.rejects(runCommand(catalog, '-classify land-colors=desert sea-colors=foo'), /Unknown sea-colors= value/);
     await assert.rejects(runCommand(catalog, '-classify land-colors=desert sea-colors=transparent sea-classed'),
       /sea-classed works with sea colors/);
@@ -449,6 +447,54 @@ describe('sea-colors=', function() {
     await assert.rejects(runCommand(catalog, '-classify land-colors=desert sea-colors=transparent sea-breaks=-20,0'),
       /sea-breaks= works with sea colors/);
     await assert.rejects(runCommand(catalog, '-classify land-colors=desert sea-breaks=-20,0'), /sea-breaks= works with sea-colors=/);
+  });
+
+  it('one color gives a solid sea, without sea-breaks=, and preset names stay presets', async function() {
+    var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
+    var palette, preview;
+    await runCommand(catalog, '-classify land-colors=desert sea-colors=#336699');
+    palette = getPalette(catalog);
+    assert.equal(palette.sea, 'custom');
+    assert.deepEqual(palette.seaRamp, {breaks: [0], colors: ['#336699']});
+    preview = render(catalog);
+    // -10 and -3 m, the sea, at any depth
+    assert.equal(hex(preview.pixels, 0), '#336699');
+    assert.equal(hex(preview.pixels, 18), '#336699');
+    assert.equal(hex(preview.pixels, 7), internal.getHypsometricStops('Desert')[0].color); // basin
+    // a palette of only the sea
+    await runCommand(catalog, '-classify sea-colors=steelblue');
+    palette = getPalette(catalog);
+    assert.equal(palette.land, 'transparent');
+    assert.equal(palette.continuous, false);
+    preview = render(catalog);
+    assert.equal(hex(preview.pixels, 0), '#4682b4');
+    assert.equal(preview.pixels[1 * 4 + 3], 0); // land
+    // blue is a preset
+    await runCommand(catalog, '-classify land-colors=desert sea-colors=blue');
+    assert.equal(getPalette(catalog).sea, 'Blue');
+    await assert.rejects(runCommand(catalog, '-classify land-colors=desert sea-colors=#336699 sea-breaks=-5'),
+      /one color is a solid sea/);
+    await assert.rejects(runCommand(catalog, '-classify land-colors=desert sea-colors=bogus'), /Unknown sea-colors= value/);
+  });
+
+  it('one land color gives solid land, without land-breaks=', async function() {
+    var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
+    var palette, preview;
+    await runCommand(catalog, '-classify land-colors=#cccccc sea-colors=pale');
+    palette = getPalette(catalog);
+    assert.equal(palette.hypsometric, 'custom');
+    assert.equal(palette.continuous, false);
+    assert.deepEqual(palette.colors, ['#cccccc']);
+    preview = render(catalog);
+    // land at any elevation, and the basin below sea level
+    [1, 2, 3, 6, 7].forEach(function(i) { assert.equal(hex(preview.pixels, i), '#cccccc'); });
+    assert.notEqual(hex(preview.pixels, 0), '#cccccc'); // the sea
+    await runCommand(catalog, '-classify land-colors=gray sea-colors=#336699');
+    preview = render(catalog);
+    assert.equal(hex(preview.pixels, 2), '#808080');
+    assert.equal(hex(preview.pixels, 0), '#336699');
+    await assert.rejects(runCommand(catalog, '-classify land-colors=#cccccc land-breaks=0'), /one color is solid land/);
+    await assert.rejects(runCommand(catalog, '-classify land-colors=bogus'), /Unknown land-colors= value/);
   });
 
   it('sea-classed: classes from each depth down to the next, as the land\'s go up', async function() {

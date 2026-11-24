@@ -12,8 +12,9 @@ import { splitRampLists, listHasRampNames } from '../cli/mapshaper-option-parsin
 
 // -classify land-colors=: the hypsometric presets as raster palettes, at their
 // elevations (see hypsometric-schemes.mjs), a blend of the climate presets
-// that varies across the map by climate (see hypsometric-climate.mjs), or
-// custom colors at elevations of their own.
+// that varies across the map by climate (see hypsometric-climate.mjs),
+// custom colors at elevations of their own, or one color (solid land: a
+// custom palette of one class).
 //
 // A blended palette is an ordinary continuous palette (the ramp of the preset
 // with the most weight across the raster, for anything that draws it without
@@ -60,8 +61,9 @@ export function getHypsometricPalette(raster, band, opts, crs) {
   }
   if (key == CUSTOM_NAME) {
     main = customizeRamp(getCustomRamp(), opts.landColors, opts.landBreaks,
-      {name: 'the land', colors: names.landColors, breaks: names.landBreaks});
-    return Object.assign({band: band}, opts.landClassed ? getRampClasses(main) : main, {hypsometric: CUSTOM_NAME});
+      {name: 'the land', colors: names.landColors, breaks: names.landBreaks, solid: !!opts.landColors && opts.landColors.length == 1});
+    return Object.assign({band: band}, opts.landClassed || main.colors.length == 1 ? getRampClasses(main) : main,
+      {hypsometric: CUSTOM_NAME});
   }
   if (key != BLEND_NAME) {
     preset = getPresetName(key);
@@ -157,12 +159,17 @@ function readLandColors(list, out) {
     out.land = BLEND_NAME;
     out.names.land = 'land-colors=' + BLEND_NAME;
     out.blendColors = lists;
+  } else if (list.length == 1 && !presets.includes(String(list[0]).toLowerCase())) {
+    // one color: solid land
+    if (!parseColor(list[0])) {
+      stop('Unknown land-colors= value: ' + list[0] + ' (expected ' + presets.join(', ') + ', a color, or a list of colors)');
+    }
+    if (out.landBreaks) stop('land-breaks= works with two or more land colors; one color is solid land');
+    out.land = CUSTOM_NAME;
+    out.landColors = list;
+    out.landBreaks = [0];
   } else if (list.length == 1) {
     key = String(list[0]).toLowerCase();
-    if (!presets.includes(key)) {
-      stop(parseColor(key) ? 'land-colors= needs two or more colors, or the name of a preset' :
-        'Unknown land-colors= value: ' + list[0] + ' (expected ' + presets.join(', ') + ', or a list of colors)');
-    }
     out.land = key;
     out.names.land = 'land-colors=' + key;
   } else {
@@ -182,13 +189,17 @@ function readSeaColors(list, out) {
   var key;
   if (listHasRampNames(list)) {
     stop('sea-colors= takes a preset or a list of colors, without names');
-  } else if (list.length == 1) {
-    key = String(list[0]).toLowerCase();
-    if (!names.includes(key)) {
-      stop(parseColor(key) ? 'sea-colors= needs two or more colors, or the name of a preset' :
-        'Unknown sea-colors= value: ' + list[0] + ' (expected ' + names.join(', ') + ', or a list of colors)');
+  } else if (list.length == 1 && !names.includes(String(list[0]).toLowerCase())) {
+    // one color: a solid sea, at sea level
+    if (!parseColor(list[0])) {
+      stop('Unknown sea-colors= value: ' + list[0] + ' (expected ' + names.join(', ') + ', a color, or a list of colors)');
     }
-    out.sea = key;
+    if (out.seaBreaks) stop('sea-breaks= works with two or more sea colors; one color is a solid sea');
+    out.sea = CUSTOM_NAME;
+    out.seaColors = list;
+    out.seaBreaks = [0];
+  } else if (list.length == 1) {
+    out.sea = String(list[0]).toLowerCase();
   } else {
     if (!out.seaBreaks) stop('sea-colors= with a list of colors needs sea-breaks=, a depth for each color');
     out.sea = CUSTOM_NAME;
@@ -303,7 +314,7 @@ function customizeRamp(ramp, colors, breaks, labels) {
       stop(labels.colors + ' and ' + labels.breaks + ' need the same number of values, a color at each ' + unit);
     }
     n = colors.length;
-    if (n < 2) stop(labels.colors + ' needs two or more colors');
+    if (n < 2 && !labels.solid) stop(labels.colors + ' needs two or more colors');
   } else if (colors && colors.length != n) {
     stop(labels.colors + ' needs ' + n + ' colors, one at each ' + unit + ' of ' + labels.name);
   } else if (breaks && breaks.length != n) {
@@ -347,6 +358,8 @@ export function getSeaOptionNames() {
 //                name, and palette.seaRamp = {breaks, colors} its depths, in
 //                the band's units, which color the sea continuously
 //   custom colors, at the depths of sea-breaks=: palette.sea is 'custom'
+//   one color, a solid sea: also 'custom', a ramp of the color at 0, which
+//                colors the sea as one class (see getRasterSeaTable())
 // sea-breaks= also moves a preset's depths, which makes it custom too.
 // sea-classed gives the sea classes (seaRamp.classed), which mirror the
 // land's: from each depth down to the next (see getRasterSeaTable()). A
@@ -361,7 +374,7 @@ export function setRasterPaletteSea(palette, raster, opts, crs) {
   var sea = opts.sea || (opts.land ? 'transparent' : 'land');
   var custom = !!(opts.seaColors || opts.seaBreaks);
   var meters = getVerticalUnitMeters(getRasterGrid(raster).verticalUnits) || 1;
-  var name, stops, ramp;
+  var name, stops, ramp, classed;
   if (sea == CUSTOM_NAME) {
     ramp = {breaks: [], colors: []};
   } else if (sea == 'transparent') {
@@ -377,7 +390,8 @@ export function setRasterPaletteSea(palette, raster, opts, crs) {
   }
   if (ramp) {
     ramp = custom ? customizeRamp(ramp, opts.seaColors, opts.seaBreaks,
-      {name: name ? names.sea + sea : 'the sea', colors: names.seaColors, breaks: names.seaBreaks, stop: 'depth'}) : ramp;
+      {name: name ? names.sea + sea : 'the sea', colors: names.seaColors, breaks: names.seaBreaks, stop: 'depth',
+        solid: sea == CUSTOM_NAME}) : ramp;
     if (custom) palette.sea = CUSTOM_NAME;
     palette.seaRamp = {breaks: ramp.breaks, colors: ramp.colors};
     if (opts.seaClassed) palette.seaRamp.classed = true;
@@ -386,10 +400,11 @@ export function setRasterPaletteSea(palette, raster, opts, crs) {
     palette.seaSeeds = getInlandSeaSeeds(crs || null);
   }
   if (palette.land == 'transparent') {
-    if (!palette.seaRamp) stop('A palette of only the sea needs sea colors: sea-colors=pale, blue, gray, or a list of colors');
-    palette.breaks = palette.seaRamp.classed ? palette.seaRamp.breaks.slice(0, -1) : palette.seaRamp.breaks.concat();
+    if (!palette.seaRamp) stop('A palette of only the sea needs sea colors: sea-colors=pale, blue, gray, a color, or a list of colors');
+    classed = palette.seaRamp.classed || palette.seaRamp.colors.length == 1;
+    palette.breaks = classed ? palette.seaRamp.breaks.slice(0, -1) : palette.seaRamp.breaks.concat();
     palette.colors = palette.seaRamp.colors.concat();
-    if (palette.seaRamp.classed) {
+    if (classed) {
       palette.continuous = false;
       delete palette.interpolation;
     }

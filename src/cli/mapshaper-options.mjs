@@ -1128,7 +1128,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('land-colors', {
-      describe: '[raster] elevation colors: desert, steppe, tropical, temperate, boreal, polar, blended (by climate), atlas, lowland, highland, or a list of colors (with land-breaks=); recolor a blend\'s presets with land-colors=desert:...,polar:...',
+      describe: '[raster] elevation colors: desert, steppe, tropical, temperate, boreal, polar, blended (by climate), atlas, lowland, highland, one color (solid land), or a list of colors (with land-breaks=); recolor a blend\'s presets with land-colors=desert:...,polar:...',
       type: 'colors'
     })
     .option('land-breaks', {
@@ -1140,7 +1140,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('sea-colors', {
-      describe: '[raster] colors of the sea (at or below 0 and open to the edge, or a known inland sea): transparent (default with land-colors=), land, pale, blue, gray, or a list of colors (with sea-breaks=)',
+      describe: '[raster] colors of the sea (at or below 0 and open to the edge, or a known inland sea): transparent (default with land-colors=), land, pale, blue, gray, one color (a solid sea), or a list of colors (with sea-breaks=)',
       type: 'colors'
     })
     .option('sea-breaks', {

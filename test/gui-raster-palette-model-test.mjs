@@ -10,11 +10,14 @@ import {
   chooseBlendedElevations, isBlendedScheme, getSchemeTab, getElevationFields, layerHasElevations,
   getElevationStopChips, getElevationClassLanes, setElevationChipColor, getBlendRampColors,
   getSeaScheme, setSeaScheme, chooseSeaPreset, getSeaLabel, isLandTransparent, setLandTransparent,
+  getSeaSolidColor, setSeaSolidColor, getLandSolidColor, setLandSolidColor, isContinuousScheme,
   getSchemeValues, getSchemeLightness, setSchemeLightness, maxLightness, getRasterPaletteScheme,
   schemeMatchesLayer, fitElevationStops, getElevationSchemeStops, canDeleteElevationStop, deleteElevationStop,
   canAddElevationStop, addElevationStop
 } from '../src/gui/gui-color-scheme-model';
 import { getRasterBandLabel, layerHasPaletteRaster } from '../src/gui/gui-raster-band-values';
+import { formatSchemeJSON } from '../src/gui/gui-color-scheme-export';
+import { importColorPalette } from '../src/gui/gui-color-scheme-import';
 import api from '../mapshaper.js';
 
 var internal = api.internal;
@@ -294,6 +297,65 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     assert.equal(formatSchemeCommand(opened, getAppliedColors(opened), {layer: o.lyr}), cmd);
     // another preset stays classed
     assert.equal(getSeaScheme(chooseSeaPreset(scheme, 'Gray')).continuous, false);
+  });
+
+  it('the sea can be a solid color, which opens again and round-trips through JSON', async function() {
+    var o = await importDEM([-200, -5, 5, 200, -200, 300]);
+    var blue = internal.getBathymetricStops('Blue').map(function(o) { return o.color; });
+    var pale = internal.getBathymetricStops('Pale').map(function(o) { return o.color; });
+    var scheme = setSeaSolidColor(chooseSeaPreset(useElevations(o.lyr), 'Blue'));
+    var cmd, opened, imported;
+    // by default, the shallowest color of the sea's ramp, or of the first preset
+    assert.equal(getSeaSolidColor(scheme), blue[blue.length - 1]);
+    assert.equal(getSeaSolidColor(setSeaSolidColor(useElevations(o.lyr))), pale[pale.length - 1]);
+    assert.equal(getSeaScheme(scheme), null);
+    assert.equal(getSeaLabel(scheme), 'Solid');
+    scheme = setSeaSolidColor(scheme, '#336699');
+    // an empty field keeps the color
+    assert.equal(getSeaSolidColor(setSeaSolidColor(scheme, '')), '#336699');
+    cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
+    assert(cmd.endsWith(' land-colors=desert sea-colors=#336699'), cmd);
+    await runCommand(o.catalog, cmd);
+    opened = getRasterPaletteScheme(o.lyr);
+    assert.equal(getSeaSolidColor(opened), '#336699');
+    assert.equal(formatSchemeCommand(opened, getAppliedColors(opened), {layer: o.lyr}), cmd);
+    imported = importColorPalette(formatSchemeJSON(scheme, o.lyr), useElevations(o.lyr), o.lyr);
+    assert.equal(getSeaSolidColor(imported.scheme), '#336699');
+    // only the sea
+    scheme = setLandTransparent(scheme, true);
+    cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
+    assert.equal(cmd, "-classify field='band1' sea-colors=#336699");
+    await runCommand(o.catalog, cmd);
+    assert.equal(getSeaSolidColor(getRasterPaletteScheme(o.lyr)), '#336699');
+    // and a preset again
+    assert.equal(getSeaLabel(chooseSeaPreset(scheme, 'Gray')), 'Gray');
+    assert.equal(getSeaSolidColor(chooseSeaPreset(scheme, 'Gray')), null);
+  });
+
+  it('the land can be a solid color, which opens again and round-trips through JSON', async function() {
+    var o = await importDEM([-200, -5, 5, 200, -200, 300]);
+    var scheme = setLandSolidColor(chooseSeaPreset(useElevations(o.lyr), 'Blue'));
+    var cmd, opened, imported, data;
+    // a light gray by default; the land keeps its preset, for the menu
+    assert.equal(getLandSolidColor(scheme), '#dddddd');
+    assert.equal(scheme.preset, 'Desert');
+    assert.equal(isContinuousScheme(scheme), false);
+    scheme = setLandSolidColor(scheme, '#cccccc');
+    assert.equal(getLandSolidColor(setLandSolidColor(scheme, '')), '#cccccc');
+    cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
+    assert.equal(cmd, "-classify field='band1' land-colors=#cccccc sea-colors=blue");
+    await runCommand(o.catalog, cmd);
+    opened = getRasterPaletteScheme(o.lyr);
+    assert.equal(getLandSolidColor(opened), '#cccccc');
+    assert.equal(formatSchemeCommand(opened, getAppliedColors(opened), {layer: o.lyr}), cmd);
+    data = JSON.parse(formatSchemeJSON(scheme, o.lyr));
+    assert.deepEqual(data.elevations.colors, ['#cccccc']);
+    assert.equal(data.classes.length, 1);
+    imported = importColorPalette(formatSchemeJSON(scheme, o.lyr), useElevations(o.lyr), o.lyr);
+    assert.equal(getLandSolidColor(imported.scheme), '#cccccc');
+    // transparent land, or a preset, isn't solid
+    assert.equal(getLandSolidColor(setLandTransparent(scheme, true)), null);
+    assert.equal(getLandSolidColor(choosePreset(scheme, 'Atlas')), null);
   });
 
   it('the sea\'s breaks run from its deepest stop to 0, whatever the data', async function() {

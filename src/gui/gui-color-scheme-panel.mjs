@@ -3,7 +3,7 @@ import { ColorPicker } from './gui-color-picker';
 import { claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus } from './gui-panel-focus';
 import { SizeField } from './gui-size-field';
 import { runGuiEditCommand } from './gui-edit-command';
-import { makeColorRow, makePanelToggle, makePanelActionButton, setPanelButtonDisabled } from './gui-panel-controls';
+import { makeColorRow, makeColorControl, makePanelToggle, makePanelActionButton, setPanelButtonDisabled } from './gui-panel-controls';
 import { ClassBreaksDialog } from './gui-class-breaks-dialog';
 import { getContinuousIcon } from './gui-color-scheme-icons';
 import { formatSchemeCPT, formatSchemeJSON, getSchemeExportFileName } from './gui-color-scheme-export';
@@ -30,7 +30,8 @@ import {
   getElevationPresetColors,
   chooseBlendedElevations, isBlendedScheme, getBlendedPresetColors,
   getSchemeTab, getElevationFields, layerHasElevations, getBathymetricPresetNames,
-  getSeaScheme, setSeaScheme, chooseSeaPreset, getSeaLabel, isLandTransparent, setLandTransparent,
+  getSeaScheme, setSeaScheme, chooseSeaPreset, getSeaLabel, getSeaSolidColor, setSeaSolidColor, isLandTransparent, setLandTransparent,
+  getLandSolidColor, setLandSolidColor,
   getLayerScheme, setLayerScheme, getRasterPaletteScheme, getCategoryName
 } from './gui-color-scheme-model';
 import { getRasterBandLabel, getRasterUnitsLabel, getRasterLayerPaletteKey } from './gui-raster-band-values';
@@ -72,7 +73,7 @@ export function ColorSchemePanel(gui, opts) {
   var tabs = {};
   var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
       fieldLabel, methodRow, methodCell, methodLabel, customizeCell, paletteRow, countCell, paletteLabel,
-      seaRow, seaBtn, seaMenu, seaCustomizeBtn, seaBreaksDialog, customizeBtn, breaksDialog, exportBtns, importBtn, importDialog,
+      seaRow, seaBtn, seaMenu, seaCustomizeBtn, seaColorControl, seaBreaksDialog, customizeBtn, landColorControl, breaksDialog, exportBtns, importBtn, importDialog,
       noFieldsNote, controlsEl, vibranceRow, vibranceInput,
       longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
       rangeEl, rangeStrip, rangeShades, rangeHandles, clearRow,
@@ -206,6 +207,17 @@ export function ColorSchemePanel(gui, opts) {
       }
       renderMethodRow();
     }).addClass('color-scheme-customize-btn');
+    // solid land has its color here instead, like a solid sea
+    landColorControl = makeColorControl(customizeCell, {
+      label: 'Land',
+      noOpacity: true,
+      onColor: function(color) {
+        changeScheme(setLandSolidColor(scheme, color));
+      }
+    });
+    landColorControl.chit.on('click', function() {
+      picker.hide();
+    });
     breaksDialog = new ClassBreaksDialog(gui, {
       reversed: isElevationScheme,
       getScheme: function() { return scheme; },
@@ -350,6 +362,17 @@ export function ColorSchemePanel(gui, opts) {
       }
       render();
     }).addClass('color-scheme-customize-btn');
+    // a solid sea has its color here instead, like the No data color
+    seaColorControl = makeColorControl(seaCustomizeCell, {
+      label: 'Sea',
+      noOpacity: true,
+      onColor: function(color) {
+        changeScheme(setSeaSolidColor(scheme, color));
+      }
+    });
+    seaColorControl.chit.on('click', function() {
+      picker.hide();
+    });
     seaBreaksDialog = new ClassBreaksDialog(gui, {
       title: 'Sea depths',
       reversed: function() { return true; },
@@ -362,10 +385,16 @@ export function ColorSchemePanel(gui, opts) {
 
   function renderSeaControls(elevation) {
     var sea = getSeaScheme(scheme);
+    var solid = getSeaSolidColor(scheme);
     seaRow.classed('hidden', !elevation);
     if (!elevation || !sea) seaBreaksDialog.close();
+    if (!elevation || !solid) seaColorControl.picker.hide();
     if (!elevation) return;
-    renderStripButton(seaBtn, sea ? getSchemeColors(sea) : null, getSeaLabel(scheme), sea && isContinuousScheme(sea) ? sea : null);
+    renderStripButton(seaBtn, sea ? getSchemeColors(sea) : solid ? [solid] : null, getSeaLabel(scheme),
+      sea && isContinuousScheme(sea) ? sea : null);
+    seaCustomizeBtn.el.style.display = solid ? 'none' : '';
+    seaColorControl.box.el.style.display = solid ? '' : 'none';
+    if (solid) seaColorControl.showColor(solid);
     setPanelButtonDisabled(seaCustomizeBtn, !sea);
     seaCustomizeBtn.classed('selected', seaBreaksDialog.isOpen());
     seaBreaksDialog.update();
@@ -381,12 +410,17 @@ export function ColorSchemePanel(gui, opts) {
     }
   }
 
-  // Transparent, and the bathymetric presets; an edited one is Custom
+  // Transparent, a solid color, and the bathymetric presets; an edited one is
+  // Custom
   function renderSeaMenu() {
     var sea = getSeaScheme(scheme);
+    var solid = getSeaSolidColor(scheme);
     seaMenu.empty();
-    addPaletteItem('Transparent', null, !sea, function() {
+    addPaletteItem('Transparent', null, !sea && !solid, function() {
       changeScheme(chooseSeaPreset(scheme, null));
+    }, seaMenu);
+    addPaletteItem('Solid color', [solid || getSeaSolidColor(setSeaSolidColor(scheme))], !!solid, function() {
+      changeScheme(setSeaSolidColor(scheme));
     }, seaMenu);
     if (sea && !sea.preset) {
       addPaletteItem('Custom', getSchemeColors(sea), true, function() {}, seaMenu);
@@ -627,9 +661,14 @@ export function ColorSchemePanel(gui, opts) {
     methodLabel.text(numeric ? 'Breaks' : 'Method');
     methodSelect.attr('aria-label', numeric ? 'Class breaks' : 'Classification method');
     customizeCell.classed('hidden', !numeric);
+    var solid = elevation && getLandSolidColor(scheme);
+    customizeBtn.el.style.display = solid ? 'none' : '';
+    landColorControl.box.el.style.display = solid ? '' : 'none';
+    if (solid) landColorControl.showColor(solid);
+    else landColorControl.picker.hide();
+    if (elevation && (isLandTransparent(scheme) || solid)) breaksDialog.close();
     customizeBtn.classed('selected', breaksDialog.isOpen());
     setPanelButtonDisabled(customizeBtn, elevation && isLandTransparent(scheme));
-    if (elevation && isLandTransparent(scheme)) breaksDialog.close();
   }
 
   // Each tab keeps its own scheme while the panel is open, and starts from a
@@ -834,6 +873,10 @@ export function ColorSchemePanel(gui, opts) {
     var strip;
     if (isElevationScheme(scheme) && isLandTransparent(scheme)) {
       renderStripButton(paletteBtn, null, 'Transparent');
+      return;
+    }
+    if (getLandSolidColor(scheme)) {
+      renderStripButton(paletteBtn, [getLandSolidColor(scheme)], 'Solid');
       return;
     }
     // blended colors are drawn by the command, and have no stops of their own
@@ -1178,9 +1221,14 @@ export function ColorSchemePanel(gui, opts) {
 
   // Only presets have elevations; an edited one is Custom
   function renderElevationPaletteMenu() {
-    var transparent = isLandTransparent(scheme);
-    addPaletteItem('Transparent', null, transparent, function() {
+    var solid = getLandSolidColor(scheme);
+    // a preset is selected only when the land has its colors
+    var transparent = isLandTransparent(scheme) || !!solid;
+    addPaletteItem('Transparent', null, isLandTransparent(scheme), function() {
       changeScheme(setLandTransparent(scheme, true));
+    });
+    addPaletteItem('Solid color', [getLandSolidColor(setLandSolidColor(scheme))], !!solid, function() {
+      changeScheme(setLandSolidColor(scheme));
     });
     if (!scheme.preset) {
       addPaletteItem(isBlendedScheme(scheme) ? 'Custom blend' : 'Custom',
