@@ -2155,7 +2155,7 @@ mapshaper dem.tif -contours interval=100 no-smoothing \
 
 `<dem>` or `dem=`  Elevation layer covering the image (e.g. from `-fetch`).
 
-`despeckle`  Also brighten small dark spots that the elevation data can't explain, such as the shadows of ledges too low to show up in the DEM. Use it for terrain without trees or water, which this option would brighten too.
+`despeckle`  Also brighten small dark spots that the elevation data can't account for.
 
 `verbose`  Print technical details about the correction.
 

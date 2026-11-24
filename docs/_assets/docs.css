@@ -422,6 +422,14 @@ code, pre, .mono {
 
 .docs-article th { background-color: #f3f6f8; font-weight: 600; }
 
+/* Names in a table's first column (e.g. -fetch sources) stay on one line;
+ * overflow-wrap: anywhere would let the column shrink and split them. Not on
+ * narrow screens, where unbroken names push the widest tables (e.g. in the
+ * expressions guide) past the edge of the article. */
+@media (min-width: 800px) {
+  .docs-article td:first-child code:not(.is-wrappable) { white-space: nowrap; }
+}
+
 /* Wrapper for wide tables (e.g. the formats comparison matrix) so they
  * scroll horizontally instead of overflowing the article on narrow screens. */
 .formats-table-wrap { overflow-x: auto; }
