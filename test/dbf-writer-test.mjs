@@ -24,6 +24,39 @@ describe('dbf-writer.js', function () {
     })
   })
 
+  describe('invalid date fields', function() {
+    it('exports invalid dates using the same missing-date marker as null', function() {
+      var records = [
+        {a: new Date(Date.UTC(2024, 1, 29)), id: 1, label: 'before'},
+        {a: new Date('not-a-date'), id: 2, label: 'invalid'},
+        {a: new Date(NaN), id: 3, label: 'missing'},
+        {a: new Date(8640000000000001), id: 4, label: 'overflow'},
+        {a: new Date('2000-01-01T23:00:00-02:00'), id: 5, label: 'after'}
+      ];
+      var expected = records.map(function(rec, i) {
+        return Object.assign({}, rec, {a: i > 0 && i < 4 ? null : rec.a});
+      });
+      var buf = Buffer.from(Dbf.exportRecords(records));
+      assert.deepStrictEqual(buf, Buffer.from(Dbf.exportRecords(expected)));
+      var rows = importRecords(buf);
+      assert.deepStrictEqual(rows.map(function(rec) { return [rec.id, rec.label]; }),
+        records.map(function(rec) { return [rec.id, rec.label]; }));
+      assert.deepStrictEqual(rows[0].a, records[0].a);
+      assert.deepStrictEqual(rows[4].a, new Date(Date.UTC(2000, 0, 2)));
+    })
+
+    it('keeps an all-invalid date column as an eight-byte DBF date field', function() {
+      var buf = Buffer.from(Dbf.exportRecords([{a: new Date(NaN)}, {a: new Date('')}]));
+      var headerSize = buf.readUInt16LE(8);
+      assert.equal(buf.toString('ascii', 43, 44), 'D');
+      assert.equal(buf[48], 8);
+      assert.equal(buf.readUInt16LE(10), 9);
+      assert.equal(buf.toString('ascii', headerSize, headerSize + 18), ' 00000000 00000000');
+      assert.equal(buf[headerSize + 18], 0x1a);
+      assert.equal(buf.length, headerSize + 19);
+    })
+  })
+
   describe('convertFieldNames()', function() {
     it ('utf-8 encoding fits three Chinese characters', function() {
       var names = ['一二三四五', '一二三四五六'];
