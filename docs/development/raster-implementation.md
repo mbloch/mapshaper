@@ -643,6 +643,68 @@ the internal raster model. It preserves raster metadata and `grid.coverage`.
 When coverage or nodata is present, invalid pixels are excluded from the blur
 window and weights are renormalized.
 
+## Raster Resampling
+
+`-resample` (`src/commands/mapshaper-resample.mjs`) changes the resolution of a
+north-up raster in its own coordinate system; `-proj` is the command that
+changes the coordinate system. The command works out the output grid, and
+`resampleRasterGrid()` (`src/rasters/mapshaper-raster-resample.mjs`) fills it.
+
+The output grid:
+
+- `2x` and `150dpi` are raster pixels per frame pixel (a frame pixel is 1/72
+  inch). The output's pixel edges are on a grid of 1/n frame pixels anchored at
+  the top left of the frame as export draws it (filled out to the aspect ratio
+  of its size in pixels), and the raster's edges move out to the next grid line.
+  At the export's pixel ratio, the raster is then drawn without a second
+  resampling, which would soften it.
+- `50%` and `4000px` keep the raster's area and grid origin.
+- `crop` (or `bleed=`) keeps the part of the raster within the frame plus a
+  margin in frame pixels (default 10, as in `-fetch`).
+- Output is limited to 48 million pixels, as in `-fetch`.
+
+Resampling is separable. For each axis, `getAxisTable()` lists the source pixels
+and weights of each output column or row. A pass along each axis applies them,
+in whichever order keeps the intermediate array smaller. Invalid pixels (nodata,
+coverage 0, NaN) get no weight, and the weights of the valid pixels go through
+both passes, so the final division by them is exact in 2D. Images with alpha are
+resampled premultiplied, as in `-blur`.
+
+Methods, chosen by axis: `average` (area-weighted footprint) when reducing.
+When enlarging, `bspline` (cubic B-spline) for rasters that aren't 8-bit, and
+`bicubic` (Catmull-Rom) for 8-bit images. Imported DEMs are labeled as images,
+so the sample type is what tells data from images. Categorical rasters use
+`nearest`. The interpolating filters are widened by the reduction factor when
+reducing, so no source pixel is skipped.
+
+A hillshade shows the slopes of an enlarged DEM, so it shows the flaws of the
+interpolation's slopes. Mount Hood reduced to 25% and enlarged back:
+
+- Bilinear slopes change abruptly at pixel edges, so a sharp diagonal crest
+  becomes a sawtooth.
+- Catmull-Rom's negative weights overshoot beside a sharp crest, raising a
+  lip that the hillshade shows as a row of bright beads along the ridge.
+- Mitchell (B = C = 1/3) has smaller beads.
+- B-spline weights are all positive and its slopes are continuous, so it has
+  neither flaw, at the cost of softness (about a Gaussian of 0.6 source pixels).
+
+Measured as the hillshade's detail at each position within a source pixel (a
+pattern locked to the source grid), B-spline had 0.02 against 0.20-0.34 for
+the others. At 2x, all are faint, and Catmull-Rom's is the strongest.
+
+An output pixel is valid if the source pixel under its center is valid. One that
+overlaps the edge of the source takes the edge pixel, so that a grid that is
+aligned to a frame, and extends up to a pixel beyond the raster, has no
+transparent edge. Empty output pixels are filled by `fillEmptyRasterPixels()`,
+as in `-proj`. With bicubic's negative weights, a pixel next to many invalid
+pixels can be left with too little weight to divide by (below 0.25); it takes
+the value of its center pixel.
+
+A raster imported at reduced resolution is not read again from its source.
+Enlarging it adds no detail, so `-resample` warns and suggests
+`resolution=full`. On Mount Hood (2040 × 1824), reducing to half or enlarging 3x
+(to 33 million pixels) takes about 0.05 s and 0.3 s.
+
 ## Raster Contours
 
 `-contours` converts a raster layer into a polyline layer of isolines, using

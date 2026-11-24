@@ -1,3 +1,7 @@
+v0.8.10
+* New -resample command, which changes the resolution of a raster layer: relative to the map frame (`2x`, `300dpi`), by a percentage (`50%`) or to a width (`4000px`). The `crop` option crops the raster to the frame, plus a margin.
+* Fixed partly transparent edge columns or rows on raster layers in PNG, JPG and SVG output.
+
 v0.8.9
 * [web] Added rectangle drawing to the Draw menu.
 * -proj densifies by default, so long straight segments follow the curves of the projection. Use the new `no-densify` option for the previous behavior.

@@ -2918,6 +2918,27 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
+  parser.command('resample')
+    .describe('change the resolution of a raster layer')
+    .option('resolution', {
+      DEFAULT: true,
+      describe: 'raster pixels per frame pixel (e.g. 2x), dots per inch of the frame (150dpi), percentage (50%) or width (4000px)'
+    })
+    .option('crop', {
+      describe: 'crop to the map frame, plus a margin (see bleed=)',
+      type: 'flag'
+    })
+    .option('bleed', {
+      describe: 'margin around the frame when cropping, in frame pixels (default is 10); implies crop',
+      type: 'number'
+    })
+    .option('method', {
+      describe: 'average, bilinear, bicubic, bspline or nearest (default is average when reducing; when enlarging, bspline for elevation and other data, bicubic for 8-bit images; nearest for categories)'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
   parser.command('sharpen')
     .describe('sharpen an image or hillshade with an unsharp mask')
     .option('amount', {

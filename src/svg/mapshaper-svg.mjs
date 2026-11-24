@@ -367,11 +367,11 @@ export function exportRasterLayerForSVG(lyr, frame, opts) {
   return layerObj;
 }
 
+// The raster is clipped to the frame's visible area, which is wider or taller
+// than frame.bbox when the bbox's shape differs from the page's rounded size;
+// clipping to the bbox leaves part of a pixel empty at two edges
 function renderRasterForSVG(raster, frame, opts) {
-  var rasterBbox = getRasterBBox(raster);
-  var rasterBounds = new Bounds(rasterBbox);
-  var clipBounds = new Bounds(frame.bbox);
-  var bbox = intersectBboxes(rasterBounds.toArray(), clipBounds.toArray()) || [0, 0, 0, 0];
+  var bbox = intersectBboxes(getRasterBBox(raster), getFrameViewBounds(frame).toArray()) || [0, 0, 0, 0];
   var svgBbox = transformRasterBboxForSVG(bbox, frame);
   var size = getSvgRasterOutputSize(raster, bbox, svgBbox, opts);
   return {
@@ -410,11 +410,17 @@ function getRasterSourceSize(raster, bbox) {
   };
 }
 
+function getFrameViewBounds(frame) {
+  var page = getFramePageBounds(frame);
+  return new Bounds(frame.bbox).fillOut(page.width() / page.height());
+}
+
+function getFramePageBounds(frame) {
+  return frame.bbox2 ? new Bounds(frame.bbox2) : new Bounds(0, 0, frame.width, frame.height);
+}
+
 function transformRasterBboxForSVG(bbox, frame) {
-  var srcBounds = new Bounds(frame.bbox);
-  var destBounds = frame.bbox2 ? new Bounds(frame.bbox2) : new Bounds(0, 0, frame.width, frame.height);
-  srcBounds.fillOut(destBounds.width() / destBounds.height());
-  var fwd = srcBounds.getTransform(destBounds, frame.invert_y);
+  var fwd = getFrameViewBounds(frame).getTransform(getFramePageBounds(frame), frame.invert_y);
   var p1 = fwd.transform(bbox[0], bbox[3]);
   var p2 = fwd.transform(bbox[2], bbox[1]);
   return [p1[0], p1[1], p2[0], p2[1]];

@@ -29,6 +29,7 @@
       "label": "Guides",
       "path": "guides",
       "pages": [
+        { "label": "Shaded relief", "file": "shaded-relief.md" },
         { "label": "Simplification", "file": "simplification.md" },
         { "label": "Smoothing", "file": "smoothing.md" },
         { "label": "Buffering", "file": "buffering.md" },

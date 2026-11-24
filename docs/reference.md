@@ -117,6 +117,7 @@ mapshaper states.geojson \
 [-deshadow](#-deshadow)
 [-fetch](#-fetch)
 [-hillshade](#-hillshade)
+[-resample](#-resample)
 [-sharpen](#-sharpen)
 [-smooth-terrain](#-smooth-terrain)
 [-tone](#-tone)
@@ -2213,6 +2214,33 @@ Convert an elevation raster to shaded relief. By default, the shading is transpa
 `band=`  Band containing elevation values, numbered from 1 (default is 1).
 
 Common options: `name=` `target=` `+`
+
+### -resample
+
+Change the resolution of a raster layer. This command is useful for preparing an imported elevation raster for running [`-hillshade`](#-hillshade) (which is sensitive to raster resolution).
+
+`<resolution>` or `resolution=`  The new resolution, in one of these forms:
+- `2x`  Raster pixels per frame pixel. `1x` matches the frame's pixels, and `2x` matches PNG output and high-density screens.
+- `300dpi`  Pixels per inch of the frame's size (a frame pixel is 1/72 inch), for print.
+- `50%`  A percentage of the raster's current size.
+- `4000px`  A width in pixels; the height keeps the aspect ratio.
+
+`crop`  Crop the raster to the map frame, plus a margin (see `bleed=`).
+
+`bleed=`  Margin around the frame when cropping, in frame pixels (default is 10). The margin keeps the edge effects of `-hillshade` and `-blur` outside the frame. Implies `crop`.
+
+`method=`  `average`, `bilinear`, `bicubic`, `bspline` or `nearest`. By default, a continuous-value raster is reduced with `average`, an area-weighted average of the source pixels, and enlarged with `bspline`, a smooth interpolation that keeps the enlarged result from looking pixelated. 8-bit images (RGB, RGBA or greyscale, with values from 0 to 255) are enlarged with the crisper `bicubic` method. Categorical rasters, including palette images, use `nearest`.
+
+Common options: `name=` `target=` `+`
+
+#### Examples
+```bash
+# An 800px opaque hillshade for the web at 2x resolution.
+mapshaper dem.tif -frame width=800px -resample 2x crop target=dem -hillshade opaque -o hillshade.png
+
+# An opaque hillshade for a 6-inch-wide print layout, at 300 dpi
+mapshaper dem.tif -frame width=6in -resample 300dpi crop target=dem -hillshade opaque -o hillshade.tif
+```
 
 ### -sharpen
 

@@ -202,6 +202,8 @@ import * as TerrainSmoothingOptions from './rasters/mapshaper-terrain-smoothing-
 import * as RasterColor from './rasters/mapshaper-raster-color';
 import * as RasterBlend from './rasters/mapshaper-raster-blend';
 import * as RasterSharpen from './rasters/mapshaper-raster-sharpen';
+import * as RasterResample from './rasters/mapshaper-raster-resample';
+import * as ResampleCommand from './commands/mapshaper-resample';
 import * as Deshadow from './rasters/mapshaper-deshadow';
 import * as ToneCommand from './commands/mapshaper-tone';
 import * as RasterTiles from './rasters/mapshaper-raster-tiles';
@@ -401,6 +403,8 @@ Object.assign(internal,
   RasterColor,
   RasterBlend,
   RasterSharpen,
+  RasterResample,
+  ResampleCommand,
   Deshadow,
   ToneCommand,
   RasterTiles,

@@ -103,6 +103,30 @@ describe('raster layers', function () {
     assert.equal(image.height, 1);
   });
 
+  it('a raster covering a frame fills the page when the page size is rounded', function () {
+    // 101 x 30 pixels is a little wider than the bbox, so the visible area
+    // extends past the bbox's sides
+    var frameDataset = api.internal.importGeoJSON({
+      type: 'Feature',
+      properties: {type: 'frame', width: 101},
+      geometry: api.internal.bboxToPolygon([1, 0.2, 3, 0.8])
+    });
+    var dataset = getFourPixelGrayRasterDataset();
+    var svg, attr;
+    frameDataset.layers[0].name = 'frame';
+    dataset.layers.unshift(frameDataset.layers[0]);
+    dataset.arcs = frameDataset.arcs;
+    svg = api.internal.exportSVG(dataset, {format: 'svg', margin: 0})[0].content;
+    attr = function(name) {
+      return +svg.match(new RegExp('<image[^>]* ' + name + '="([^"]+)"'))[1];
+    };
+    assert(svg.includes('width="101" height="30"'));
+    assert(Math.abs(attr('x')) < 1e-9);
+    assert(Math.abs(attr('y')) < 1e-9);
+    assert(Math.abs(attr('width') - 101) < 1e-9);
+    assert(Math.abs(attr('height') - 30) < 1e-9);
+  });
+
   it('exports linked PNG images when SVG rasters have transparency', function () {
     var dataset = getFourPixelGrayRasterDataset();
     dataset.layers[0].raster.grid.bands = 4;

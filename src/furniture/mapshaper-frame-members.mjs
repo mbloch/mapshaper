@@ -199,7 +199,7 @@ function getProjectionForJoin(catalog, frame, dataset, layers, reproject) {
 // Two known projected systems must be the same projection. Lat-long data is
 // only kept apart from projected data, as everywhere else in mapshaper, so
 // that data in a different datum (or without metadata) can still join.
-function coordinateSystemsConflict(catalog, frame, dataset) {
+export function coordinateSystemsConflict(catalog, frame, dataset) {
   var frameInfo = getFrameCrsInfo(catalog, frame);
   var frameCrs = frameInfo ? frameInfo.crs : getDatasetCRS(frame.dataset);
   var known = datasetHasCrsMetadata(dataset) ? getDatasetCRS(dataset) : null;
