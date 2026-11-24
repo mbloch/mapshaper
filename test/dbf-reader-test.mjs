@@ -10,6 +10,19 @@ var Dbf = api.internal.Dbf,
 describe('dbf-reader.js', function () {
   // "Neuchâtel Baden-Württemberg La Gruyère"
 
+  describe('null date fields', function() {
+    ['00000000', '        ', '       0', '\0\0\0\0\0\0\0\0'].forEach(function(value) {
+      it('reads ' + JSON.stringify(value) + ' as null', function() {
+        var date = new Date(Date.UTC(2024, 1, 29));
+        var buf = Buffer.from(Dbf.exportRecords([{date: date, id: 7}, {date: date, id: 8}]));
+        var offset = buf.readUInt16LE(8) + 1; // header and record deletion flag
+        buf.write(value, offset, 8, 'ascii');
+        var rows = api.internal.importDbfTable(buf).getRecords();
+        assert.deepStrictEqual(rows, [{date: null, id: 7}, {date: date, id: 8}]);
+      });
+    });
+  });
+
   function importRecords(path, encoding) {
     path = fixPath("data/" + path);
     var opts = encoding ? {encoding: encoding} : undefined;
