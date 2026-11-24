@@ -161,18 +161,23 @@ export function isSupportedDelimiter(d) {
 }
 
 export function guessDelimiter(content) {
+  var separators = new Set(),
+      inQuotes = false,
+      c;
+  // Match the reader's quote handling, including doubled quotes and line
+  // breaks inside a quoted field. Keep the existing delimiter priority.
+  for (var i = 0; i < content.length; i++) {
+    c = content[i];
+    if (c == '"') {
+      inQuotes = !inQuotes;
+    } else if (!inQuotes) {
+      if (c == '\r' || c == '\n') break;
+      if (i > 0 && isSupportedDelimiter(c)) separators.add(c);
+    }
+  }
   return utils.find(supportedDelimiters, function(delim) {
-    var rxp = getDelimiterRxp(delim);
-    return rxp.test(content);
+    return separators.has(delim);
   }) || ',';
-}
-
-// Get RegExp to test for a delimiter before first line break of a string
-// Assumes that the first line does not contain alternate delim chars (this will
-// be true if the first line has field headers composed of word characters).
-function getDelimiterRxp(delim) {
-  var rxp = "^[^\\n\\r]+" + utils.regexEscape(delim);
-  return new RegExp(rxp);
 }
 
 export function getFieldTypeHints(opts) {

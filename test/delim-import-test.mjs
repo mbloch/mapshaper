@@ -456,6 +456,16 @@ LOS ANGELES,,`;
     it("guesses semicolon delim", function() {
       assert.equal(guessDelimiter("a;b\n1;2"), ';');
     })
+
+    it('ignores quoted delimiters in CSV headers', function () {
+      var dataset = importDelim('"a|b",count\nvalue,2', {});
+      assert.equal(dataset.info.input_delimiter, ',');
+      assert.deepEqual(dataset.layers[0].data.getRecords(), [{ 'a|b': 'value', count: 2 }]);
+    })
+
+    it('finds the delimiter after an escaped quote and line break in a header', function () {
+      assert.equal(guessDelimiter('"a,""b\nc";count\r\nvalue;2'), ';');
+    })
   })
 
   describe('getFieldTypeHints()', function () {
