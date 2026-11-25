@@ -6,7 +6,7 @@ import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 import { getStashedVar } from '../mapshaper-stash';
 import req from '../mapshaper-require';
-import { registerDymaxionProjections } from './mapshaper-dymaxion';
+import { registerAiroceanProjections } from './mapshaper-airocean';
 import { registerButterflyProjections } from './mapshaper-butterfly-projections';
 import { registerNarukawa2022Projection } from './mapshaper-narukawa2022';
 import { registerLeeTetrahedralProjections } from './mapshaper-lee-tetrahedral';
@@ -17,9 +17,11 @@ var mproj = req('mproj');
 var mprojIds = mproj ? Object.keys(mproj.internal.pj_list) : [];
 // Projections in mproj that are not in PROJ
 var MPROJ_ONLY_IDS = ['cupola', 'gilbert', 'hill'];
-// Used internally (e.g. by albersusa)
-var HIDDEN_IDS = ['mixed'];
-registerDymaxionProjections(mproj);
+// Projections that mapshaper registers that are also in PROJ
+var MAPSHAPER_PROJ_IDS = ['airocean'];
+// Used internally (e.g. by albersusa), or deprecated
+var HIDDEN_IDS = ['mixed', 'dymaxion', 'dymaxion2'];
+registerAiroceanProjections(mproj);
 registerButterflyProjections(mproj);
 registerNarukawa2022Projection(mproj);
 registerLeeTetrahedralProjections(mproj);
@@ -524,7 +526,8 @@ export function getProjectionCodeLists() {
   var ids = Object.keys(mproj.internal.pj_list).concat(Object.keys(compositeProjectionNames));
   ids.sort().forEach(function(id) {
     if (HIDDEN_IDS.includes(id)) return;
-    if (MPROJ_ONLY_IDS.includes(id) || !mprojIds.includes(id)) {
+    if (MPROJ_ONLY_IDS.includes(id) ||
+        !mprojIds.includes(id) && !MAPSHAPER_PROJ_IDS.includes(id)) {
       lists.mapshaper.push(id);
     } else {
       lists.proj.push(id);

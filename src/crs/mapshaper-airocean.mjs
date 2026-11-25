@@ -7,12 +7,23 @@
  * The Gray-Fuller raw transform below is based on Robert W. Gray's published
  * equations and Philippe Rivière's public-domain clean-room implementation:
  * https://github.com/d3/d3-geo-polygon/blob/main/src/grayfuller.js
+ *
+ * airocean (gnomonic facets) matches PROJ's +proj=airocean (PROJ 9.6+): the
+ * same net, size, origin, +orient parameter and treatment of ellipsoids.
+ * airocean2 (Gray-Fuller facets) is mapshaper's own, laid out on the same net.
+ * The two differ from PROJ in one respect: they default to +orient=horizontal,
+ * which is written into the CRS definition so that PROJ reads it the same way.
+ *
+ * dymaxion and dymaxion2 are the earlier names of airocean2 and airocean.
+ * They are kept, unchanged, for existing scripts: horizontal, centered on the
+ * origin, spherical, and using d3's rounded rotation.
  */
 
 import {
   createPolyhedralProjection,
   rotateSphericalRadians
 } from './mapshaper-polyhedral-projection';
+import { stop, warnOnce } from '../utils/mapshaper-logging';
 
 var D2R = Math.PI / 180;
 var R2D = 180 / Math.PI;
@@ -20,7 +31,14 @@ var SQRT3 = Math.sqrt(3);
 var GRAY_Z = Math.sqrt(5 + 2 * Math.sqrt(5)) / Math.sqrt(15);
 var GRAY_EL = Math.sqrt(8) / Math.sqrt(5 + Math.sqrt(5));
 var GRAY_DVE = Math.sqrt(3 + Math.sqrt(5)) / Math.sqrt(5 + Math.sqrt(5));
-var ROTATION = [-83.65929, 25.44458, -87.45184];
+var LEGACY_ROTATION = [-83.65929, 25.44458, -87.45184];
+// Fitted to the icosahedron vertices in PROJ's airocean.cpp (RMS error 2e-16)
+var ROTATION = [-83.65921998965584, 25.444585663567924, -87.45180612366421];
+// The engine scales the net so that a face edge is as long as the arc between
+// two icosahedron vertices; PROJ's edges are the chords of an icosahedron
+// inscribed in the sphere.
+var EDGE_ANGLE = Math.acos(1 / Math.sqrt(5));
+var PROJ_SCALE = 2 * Math.sin(EDGE_ANGLE / 2) / EDGE_ANGLE;
 var PARENTS = [
   -1, 0, 1, 11, 13,
   6, 7, 1, 7, 8,
@@ -30,41 +48,67 @@ var PARENTS = [
 ];
 var engines = {};
 
-export function registerDymaxionProjections(mproj) {
+export function registerAiroceanProjections(mproj) {
   // Some unit tests import source modules directly in an ESM context where
   // optional CommonJS dependencies are intentionally unavailable.
   if (!mproj) return;
-  register('dymaxion', 'Dymaxion (Gray-Fuller facets)', 'fuller');
-  register('dymaxion2', 'Dymaxion (Gnomonic facets)', 'gnomonic');
+  register('airocean', 'Airocean (gnomonic facets)', 'gnomonic');
+  register('airocean2', 'Airocean (Gray-Fuller facets)', 'fuller');
+  register('dymaxion', 'Airocean (Gray-Fuller facets, deprecated name)', 'fuller', 'airocean2');
+  register('dymaxion2', 'Airocean (gnomonic facets, deprecated name)', 'gnomonic', 'airocean');
 
-  function register(id, name, method) {
+  function register(id, name, method, replacement) {
     if (mproj.internal.pj_list[id]) return;
     mproj.pj_add(function(P) {
-      initDymaxion(P, method);
+      if (replacement) {
+        warnOnce('The ' + id + ' projection is now called ' + replacement +
+          ', which is laid out like PROJ\'s airocean (with a different origin' +
+          ' and scale). ' + id + ' still produces its old coordinates.');
+        initLegacyProjection(P, method);
+      } else {
+        initAirocean(P, method);
+      }
     }, id, name);
   }
 }
 
-export function getDymaxionEngine(method) {
+// layout: 'horizontal' or 'vertical' (PROJ's net), or 'legacy'
+export function getAiroceanEngine(method, layout) {
+  var key;
   method = method || 'fuller';
-  if (!engines[method]) {
+  layout = layout || 'horizontal';
+  key = method + ':' + layout;
+  if (!engines[key]) {
     var data = createAiroceanFaces();
-    engines[method] = createPolyhedralProjection({
+    engines[key] = createPolyhedralProjection({
       faces: data.faces,
       faceSites: data.sites,
       parents: PARENTS,
-      rotation: ROTATION,
+      rotation: layout == 'legacy' ? LEGACY_ROTATION : ROTATION,
       angle: -60,
+      layout: layout == 'legacy' ? null : getProjLayout(layout == 'vertical'),
       faceProjector: method == 'gnomonic' ?
         createGnomonicFaceProjector :
         createGrayFullerFaceProjector
     });
   }
-  return engines[method];
+  return engines[key];
 }
 
-function initDymaxion(P, method) {
-  var engine = getDymaxionEngine(method);
+// PROJ's horizontal net occupies [0, 0, width, height]; its vertical net is
+// the horizontal one turned a quarter turn clockwise, occupying
+// [0, 0, height, width].
+function getProjLayout(vertical) {
+  return function(width, height) {
+    var k = PROJ_SCALE;
+    return vertical ?
+      [0, k, k * height / 2, -k, 0, k * width / 2] :
+      [k, 0, k * width / 2, 0, k, k * height / 2];
+  };
+}
+
+function initLegacyProjection(P, method) {
+  var engine = getAiroceanEngine(method, 'legacy');
   P.es = 0;
   P.inv = null;
   P.fwd = function(lp, xy) {
@@ -78,6 +122,72 @@ function initDymaxion(P, method) {
   };
   P.__projection_topology = engine.getTopology(P.lam0 * R2D);
   P.__projected_outline = engine.outline;
+}
+
+function initAirocean(P, method) {
+  var engine = getAiroceanEngine(method, getOrientation(P));
+  // Like PROJ, project geocentric latitudes onto a sphere with radius a
+  var oneEs = 1 - P.es;
+  var toSphere = P.es ? function(phi) {
+    return Math.atan(oneEs * Math.tan(phi));
+  } : null;
+  var fromSphere = P.es ? function(phi) {
+    return Math.atan(Math.tan(phi) / oneEs);
+  } : null;
+  P.es = 0;
+  P.inv = null;
+  P.fwd = function(lp, xy) {
+    var p = engine.forward(lp.lam, toSphere ? toSphere(lp.phi) : lp.phi);
+    if (!p) {
+      xy.x = xy.y = Infinity;
+    } else {
+      xy.x = p[0];
+      xy.y = p[1];
+    }
+  };
+  P.__projection_topology = engine.getTopology(P.lam0 * R2D);
+  if (toSphere) {
+    convertTopologyLatitudes(P.__projection_topology, toSphere, fromSphere);
+  }
+  P.__projected_outline = engine.outline;
+}
+
+// Defaults to horizontal, unlike PROJ. The parameter is added to the CRS so
+// that the definition mapshaper exports means the same thing to PROJ.
+function getOrientation(P) {
+  var param = P.params.orient;
+  var value = param ? String(param.param) : 'horizontal';
+  if (value != 'horizontal' && value != 'vertical') {
+    stop('Invalid orient parameter:', value, '(expected horizontal or vertical)');
+  }
+  P.params.orient = {used: true, param: value};
+  return value;
+}
+
+// The engine's topology is in geocentric latitudes; datasets are in geodetic
+// latitudes.
+function convertTopologyLatitudes(topology, toSphere, fromSphere) {
+  var findRegion = topology.findRegion;
+  var findTransitionRegion = topology.findTransitionRegion;
+  var projectRegion = topology.projectRegion;
+  topology.seams.forEach(function(seam) {
+    seam.paths.forEach(function(path) {
+      path.forEach(function(p) {
+        if (Math.abs(p[1]) < 90) {
+          p[1] = fromSphere(p[1] * D2R) * R2D;
+        }
+      });
+    });
+  });
+  topology.findRegion = function(lon, lat) {
+    return findRegion(lon, toSphere(lat * D2R) * R2D);
+  };
+  topology.findTransitionRegion = function(lon, lat) {
+    return findTransitionRegion(lon, toSphere(lat * D2R) * R2D);
+  };
+  topology.projectRegion = function(lon, lat, regionId) {
+    return projectRegion(lon, toSphere(lat * D2R) * R2D, regionId);
+  };
 }
 
 function createAiroceanFaces() {

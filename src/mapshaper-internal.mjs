@@ -123,7 +123,7 @@ import * as HypsometricClimate from './color/hypsometric-climate';
 import * as Oklab from './color/oklab';
 import * as Colorizer from './commands/mapshaper-colorizer';
 import * as CustomProjections from './crs/mapshaper-custom-projections';
-import * as Dymaxion from './crs/mapshaper-dymaxion';
+import * as Airocean from './crs/mapshaper-airocean';
 import * as ButterflyProjections from './crs/mapshaper-butterfly-projections';
 import * as Narukawa2022 from './crs/mapshaper-narukawa2022';
 import * as DataAggregation from './dissolve/mapshaper-data-aggregation';
@@ -327,7 +327,7 @@ Object.assign(internal,
   Oklab,
   Colorizer,
   CustomProjections,
-  Dymaxion,
+  Airocean,
   ButterflyProjections,
   Narukawa2022,
   DataAggregation,

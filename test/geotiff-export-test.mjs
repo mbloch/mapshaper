@@ -397,25 +397,25 @@ describe('GeoTIFF export', function () {
     // one has to come back with its CRS when the pair is read together.
     it('reads back a projection it wrote to a sidecar', async function () {
       var out = await api.applyCommands('-i ' + WGS84_GEOTIFF_FIXTURE +
-        ' -proj dymaxion -o out.tif');
+        ' -proj airocean2 -o out.tif');
       var dataset = await importFilePair(out, 'out.tif');
       assert(dataset.info.crs, 'no CRS was read back');
-      assert.equal(maxProjectionError('+proj=dymaxion +ellps=WGS84',
+      assert.equal(maxProjectionError('+proj=airocean2 +ellps=WGS84',
         dataset.info.crs_string) < 1e-6, true,
         'read back as ' + dataset.info.crs_string);
       // Writing the raster out again reuses the sidecar's own wording.
-      assert(String(dataset.info.wkt1).includes('dymaxion'));
+      assert(String(dataset.info.wkt1).includes('airocean2'));
     });
 
     it('writes the sidecar again when a raster read with one is re-exported', async function () {
       var first = await api.applyCommands('-i ' + WGS84_GEOTIFF_FIXTURE +
-        ' -proj dymaxion -o out.tif');
+        ' -proj airocean2 -o out.tif');
       var second = await api.applyCommands('-i out.tif -o again.tif', {
         'out.tif': first['out.tif'],
         'out.tif.aux.xml': String(first['out.tif.aux.xml'])
       });
       assert.deepEqual(Object.keys(second).sort(), ['again.tif', 'again.tif.aux.xml']);
-      assert(String(second['again.tif.aux.xml']).includes('dymaxion'));
+      assert(String(second['again.tif.aux.xml']).includes('airocean2'));
     });
 
     // A raster whose own geo keys name a CRS is not second-guessed by a sidecar

@@ -203,7 +203,7 @@ describe('-classify land-colors=', function() {
   it('blended works in projections without an inverse, before or after -proj', async function() {
     var europe = [], i;
     for (i = 0; i < 60 * 30; i++) europe.push(500);
-    for (var proj of ['dymaxion', 'butterfly']) {
+    for (var proj of ['airocean2', 'butterfly']) {
       var catalog = await importRaster(makeGeoTIFF(europe, 60, [-10, 60]));
       var field;
       await runCommand(catalog, '-proj init=wgs84 -proj ' + proj + ' -classify land-colors=blended');

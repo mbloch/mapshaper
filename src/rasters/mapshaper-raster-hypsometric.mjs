@@ -526,7 +526,7 @@ function makeClimateWeightField(bbox, crs, width, height, cells, areaSums) {
   };
 }
 
-// For a CRS without an inverse (e.g. Dymaxion), whose cells can't be placed
+// For a CRS without an inverse (e.g. Airocean), whose cells can't be placed
 // on the globe: the climate data, as a lon-lat raster (see getClimateGrid()),
 // projected forward onto the field's cells, the way -proj projects a raster.
 // Sea cells are left out of the interpolation, so the projected grid's

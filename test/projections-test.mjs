@@ -37,12 +37,14 @@ describe('mapshaper-projections.js', function() {
     it('lists the projections that PROJ does not have separately', function() {
       api.internal.parseCrsString('albersusa'); // registers an internal projection
       var lists = api.internal.getProjectionCodeLists();
-      assert.deepEqual(lists.mapshaper, ['albersusa', 'butterfly', 'butterfly2', 'cahill_keyes',
-        'calm', 'cupola', 'dymaxion', 'dymaxion2', 'gilbert', 'hemispheres',
+      assert.deepEqual(lists.mapshaper, ['airocean2', 'albersusa', 'butterfly', 'butterfly2',
+        'cahill_keyes', 'calm', 'cupola', 'gilbert', 'hemispheres',
         'hemispheres2', 'hill', 'markley', 'narukawa2022']);
       assert(lists.proj.includes('merc'));
       assert(lists.proj.includes('imoll_o'));
+      assert(lists.proj.includes('airocean'));
       assert(!lists.proj.includes('dymaxion'));
+      assert(!lists.proj.includes('dymaxion2'));
       assert(!lists.proj.includes('mixed'));
     });
   })

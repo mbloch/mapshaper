@@ -231,7 +231,7 @@ describe('interrupted projections', function() {
   it('projects rasters to interrupted and polyhedral CRSs', function() {
     var ids = [
       'igh', 'imoll', 'igh_o', 'imoll_o', 'narukawa2022',
-      'markley', 'calm', 'dymaxion', 'dymaxion2',
+      'markley', 'calm', 'airocean', 'airocean2',
       'butterfly', 'butterfly2', 'cahill_keyes'
     ];
     ids.forEach(function(id) {
@@ -268,7 +268,7 @@ describe('interrupted projections', function() {
   });
 
   it('does not leave isolated raster holes at piece boundaries', function() {
-    ['imoll', 'dymaxion', 'butterfly', 'narukawa2022'].forEach(function(id) {
+    ['imoll', 'airocean2', 'butterfly', 'narukawa2022'].forEach(function(id) {
       var dataset = getWorldRasterDataset(360, 180);
       var grid = api.internal.projectRasterGridForward(
         dataset.layers[0].raster,
@@ -285,7 +285,7 @@ describe('interrupted projections', function() {
 
   it('gives a regional raster its own extent in a facet layout, without repeating its edges', function() {
     var src = api.internal.parseCrsString('wgs84');
-    ['dymaxion', 'butterfly', 'cahill_keyes', 'markley', 'narukawa2022', 'hemispheres'].forEach(function(id) {
+    ['airocean2', 'butterfly', 'cahill_keyes', 'markley', 'narukawa2022', 'hemispheres'].forEach(function(id) {
       var dest = api.internal.parseCrsString('+proj=' + id + ' +R=6371000');
       var project = api.internal.getProjTransform2(src, dest);
       var grid = api.internal.projectRasterGridForward(
@@ -304,7 +304,7 @@ describe('interrupted projections', function() {
 
   it('projects raster pixels to the same places as vector points', function() {
     var src = api.internal.parseCrsString('wgs84');
-    ['dymaxion', 'butterfly', 'butterfly2', 'cahill_keyes'].forEach(function(id) {
+    ['airocean2', 'butterfly', 'butterfly2', 'cahill_keyes'].forEach(function(id) {
       var dest = api.internal.parseCrsString('+proj=' + id + ' +R=6371000');
       var project = api.internal.getProjTransform2(src, dest);
       var grid = api.internal.projectRasterGridForward(
@@ -334,7 +334,7 @@ describe('interrupted projections', function() {
   // Fetched rasters have a nodata margin beyond the antimeridian and poles
   it('ignores a nodata margin beyond the antimeridian and poles', function() {
     var src = api.internal.parseCrsString('wgs84');
-    ['markley', 'dymaxion', 'robin'].forEach(function(id) {
+    ['markley', 'airocean2', 'robin'].forEach(function(id) {
       var dest = api.internal.parseCrsString('+proj=' + id + ' +R=6371000');
       var expected = api.internal.projectRasterGridForward(
         getSmoothWorldRaster(0.5, 0), src, dest, {fill_uncovered: false});

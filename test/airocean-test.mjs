@@ -1,11 +1,73 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
 
-describe('Dymaxion projections', function() {
+describe('Airocean projections', function() {
   var radius = 6371000;
 
-  it('projects reference points with both facet transformations', function() {
-    var src = api.internal.parseCrsString('wgs84');
+  it('matches PROJ 9.8 +proj=airocean', function() {
+    // from: proj +proj=airocean <params> -f %.9f
+    var fixtures = {
+      // mapshaper's default orientation is horizontal (PROJ's is vertical)
+      '+R=6371000': [
+        [[0, 0], [12760876.429623736, 17014393.836327896]],
+        [[-74, 40], [21857846.717563730, 10370658.197471797]],
+        [[120, -30], [6390618.702711903, 4736965.867119837]]
+      ],
+      '+R=6371000 +orient=vertical': [
+        [[0, 0], [17014393.836327896, 24082885.638797268]],
+        [[-74, 40], [10370658.197471797, 14985915.350857271]],
+        [[120, -30], [4736965.867119837, 30453143.365709100]]
+      ],
+      // geocentric latitudes on a sphere with radius a
+      '+ellps=WGS84': [
+        [[0, 0], [12775171.575609958, 17033453.909912869]],
+        [[-74, 40], [21900567.636830885, 10388022.814598937]],
+        [[120, -30], [6413098.944540619, 4749851.894126607]]
+      ]
+    };
+    Object.keys(fixtures).forEach(function(params) {
+      var project = getForwardTransform('+proj=airocean ' + params);
+      fixtures[params].forEach(function(test) {
+        almostEqualPoint(project(test[0][0], test[0][1]), test[1], 1e-6);
+      });
+    });
+  });
+
+  it('projects reference points with Gray-Fuller facets', function() {
+    var project = getForwardTransform('+proj=airocean2 +R=' + radius);
+    [
+      [[0, 0], [12852815.244725469, 17070445.612960972]],
+      [[-74, 40], [21970418.181679923, 10448815.427754935]],
+      [[120, -30], [6424620.921419147, 4865545.260301958]]
+    ].forEach(function(test) {
+      almostEqualPoint(project(test[0][0], test[0][1]), test[1], 1e-6);
+    });
+  });
+
+  it('lays out both facet transformations on the same net', function() {
+    ['horizontal', 'vertical'].forEach(function(orient) {
+      var outlines = ['airocean', 'airocean2'].map(function(id) {
+        return api.internal.parseCrsString('+proj=' + id + ' +R=1 +orient=' + orient)
+          .__projected_outline;
+      });
+      assert.equal(outlines[0][0].length, 27);
+      outlines[0][0].forEach(function(p, i) {
+        almostEqualPoint(p, outlines[1][0][i], 1e-12);
+      });
+    });
+  });
+
+  it('adds the orientation to the CRS definition', function() {
+    var P = api.internal.parseCrsString('airocean');
+    assert.equal(api.internal.crsToProj4(P), '+proj=airocean +orient=horizontal +ellps=WGS84');
+    P = api.internal.parseCrsString('+proj=airocean2 +orient=vertical');
+    assert.equal(api.internal.crsToProj4(P), '+proj=airocean2 +orient=vertical +ellps=WGS84');
+    assert.throws(function() {
+      api.internal.parseCrsString('+proj=airocean +orient=sideways');
+    }, /orient/);
+  });
+
+  it('keeps the old coordinates for the deprecated dymaxion names', function() {
     var fixtures = {
       dymaxion: [
         [[0, 0], [-5864002.643216022, 8811563.967846861]],
@@ -19,17 +81,35 @@ describe('Dymaxion projections', function() {
       ]
     };
     Object.keys(fixtures).forEach(function(id) {
-      var dest = api.internal.parseCrsString('+proj=' + id + ' +R=' + radius);
-      var project = api.internal.getProjTransform2(src, dest);
+      var project = getForwardTransform('+proj=' + id + ' +R=' + radius);
       fixtures[id].forEach(function(test) {
         almostEqualPoint(project(test[0][0], test[0][1]), test[1], 1e-6);
       });
-      assert.equal(api.internal.isInvertibleCRS(dest), false);
     });
   });
 
+  it('has no inverse', function() {
+    ['airocean', 'airocean2', 'dymaxion'].forEach(function(id) {
+      assert.equal(api.internal.isInvertibleCRS(api.internal.parseCrsString(id)), false);
+    });
+  });
+
+  it('places ellipsoidal facet seams at geodetic latitudes', function() {
+    var sphere = getTopology('airocean', ' +R=6378137');
+    var ellps = getTopology('airocean');
+    var seam = sphere.seams.find(function(o) { return o.type == 'cut'; });
+    var path = seam.paths[0];
+    var p = path[Math.floor(path.length / 2)];
+    var q = ellps.seams[sphere.seams.indexOf(seam)].paths[0][Math.floor(path.length / 2)];
+    var geocentric = Math.atan((1 - 0.00669437999014) * Math.tan(q[1] * Math.PI / 180));
+    assert.equal(q[0], p[0]);
+    assert(Math.abs(q[1]) > Math.abs(p[1]) || p[1] === 0);
+    assert(Math.abs(geocentric * 180 / Math.PI - p[1]) < 1e-9);
+    assert.equal(ellps.findRegion(q[0] + 0.01, q[1]), sphere.findRegion(p[0] + 0.01, p[1]));
+  });
+
   it('exposes the Airocean facet topology', function() {
-    var topology = getTopology('dymaxion');
+    var topology = getTopology('airocean2');
     var seamTypes = topology.seams.reduce(function(memo, seam) {
       memo[seam.type] = (memo[seam.type] || 0) + 1;
       return memo;
@@ -45,7 +125,7 @@ describe('Dymaxion projections', function() {
   });
 
   it('keeps attached edges connected and splits cut edges', async function() {
-    for (var id of ['dymaxion', 'dymaxion2']) {
+    for (var id of ['airocean', 'airocean2']) {
       var topology = getTopology(id);
       for (var type of ['attached', 'cut']) {
         var seam = topology.seams.find(function(o) {
@@ -72,7 +152,7 @@ describe('Dymaxion projections', function() {
   });
 
   it('keeps polygons valid at attached and cut edges', async function() {
-    var topology = getTopology('dymaxion');
+    var topology = getTopology('airocean2');
     for (var type of ['attached', 'cut']) {
       var seam = topology.seams.find(function(o) {
         return o.type == type;
@@ -88,7 +168,7 @@ describe('Dymaxion projections', function() {
         [p[0] - e, p[1] - e]
       ];
       var out = await api.applyCommands(
-        '-i in.json -proj dymaxion -o out.json',
+        '-i in.json -proj airocean2 -o out.json',
         {'in.json': {type: 'Polygon', coordinates: [ring]}}
       );
       var geometry = JSON.parse(out['out.json']).geometries[0];
@@ -98,7 +178,7 @@ describe('Dymaxion projections', function() {
   });
 
   it('creates exact polygon and polyline net footprints', async function() {
-    for (var id of ['dymaxion', 'dymaxion2']) {
+    for (var id of ['airocean', 'airocean2']) {
       var base = '-i point.json -proj ' + id + ' ';
       var input = {'point.json': {type: 'Point', coordinates: [0, 0]}};
       var polygonOut = await api.applyCommands(
@@ -116,7 +196,7 @@ describe('Dymaxion projections', function() {
   });
 
   it('creates graticules without lines spanning net gaps', async function() {
-    for (var id of ['dymaxion', 'dymaxion2']) {
+    for (var id of ['airocean', 'airocean2']) {
       var out = await api.applyCommands(
         '-i point.json -proj ' + id +
         ' -graticule -o target=graticule graticule.json',
@@ -136,19 +216,26 @@ describe('Dymaxion projections', function() {
 
   it('rotates facet topology and forward coordinates with lon_0', function() {
     var src = api.internal.parseCrsString('wgs84');
-    var unrotated = api.internal.parseCrsString('dymaxion');
-    var rotated = api.internal.parseCrsString('+proj=dymaxion +lon_0=20');
+    var unrotated = api.internal.parseCrsString('airocean2');
+    var rotated = api.internal.parseCrsString('+proj=airocean2 +lon_0=20');
     var f1 = api.internal.getProjTransform2(src, unrotated);
     var f2 = api.internal.getProjTransform2(src, rotated);
     almostEqualPoint(f1(0, 10), f2(20, 10), 1e-6);
-    assert.equal(getTopology('dymaxion').findRegion(0, 10),
+    assert.equal(getTopology('airocean2').findRegion(0, 10),
       api.internal.getProjectionTopology(rotated).findRegion(20, 10));
   });
 });
 
-function getTopology(id) {
+function getTopology(id, params) {
   return api.internal.getProjectionTopology(
-    api.internal.parseCrsString('+proj=' + id)
+    api.internal.parseCrsString('+proj=' + id + (params || ''))
+  );
+}
+
+function getForwardTransform(defn) {
+  return api.internal.getProjTransform2(
+    api.internal.parseCrsString('wgs84'),
+    api.internal.parseCrsString(defn)
   );
 }
 

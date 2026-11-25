@@ -1520,9 +1520,9 @@ mapshaper countries.shp -proj +proj=wintri +lon_0=10 -o out.shp
 # Shortcut notation for the above projection
 mapshaper countries.shp -proj wintri +lon_0=10 -o out.shp
 
-# Create Dymaxion-projected layers including a graticule and neatline
+# Create Airocean-projected layers including a graticule and neatline
 mapshaper countries.geojson \
--proj dymaxion \
+-proj airocean2 \
 -graticule name=graticule \
 -graticule outline name=neatline \
 -o target="*" output/
@@ -1554,17 +1554,21 @@ makes the lower (or right) disk overlap the other disk.
 
 Interrupted Goode Homolosine (`+proj=igh`, `+proj=igh_o`), Interrupted
 Mollweide (`+proj=imoll`, `+proj=imoll_o`), rectangular tetrahedral
-projections (`+proj=narukawa2022`, `+proj=markley`, `+proj=calm`), Dymaxion
-(`+proj=dymaxion`, `+proj=dymaxion2`), and octahedral butterfly projections
+projections (`+proj=narukawa2022`, `+proj=markley`, `+proj=calm`), Airocean
+(`+proj=airocean`, `+proj=airocean2`), and octahedral butterfly projections
 (`+proj=butterfly`, `+proj=butterfly2`, `+proj=cahill_keyes`) cannot be used as
-source CRSs or represented by generated Shapefile `.prj` files. They can be
-used as destinations for vector and raster layers. The `_o` variants are
-oceanic layouts and default to `+lon_0=-160`.
+source CRSs. They can be used as destinations for vector and raster layers.
+Of these, only `+proj=airocean` can be read by GDAL and other PROJ-based
+software. The `_o` variants are oceanic layouts and default to `+lon_0=-160`.
 
 `narukawa2022` uses Narukawa's published 2022 mathematical approximation of
 the original AuthaGraph modeling process. `markley` and `calm` use L. P. Lee's
-conformal tetrahedral face projection in two rectangular aspects. `dymaxion`
-uses the Gray-Fuller facet transformation; `dymaxion2` uses gnomonic facets.
+conformal tetrahedral face projection in two rectangular aspects. `airocean`
+uses gnomonic facets and matches PROJ's `+proj=airocean`; `airocean2` uses the
+Gray-Fuller facet transformation on the same layout. Both are horizontal by
+default; `+orient=vertical` matches PROJ's default orientation. The former
+names `dymaxion` (now `airocean2`) and `dymaxion2` (now `airocean`) still work
+and keep their old coordinates.
 `butterfly` and `butterfly2` use the Cahill-Keyes 12-zone facet construction in
 a butterfly arrangement inspired by Cahill and Waterman; they differ only in
 their default central meridians of 157.5°E and 20°W, respectively.
@@ -2658,7 +2662,7 @@ mapshaper cities.json \
 
 ### -projections
 
-Print list of supported proj4 projection ids and projection aliases. Projections that PROJ does not support (such as `dymaxion` and `hemispheres`) are listed separately, after the PROJ projections.
+Print list of supported proj4 projection ids and projection aliases. Projections that PROJ does not support (such as `airocean2` and `hemispheres`) are listed separately, after the PROJ projections.
 
 ### -quiet
 

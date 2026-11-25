@@ -21,6 +21,9 @@ var EPS = 1e-12;
 // config.faces contains spherical polygons in degrees. config.parents defines
 // a spanning tree of attached faces. faceProjector(face) returns a local
 // projection accepting radians and returning planar coordinates.
+// config.layout(width, height) (optional) returns an affine matrix that moves
+// the net from its default position, centered on the origin, into the
+// projection's own frame; width and height are the extent of the centered net.
 export function createPolyhedralProjection(config) {
   var faces = config.faces.map(function(coords, i) {
     return createFace(coords, i, config.faceSites && config.faceSites[i]);
@@ -79,12 +82,14 @@ export function createPolyhedralProjection(config) {
   var bounds = getBounds(outline);
   var centerX = (bounds[0] + bounds[2]) / 2;
   var centerY = (bounds[1] + bounds[3]) / 2;
+  var layout = config.layout ?
+    config.layout(bounds[2] - bounds[0], bounds[3] - bounds[1]) : null;
+  var inverseLayout = layout ? invertMatrix(layout) : null;
 
   // Centering is calculated after scale and planar rotation.
-  outline.forEach(function(ring) {
-    ring.forEach(function(p) {
-      p[0] -= centerX;
-      p[1] -= centerY;
+  outline = outline.map(function(ring) {
+    return ring.map(function(p) {
+      return centerOutputPoint(p);
     });
   });
 
@@ -127,17 +132,20 @@ export function createPolyhedralProjection(config) {
   function projectFacePoint(face, lam, phi) {
     var p = face.project(lam, phi);
     p = applyMatrix(face.transform, p);
-    p = transformOutputPoint(p);
-    p[0] -= centerX;
-    p[1] -= centerY;
-    return p;
+    return centerOutputPoint(transformOutputPoint(p));
+  }
+
+  function centerOutputPoint(p) {
+    p = [p[0] - centerX, p[1] - centerY];
+    return layout ? applyMatrix(layout, p) : p;
   }
 
   function invertFace(x, y, faceId) {
     var face = faces[faceId];
     var p, rotated;
     if (!face || !face.project.invert) return null;
-    p = inverseTransformOutputPoint([x + centerX, y + centerY]);
+    p = inverseLayout ? applyMatrix(inverseLayout, [x, y]) : [x, y];
+    p = inverseTransformOutputPoint([p[0] + centerX, p[1] + centerY]);
     p = applyMatrix(invertMatrix(face.transform), p);
     rotated = face.project.invert(p[0], p[1]);
     if (!rotated) return null;
