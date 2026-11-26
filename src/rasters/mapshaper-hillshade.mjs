@@ -32,16 +32,24 @@ var AMBIENT_HIGHLIGHT_FACTOR = 1.8;
 export var DEFAULT_LIGHTING = 'balanced';
 
 // The lights of each lighting= scheme, as [azimuth relative to the main
-// light, weight]
+// light, weight, optional altitude as a share of the main light's]
 var LIGHTING_SCHEMES = {
   // side lights balanced around the main light, so that slopes turned the
   // same amount either way from it get the same light
   balanced: [[-90, 0.1], [-45, 0.2], [0, 0.4], [45, 0.2], [90, 0.1]],
   hard: [[0, 1]],
-  // balanced, plus faint lights on slopes facing away from the main light,
-  // for more midtones and less contrast
-  soft: [[-135, 0.05], [-90, 0.1], [-45, 0.2], [0, 0.3], [45, 0.2], [90, 0.1], [135, 0.05]]
+  // the main light spread over three altitudes, so that steep slopes facing
+  // it stay light, and low side lights reaching around to the slopes facing
+  // away from it, for more midtones. Fill lights that light flat ground more
+  // than sunny slopes squeeze the highlights into a narrow range of slopes,
+  // which darkens steep sunny slopes.
+  soft: [[-110, 0.175, 0.5], [-45, 0.1, 0.7], [0, 0.2, 0.4], [0, 0.15], [0, 0.175, 1.4], [45, 0.1, 0.7], [110, 0.175, 0.5]]
 };
+
+// Light falls off over this many degrees as a surface turns away from it,
+// like light from a source of some width; light that stopped at once would
+// crease the shading, which shows as seams on smooth slopes
+var LIGHT_FADE = 5;
 
 export function getLightingSchemeNames() {
   return Object.keys(LIGHTING_SCHEMES);
@@ -56,17 +64,17 @@ export function getHillshadeLights(azimuth, altitude, lighting) {
   var az = azimuth == null ? DEFAULT_AZIMUTH : azimuth;
   var alt = altitude == null ? DEFAULT_ALTITUDE : altitude;
   var name = lighting || DEFAULT_LIGHTING;
-  var lights = parseLighting(name);
+  var scheme = Object.prototype.hasOwnProperty.call(LIGHTING_SCHEMES, name) ?
+    LIGHTING_SCHEMES[name] : null;
+  var lights = scheme || parseLighting(name);
   return lights ? lights.map(function(o) {
-    return {azimuth: az + o[0], altitude: o.length > 2 ? o[2] : alt, weight: o[1]};
+    var lightAlt = o.length < 3 ? alt : scheme ? Math.min(90, alt * o[2]) : o[2];
+    return {azimuth: az + o[0], altitude: lightAlt, weight: o[1]};
   }) : null;
 }
 
 function parseLighting(str) {
   var lights;
-  if (Object.prototype.hasOwnProperty.call(LIGHTING_SCHEMES, str)) {
-    return LIGHTING_SCHEMES[str];
-  }
   lights = String(str).split(',').map(function(entry) {
     var parts = entry.split(':');
     var nums = parts.map(function(s) { return s.trim() === '' ? NaN : Number(s); });
@@ -125,11 +133,13 @@ function getSearchedMaxShade(lights) {
   var D = Math.PI / 180;
   var flat = 0;
   var prepared = lights.map(function(light) {
-    flat += light.weight * Math.sin(light.altitude * D);
+    var fade = getLightFade(light.weight);
+    flat += fadeLight(light.weight * Math.sin(light.altitude * D), fade);
     return {
       azimuth: light.azimuth,
       sinAlt: Math.sin(light.altitude * D) * light.weight,
-      cosAlt: Math.cos(light.altitude * D) * light.weight
+      cosAlt: Math.cos(light.altitude * D) * light.weight,
+      fade: fade
     };
   });
   if (!(flat > 0)) return 1;
@@ -138,7 +148,7 @@ function getSearchedMaxShade(lights) {
     var sum = 0, v;
     for (var j = 0; j < prepared.length; j++) {
       v = prepared[j].sinAlt * cs + prepared[j].cosAlt * ss * Math.cos((prepared[j].azimuth - aspect) * D);
-      if (v > 0) sum += v;
+      sum += fadeLight(v, prepared[j].fade);
     }
     return sum / flat;
   };
@@ -166,16 +176,31 @@ function getBlendedMaxShade(lights) {
     vec[0] += dir[0] * light.weight;
     vec[1] += dir[1] * light.weight;
     vec[2] += dir[2] * light.weight;
-    flat += Math.sin(alt) * light.weight;
+    flat += fadeLight(Math.sin(alt) * light.weight, getLightFade(light.weight));
     return dir;
   });
   len = Math.sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
   if (!(flat > 0) || !(len > 0)) return 1;
   // a surface does not take negative light from a light behind it
   dirs.forEach(function(dir, i) {
-    sum += Math.max(0, (dir[0] * vec[0] + dir[1] * vec[1] + dir[2] * vec[2]) / len) * lights[i].weight;
+    var w = lights[i].weight;
+    sum += fadeLight((dir[0] * vec[0] + dir[1] * vec[1] + dir[2] * vec[2]) / len * w, getLightFade(w));
   });
   return Math.max(1, sum / flat);
+}
+
+// The range of a light's contribution (see computeHillshade()) over which
+// it fades out, around 0
+function getLightFade(weight) {
+  return weight * Math.sin(LIGHT_FADE * Math.PI / 180);
+}
+
+// A light's contribution @v, faded in over -@fade to @fade (see LIGHT_FADE)
+// along a curve that meets 0 and @v with matching slopes. Inlined in
+// computeHillshade().
+function fadeLight(v, fade) {
+  if (v >= fade) return v;
+  return v > -fade ? (v + fade) * (v + fade) / (4 * fade) : 0;
 }
 
 // Rounded to a multiple of 0.25, so that the printed value is easy to read
@@ -241,12 +266,14 @@ export function computeHillshade(elev, valid, width, height, cellWidths, cellHei
     var zenith = (90 - light.altitude) * Math.PI / 180;
     // mathematical angle of the direction the light comes from
     var az = (360 - light.azimuth + 90) * Math.PI / 180;
-    flat += light.weight * Math.cos(zenith);
+    var fade = getLightFade(light.weight);
+    flat += fadeLight(light.weight * Math.cos(zenith), fade);
     return {
       cosZ: Math.cos(zenith) * light.weight,
       sinZ: Math.sin(zenith) * light.weight,
       cosAz: Math.cos(az),
-      sinAz: Math.sin(az)
+      sinAz: Math.sin(az),
+      fade: fade
     };
   });
   var n = prepared.length;
@@ -296,7 +323,9 @@ export function computeHillshade(elev, valid, width, height, cellWidths, cellHei
         p = prepared[j];
         // cos(az - aspect) = cos(az)cos(aspect) + sin(az)sin(aspect)
         var v = p.cosZ * cosSlope + p.sinZ * sinSlope * (p.cosAz * aspectCos + p.sinAz * aspectSin);
-        if (v > 0) sum += v;
+        // fadeLight()
+        if (v >= p.fade) sum += v;
+        else if (v > -p.fade) sum += (v + p.fade) * (v + p.fade) / (4 * p.fade);
       }
       out[i] = flat > 0 ? sum / flat : 0;
     }

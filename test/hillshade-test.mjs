@@ -76,13 +76,56 @@ describe('mapshaper-hillshade.mjs', function () {
 
     it('balanced and soft lights are balanced around the main light', function () {
       var lights = internal.getHillshadeLights(315, 45, 'balanced');
-      assert.deepEqual(lights.map(function(o) { return o.azimuth; }), [225, 270, 315, 360, 405]);
-      [lights, internal.getHillshadeLights(315, 45, 'soft')].forEach(function(lights) {
-        lights.forEach(function(o, i) {
-          assert.equal(o.weight, lights[lights.length - 1 - i].weight);
-          assert.equal(o.azimuth - 315, 315 - lights[lights.length - 1 - i].azimuth);
+      assert.deepEqual(lights.map(function(o) { return o.azimuth; }), [225, 270, 315, 360, 405]);      [lights, internal.getHillshadeLights(315, 45, 'soft')].forEach(function(lights) {
+        lights.forEach(function(o) {
+          var mirrored = (((630 - o.azimuth) % 360) + 360) % 360;
+          assert(lights.some(function(p) {
+            return (p.azimuth % 360 + 360) % 360 == mirrored && p.weight == o.weight && p.altitude == o.altitude;
+          }), JSON.stringify(o));
         });
       });
+    })
+
+    it('soft lights move with the main light, up to 90 degrees', function () {
+      var ref = internal.getHillshadeLights(315, 30, 'soft');
+      assert(ref.some(function(o) { return o.altitude < 30; }));
+      assert(ref.some(function(o) { return o.altitude > 30; }));
+      [20, 40].forEach(function(alt) {
+        var lights = internal.getHillshadeLights(315, alt, 'soft');
+        lights.forEach(function(o, i) {
+          assert.equal(+(o.altitude / alt).toFixed(6), +(ref[i].altitude / 30).toFixed(6));
+        });
+      });
+      internal.getHillshadeLights(315, 80, 'soft').forEach(function(o) {
+        assert(o.altitude <= 90, String(o.altitude));
+      });
+    })
+
+    it('a slope turning away from a light gets less of it, without a crease', function () {
+      // slopes facing east under a light from the west at 45 degrees turn
+      // away from it at 45 degrees
+      var lights = internal.getHillshadeLights(270, 45, 'hard');
+      var shade = function(deg) {
+        var k = Math.tan(deg * Math.PI / 180);
+        return shadeAt(function(x) { return -x * k; }, lights);
+      };
+      var steps = [];
+      for (var deg = 36; deg <= 54; deg++) steps.push(shade(deg));
+      assert(steps[9] > 0); // 45 degrees
+      assert.equal(steps[18], 0);
+      steps.slice(1).forEach(function(v, i) {
+        assert(v <= steps[i]);
+        // a crease would change the falloff by about 0.025 from one degree
+        // to the next
+        if (i > 0) assert(Math.abs(steps[i - 1] - 2 * steps[i] + v) < 0.006, String(36 + i));
+      });
+    })
+
+    it('soft lighting keeps steep slopes facing the light as light as balanced lighting', function () {
+      var steep = function(x) { return -x * 2.75; }; // a 70 degree slope facing east
+      var balanced = shadeAt(steep, internal.getHillshadeLights(90, 45, 'balanced'));
+      var soft = shadeAt(steep, internal.getHillshadeLights(90, 45, 'soft'));
+      assert(soft >= balanced, soft + ' ' + balanced);
     })
 
     it('soft lighting lights slopes facing away from the main light', function () {

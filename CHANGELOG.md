@@ -1,5 +1,6 @@
 v0.8.12
 * [web] Simplified the hillshade panel.
+* Improved -hillshade lighting=soft, which darkened steep slopes facing the light.
 
 v0.8.11
 * [web] The hillshade panel has a Bathymetry setting for elevation rasters with values below 0: Shade, or Flatten, which flattens the sea floor.
