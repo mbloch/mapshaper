@@ -5914,6 +5914,27 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	margin-right: 28px;
 }
 
+/* The output buttons span a slider, short of its readout, like a color field */
+.label-style-panel .raster-blend-output-row {
+	margin-top: 4px;
+}
+
+.label-style-panel .raster-blend-output-row .label-btn-group {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+	margin-right: 28px;
+}
+
+.label-style-panel .raster-blend-output-row .label-panel-btn {
+	flex: 1 1 auto;
+	text-align: center;
+}
+
+.label-style-panel .raster-blend-clip-row {
+	margin-top: 4px;
+}
+
 .raster-blend-note {
 	margin-top: 6px;
 	font-size: 11px;

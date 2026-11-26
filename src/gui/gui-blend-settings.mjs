@@ -17,6 +17,15 @@ export var BLEND_SECTIONS = [
 
 var BLEND_OPTIONS = ['strength', 'chroma'];
 
+// What Apply makes of a polygon layer: an overlay, which recolors the
+// hillshade to stack on the polygons and keeps them, or an image of the
+// polygons blended with the hillshade, which replaces them (see -blend's
+// overlay option)
+export var BLEND_OUTPUTS = [
+  {value: 'overlay', label: 'Overlay'},
+  {value: 'image', label: 'Image'}
+];
+
 export var BLEND_SLIDERS = [
   {name: 'shadow_strength', label: 'Strength', option: 'strength', side: 0, min: 0, max: 2, value: 1},
   {name: 'shadow_chroma', label: 'Chroma', option: 'chroma', side: 0, min: 0, max: 2, value: 0},
@@ -56,12 +65,16 @@ export function getBlendColorSetting(hex, ownColor) {
 
 // @sourceId the hillshade layer, as a target id
 // @keepSource keep the hillshade layer, which -blend removes by default
+// @output for a polygon layer, one of BLEND_OUTPUTS
+// @clip leave out the shading outside the polygons
 // Options left at their defaults are left out, and an option with the same
 // value for shadows and highlights is written as one value
-export function getBlendCommand(settings, sourceId, keepSource) {
+export function getBlendCommand(settings, sourceId, keepSource, output, clip) {
   var values = getBlendOptionValues(settings);
   var defaults = getBlendOptionValues(getDefaultBlendSettings());
   var parts = ['-blend', 'source=' + sourceId];
+  if (output == 'overlay') parts.push('overlay');
+  if (clip) parts.push('clip');
   BLEND_OPTIONS.forEach(function(option) {
     var pair = values[option];
     if (pair[0] == defaults[option][0] && pair[1] == defaults[option][1]) return;

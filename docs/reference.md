@@ -2062,6 +2062,8 @@ Apply the shadows and highlights of a hillshade layer (made by `-hillshade`) to 
 
 `overlay`  Keep the targets and recolor the hillshade, so that drawn over the targets it looks like the blend.
 
+`clip`  Leave out the shading where the targets are transparent, for example outside the polygons of a vector target. By default, the shading is kept there as it would look stacked on nothing.
+
 Common options: `name=` `target=` `+`
 
 ### -blur

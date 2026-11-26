@@ -24,6 +24,23 @@ describe('gui-blend-settings.mjs', function () {
       '-blend source=relief chroma=0.5,1 keep-source');
   })
 
+  it('writes overlay for an overlay of a polygon layer, and nothing for an image', function () {
+    var settings = getDefaultBlendSettings();
+    settings.highlight_strength = 0.5;
+    assert.equal(getBlendCommand(settings, 'relief', true, 'overlay'),
+      '-blend source=relief overlay strength=1,0.5 keep-source');
+    assert.equal(getBlendCommand(settings, 'relief', false, 'image'),
+      '-blend source=relief strength=1,0.5');
+  })
+
+  it('writes clip to clip the shading to the polygons', function () {
+    var settings = getDefaultBlendSettings();
+    assert.equal(getBlendCommand(settings, 'relief', false, 'overlay', true),
+      '-blend source=relief overlay clip');
+    assert.equal(getBlendCommand(settings, 'relief', false, 'image', true),
+      '-blend source=relief clip');
+  })
+
   it('writes shadows,highlights, or one value if they are the same', function () {
     var settings = getDefaultBlendSettings();
     settings.shadow_strength = 0.8;

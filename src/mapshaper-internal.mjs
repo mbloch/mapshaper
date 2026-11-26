@@ -201,6 +201,7 @@ import * as HillshadeStages from './rasters/mapshaper-hillshade-stages';
 import * as TerrainSmoothingOptions from './rasters/mapshaper-terrain-smoothing-options';
 import * as RasterColor from './rasters/mapshaper-raster-color';
 import * as RasterBlend from './rasters/mapshaper-raster-blend';
+import * as RasterDraw from './rasters/mapshaper-raster-draw';
 import * as RasterSharpen from './rasters/mapshaper-raster-sharpen';
 import * as RasterResample from './rasters/mapshaper-raster-resample';
 import * as ResampleCommand from './commands/mapshaper-resample';
@@ -402,6 +403,7 @@ Object.assign(internal,
   TerrainSmoothingOptions,
   RasterColor,
   RasterBlend,
+  RasterDraw,
   RasterSharpen,
   RasterResample,
   ResampleCommand,

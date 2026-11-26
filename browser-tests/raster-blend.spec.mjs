@@ -86,6 +86,65 @@ test('the blend panel previews a hillshade on a raster and applies -blend, as on
   expect(errors).toEqual([]);
 });
 
+test('the blend panel blends a hillshade with a polygon layer, as an overlay or an image', async function({page}) {
+  var errors = collectPageErrors(page);
+  var panel = page.locator('.raster-blend-panel:visible');
+  var plain;
+  await loadFixture(page);
+  await runCommand(page, '-hillshade target=' + LAYER + ' name=relief +');
+  await runCommand(page, '-rectangle source=relief name=cells');
+  await runCommand(page, '-each \'fill = "#b5d29b"\' target=cells');
+  await selectLayer(page, 'cells');
+  await expect.poll(function() { return getActiveLayerName(page); }).toBe('cells');
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.clearUndoHistory();
+  });
+  plain = await readMapColors(page);
+
+  await openLayersPanel(page);
+  await openLayerMenu(page, 'cells');
+  await page.locator('.contextmenu-item').filter({hasText: 'blend hillshade'}).click();
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('button', {name: 'Overlay'})).toHaveClass(/selected/);
+  // the polygons are drawn for the preview, which then replaces the hillshade
+  await expect.poll(function() {
+    return readMapColors(page).then(function(colors) { return colors.join() != plain.join(); });
+  }).toBe(true);
+
+  // an overlay keeps the polygons, and takes the hillshade's place
+  await panel.getByRole('button', {name: 'Apply'}).click();
+  await expect(panel).toBeHidden();
+  await expect.poll(function() {
+    return getSessionCommands(page).then(function(cmds) { return cmds[cmds.length - 1]; });
+  }).toBe('-blend source=relief overlay');
+  expect(await layerExists(page, 'cells')).toBe(true);
+  expect(await layerExists(page, 'relief')).toBe(true);
+  await undo(page);
+  expect(await getSessionCommands(page)).not.toContain('-blend source=relief overlay');
+
+  // an image, named after the polygons, replaces them and the hillshade
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.setInteractionMode('blend');
+  });
+  await panel.getByRole('button', {name: 'Image'}).click();
+  await panel.getByRole('button', {name: 'Apply'}).click();
+  await expect.poll(function() {
+    return getSessionCommands(page).then(function(cmds) { return cmds[cmds.length - 1]; });
+  }).toBe('-blend source=relief');
+  expect(await getGeometryType(page, 'cells')).toBe(null);
+  expect(await layerExists(page, 'relief')).toBe(false);
+  await undo(page);
+  expect(await getGeometryType(page, 'cells')).toBe('polygon');
+  expect(await layerExists(page, 'relief')).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+async function getGeometryType(page, name) {
+  return page.evaluate(function(name) {
+    return window.mapshaper.undoTest.getLayerInfo(name).geometry_type;
+  }, name);
+}
+
 async function openLayerMenu(page, name) {
   var row = page.locator('.layer-list .layer-item').filter({hasText: name}).first();
   await row.hover();

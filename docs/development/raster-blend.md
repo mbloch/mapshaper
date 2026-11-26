@@ -187,8 +187,16 @@ every ridge line.
 - Where the target is transparent or nodata, the output keeps the
   hillshade as it would look stacked on nothing: a shadow-style hillshade
   shows its shadows and highlights, and an opaque one shows itself. So
-  blending changes nothing outside the target's footprint. Open question:
-  whether to offer clipping to the target instead (`-clip` covers it today).
+  blending changes nothing outside the target's footprint. With `clip`, the
+  shading is clipped to the target instead: the output keeps the target's
+  alpha, with the color of the shaded pixel made opaque, and an overlay's
+  shading is scaled by the target's alpha. For vector targets this clips to
+  the polygons as drawn, with anti-aliased edges at the drawing's
+  resolution; polygons without a fill are left out, and strokes are kept.
+  `-clip` on the hillshade does something similar, but it keeps or drops
+  whole hillshade pixels by their centers (it doesn't need to dissolve the
+  clip polygons: its pixel mask uses the nonzero winding rule, which unites
+  them).
 - Where the hillshade has no data (outside its extent, or below
   `min-elevation=`), the target is unchanged.
 
@@ -485,9 +493,21 @@ rounding of the alpha channel.
   commits a `-blend` command, which replaces the target and removes the
   hillshade, as on the command line, unless "Keep hillshade" is checked
   (`keep-source`). No preview where the map is
-  reprojected, and raster targets only (no `overlay`, no vector targets).
-  Because blending in place compounds, adjusting a blend means undoing it
-  rather than blending its own output again.
+  reprojected. Because blending in place compounds, adjusting a blend means
+  undoing it rather than blending its own output again.
+- The panel is also offered on polygon layers (`blendTargetIsDrawn()`),
+  with an Output row: Overlay (the default, which adds `overlay` and keeps
+  the polygons) or Image (which replaces them), and a "Clip to polygons"
+  checkbox, which adds `clip`. The target is the active
+  layer alone, so the command needs no `target=`. For the preview, the
+  layer is drawn once per hillshade with `drawLayersOnGrid()`, over the
+  hillshade's extent on a grid of about 4 megapixels
+  (`drawBlendTarget()`), at the scale `-blend` would use
+  (`getDrawingScale()`). The map then draws the overlay or the blended
+  image directly above the layer and leaves out the hillshade
+  (`setDrawnBlendPreview()`; the polygons stay sharp under an overlay,
+  since the map draws them as usual). Other vector layers, and several
+  targets drawn together, are left to the command line.
 
 ## Phases
 
@@ -496,7 +516,7 @@ rounding of the alpha channel.
 2. Vector targets and `overlay` (done); `shadow-color=` and
    `highlight-color=` in place of the hillshade's own colors (done).
    (`base-color=` and the guess for hillshades from elsewhere are done.)
-3. GUI panel (done, for raster targets); standard modes for opaque hillshades; a `-composite` command
+3. GUI panel (done, for raster and polygon targets); standard modes for opaque hillshades; a `-composite` command
    if chaining isn't enough.
 
 ## Open questions
@@ -512,5 +532,3 @@ rounding of the alpha channel.
   dark colors (water, dense forest), and highlights can't lighten white. A
   later option could use an absolute lightness change in shadows, or a
   minimum contrast.
-- **Transparent target areas.** Keep the plain hillshade there (proposed) or
-  leave them transparent.

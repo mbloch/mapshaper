@@ -152,6 +152,12 @@ describe('mapshaper-blend.mjs', function () {
       // 0.5 black over 50% [40, 160, 60]: alpha 0.75, color (0.25 / 0.75) of the image
       assert.deepEqual(blendOne([40, 160, 60, 128], -0.5), [13, 53, 20, 192]);
     });
+
+    it('clip keeps the image\'s alpha, shading its color as if it were opaque', function () {
+      assert.deepEqual(blendOne([40, 160, 60, 0], -0.5, {clip: true}), [20, 80, 30, 0]);
+      assert.deepEqual(blendOne([40, 160, 60, 128], -0.5, {clip: true}), [20, 80, 30, 128]);
+      assert.deepEqual(blendOne([40, 160, 60, 255], -0.5, {clip: true}), [20, 80, 30, 255]);
+    });
   });
 
   describe('decoding', function () {
@@ -311,6 +317,12 @@ describe('mapshaper-blend.mjs', function () {
       var o = overlay(new Uint8Array([40, 160, 60, 255, 40, 160, 60, 0, 40, 160, 60, 128]),
         new Float32Array([0, -0.5, 0.25])).overlay;
       assert.deepEqual(Array.from(o), [0, 0, 0, 0, 0, 0, 0, 128, 255, 255, 255, 64]);
+    });
+
+    it('with clip, scales the shading by the image\'s alpha where it is not opaque', function () {
+      var o = overlay(new Uint8Array([40, 160, 60, 255, 40, 160, 60, 0, 40, 160, 60, 128]),
+        new Float32Array([-0.4, -0.5, 0.25]), {clip: true}).overlay;
+      assert.deepEqual(Array.from(o), [0, 0, 0, 102, 0, 0, 0, 0, 255, 255, 255, 32]);
     });
   });
 
@@ -613,6 +625,26 @@ describe('mapshaper-blend.mjs', function () {
             assert(Math.abs([40, 160, 60][k] * (1 - a) + px[i * 4 + k] * a - ref[i * 3 + k]) <= 2);
           }
         }
+      });
+
+      it('clip leaves out the shading outside the polygons, in an image or an overlay', async function () {
+        var catalog = await run(makeDataset(20, 20, ridge, [40, 160, 60]),
+          SETUP + ' -rectangle bbox=0,0,0.01,0.02 name=west -style fill=#c04020' +
+          ' -blend hs target=west + name=plain -blend hs target=west clip + name=clipped' +
+          ' -blend hs target=west overlay clip');
+        var alphaSum = function(name, x0, x1) {
+          var px = findLayer(catalog, name).raster.grid.samples, sum = 0, x, y;
+          for (y = 0; y < 20; y++) {
+            for (x = x0; x < x1; x++) sum += px[(y * 20 + x) * 4 + 3];
+          }
+          return sum;
+        };
+        assert(alphaSum('plain', 11, 20) > 0);
+        assert.equal(alphaSum('clipped', 11, 20), 0);
+        assert.equal(alphaSum('clipped', 0, 10), 200 * 255);
+        assert.equal(alphaSum('hs', 11, 20), 0);
+        assert(alphaSum('hs', 0, 10) > 0);
+        assert.equal(findLayer(catalog, 'clipped').raster.derivation.clip, true);
       });
 
       it('refuses an overlay as the hillshade', async function () {

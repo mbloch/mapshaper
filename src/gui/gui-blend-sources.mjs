@@ -23,12 +23,20 @@ export function getBlendSourceLayers(model, target) {
 
 // Whether the blend panel has something to do on @lyr: a raster displayed in
 // color (see rasterIsBlendTarget()) that -blend can blend a hillshade with,
-// with a hillshade to blend
+// or a polygon layer (see blendTargetIsDrawn()), with a hillshade to blend
 export function blendIsAvailable(model, lyr) {
-  var grid = lyr && internal.layerHasRaster(lyr) ? internal.getRasterGrid(lyr.raster) : null;
+  var grid;
+  if (blendTargetIsDrawn(lyr)) return getBlendSourceLayers(model, lyr).length > 0;
+  grid = lyr && internal.layerHasRaster(lyr) ? internal.getRasterGrid(lyr.raster) : null;
   if (!grid || !grid.bbox || internal.rasterGridIsRotated(grid)) return false;
   if (!internal.rasterIsBlendTarget(lyr.raster)) return false;
   return getBlendSourceLayers(model, lyr).length > 0;
+}
+
+// A polygon layer, which -blend draws with its styles and blends as an image
+// (see cmd.blendDrawnLayers())
+export function blendTargetIsDrawn(lyr) {
+  return !!lyr && lyr.geometry_type == 'polygon';
 }
 
 function isMadeByHillshade(o) {

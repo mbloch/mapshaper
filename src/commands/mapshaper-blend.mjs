@@ -1,20 +1,16 @@
 import cmd from '../mapshaper-cmd';
 import { parseColor } from '../color/color-utils';
-import { getLayerBounds, layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
+import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { requireOverlaySourceCRS } from '../crs/mapshaper-projections';
 import { blendShadingPixels, getShadingOverlayPixels } from '../rasters/mapshaper-raster-color';
 import { getShadingAmounts, resampleShadingAmounts, scaleShadingAmounts } from '../rasters/mapshaper-raster-blend';
-import { drawLayersOnGrid } from '../rasters/mapshaper-raster-draw';
+import { drawLayersOnGrid, getDrawingScale } from '../rasters/mapshaper-raster-draw';
 import { getRasterGrid, rasterGridIsRotated, renderRasterPreview } from '../rasters/mapshaper-raster-utils';
-import { getFrameLayerData } from '../furniture/mapshaper-frame-utils';
-import { resolveFrameForDataset } from '../furniture/mapshaper-frame-resolver';
 import { getColoredRaster, rasterCanBeToned } from './mapshaper-tone';
-import { Bounds } from '../geom/mapshaper-bounds';
 import { stop } from '../utils/mapshaper-logging';
 
 var DEFAULT_STRENGTH = [1, 1];
 var DEFAULT_CHROMA = [0, 1]; // shadows as stacked, highlights without haze
-var DEFAULT_MAP_WIDTH = 800; // CSS pixels, as in SVG output without a frame
 var MIN_DRAWING_SCALE = 2; // like the default pixel-ratio= of PNG output
 var MAX_DRAWING_PIXELS = 4e7;
 
@@ -124,26 +120,6 @@ function getDrawingGrid(catalog, layers, hillshadeGrid) {
   };
 }
 
-// Grid pixels per CSS pixel of the map, so that the layers are drawn as they
-// look in the map's frame (or, without a frame, in an SVG of the default width)
-function getDrawingScale(catalog, layers, grid) {
-  var frame = resolveFrameForDataset(catalog, layers[0].dataset);
-  var data, bounds, cssPerUnit;
-  if (frame) {
-    data = getFrameLayerData(frame.layer, frame.dataset.arcs);
-    cssPerUnit = data.width / (data.bbox[2] - data.bbox[0]);
-  } else {
-    bounds = new Bounds();
-    layers.forEach(function(o) {
-      var bb = getLayerBounds(o.layer, o.dataset.arcs);
-      if (bb) bounds.mergeBounds(bb);
-    });
-    cssPerUnit = bounds.hasBounds() && bounds.width() > 0 ?
-      DEFAULT_MAP_WIDTH / bounds.width() : grid.width / (grid.bbox[2] - grid.bbox[0]);
-  }
-  return grid.width / ((grid.bbox[2] - grid.bbox[0]) * cssPerUnit);
-}
-
 function getBlendSettings(opts) {
   var settings = {
     strength: readShadowHighlightPair(opts.strength, DEFAULT_STRENGTH, 'strength'),
@@ -154,6 +130,7 @@ function getBlendSettings(opts) {
   // given rather than the hillshade's
   if (opts.shadow_color) settings.shadow_color = opts.shadow_color;
   if (opts.highlight_color) settings.highlight_color = opts.highlight_color;
+  if (opts.clip) settings.clip = true;
   return settings;
 }
 
@@ -166,7 +143,8 @@ function getBlendOptions(shading, settings) {
     shadow: readColorOption(settings.shadow_color, 'shadow-color') || shading.shadow,
     highlight: readColorOption(settings.highlight_color, 'highlight-color') || shading.highlight,
     shadowChroma: settings.chroma[0],
-    highlightChroma: settings.chroma[1]
+    highlightChroma: settings.chroma[1],
+    clip: !!settings.clip
   };
 }
 

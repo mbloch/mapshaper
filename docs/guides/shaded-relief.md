@@ -139,7 +139,7 @@ Built-in imagery sources:
 | `usgs` | U.S. (world at small scales) | about 1 m | Faster than `naip`, mostly NAIP from 2017-2021. Public domain. |
 | `sentinel2` | World | 10 m | Satellite image made from the least cloudy scenes of the summer of `year=` (the whole year in the tropics). The default is last year. Requires attribution. |
 | `landsat` | World | 30 m | Satellite image made from the least cloudy scenes of the summer of `year=` (the whole year in the tropics), 1982 and later. The default is last year. 2012 has no usable scenes. Public domain. |
-| `eox` | World | 10 m | Cloudless mosaic of Sentinel-2 images. 2018 and later editions are non-commercial. |
+| `eox` | World | 10 m | Cloudless mosaic of Sentinel-2 images. Editions from 2018 on are licensed for non-commercial use only (CC BY-NC-SA 4.0). |
 | `bluemarble` | World | 500 m | A smooth, cloud-free image for world and continental maps. |
 
 #### Remove shadows from aerial imagery

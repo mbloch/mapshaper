@@ -38,13 +38,13 @@ export function InteractionMode(gui) {
     // With no data, the layer panel's links are the way into the editing
     // tools, so the menu offers only the tools that need no layer
     empty: ['box', 'ruler'],
-    polygons: ['info', 'polygon_style', 'selection', 'box', 'ruler'],
-    rectangles: ['info', 'selection', 'polygon_style', 'rectangles', 'box', 'ruler'],
+    polygons: ['info', 'polygon_style', 'blend', 'selection', 'box', 'ruler'],
+    rectangles: ['info', 'selection', 'polygon_style', 'rectangles', 'blend', 'box', 'ruler'],
     lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],
     table: ['info', 'selection'],
     // 'blend' is offered only where there is a hillshade to blend, and not on
-    // a hillshade, and 'hillshade' only on a raster that can be shaded as
-    // terrain (see getRasterModes())
+    // a hillshade (see blendIsAvailable()), and 'hillshade' only on a raster
+    // that can be shaded as terrain (see getRasterModes())
     raster: ['hillshade', 'blend', 'box', 'ruler'],
     // an RGB image, which -tone can adjust
     image: ['tone', 'blend', 'box', 'ruler'],
@@ -305,8 +305,8 @@ export function InteractionMode(gui) {
       return menus.lines;
     }
     if (o.layer.geometry_type == 'polygon') {
-      return internal.layerOnlyHasRectangles(o.layer, o.dataset.arcs) ||
-        rectangleModeIsAvailable() ? menus.rectangles : menus.polygons;
+      return withoutUnavailableBlend(internal.layerOnlyHasRectangles(o.layer, o.dataset.arcs) ||
+        rectangleModeIsAvailable() ? menus.rectangles : menus.polygons, o.layer);
     }
 
     return menus.standard;
@@ -316,10 +316,16 @@ export function InteractionMode(gui) {
     var modes = internal.rasterCanBeToned(lyr.raster) ? menus.image :
       internal.rasterIsGrayImage(lyr.raster) ? menus.grayImage :
       layerHasPaletteRaster(lyr) ? menus.dataRaster : menus.raster;
-    var blend = blendIsAvailable(gui.model, lyr);
     var hillshade = internal.rasterCanBeHillshaded(lyr.raster);
+    return withoutUnavailableBlend(modes, lyr).filter(function(mode) {
+      return mode != 'hillshade' || hillshade;
+    });
+  }
+
+  function withoutUnavailableBlend(modes, lyr) {
+    var blend = blendIsAvailable(gui.model, lyr);
     return modes.filter(function(mode) {
-      return (mode != 'blend' || blend) && (mode != 'hillshade' || hillshade);
+      return mode != 'blend' || blend;
     });
   }
 

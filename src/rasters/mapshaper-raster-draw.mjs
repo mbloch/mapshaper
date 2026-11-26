@@ -1,6 +1,34 @@
 import { prepareDatasetForSVG, renderSVGDocument } from '../svg/mapshaper-svg';
 import { rasterizeSVGPixels } from '../svg/mapshaper-svg-rasterize';
 import { mergeDatasetsForExport } from '../dataset/mapshaper-merging';
+import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
+import { getFrameLayerData } from '../furniture/mapshaper-frame-utils';
+import { resolveFrameForDataset } from '../furniture/mapshaper-frame-resolver';
+import { Bounds } from '../geom/mapshaper-bounds';
+
+var DEFAULT_MAP_WIDTH = 800; // CSS pixels, as in SVG output without a frame
+
+// Grid pixels per CSS pixel of the map, so that layers drawn on @grid look as
+// they do in the map's frame (or, without a frame, in an SVG of the default
+// width)
+// @layers [{layer, dataset}]
+export function getDrawingScale(catalog, layers, grid) {
+  var frame = resolveFrameForDataset(catalog, layers[0].dataset);
+  var data, bounds, cssPerUnit;
+  if (frame) {
+    data = getFrameLayerData(frame.layer, frame.dataset.arcs);
+    cssPerUnit = data.width / (data.bbox[2] - data.bbox[0]);
+  } else {
+    bounds = new Bounds();
+    layers.forEach(function(o) {
+      var bb = getLayerBounds(o.layer, o.dataset.arcs);
+      if (bb) bounds.mergeBounds(bb);
+    });
+    cssPerUnit = bounds.hasBounds() && bounds.width() > 0 ?
+      DEFAULT_MAP_WIDTH / bounds.width() : grid.width / (grid.bbox[2] - grid.bbox[0]);
+  }
+  return grid.width / ((grid.bbox[2] - grid.bbox[0]) * cssPerUnit);
+}
 
 // Draws layers onto the pixels of a north-up raster grid, the way PNG output
 // draws them (see mapshaper-map-image-export.mjs)

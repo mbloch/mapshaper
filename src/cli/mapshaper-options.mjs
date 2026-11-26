@@ -2707,6 +2707,10 @@ export function getOptionParser() {
       describe: 'recolor the hillshade so that, drawn over the targets, it looks like the blend; the targets are kept',
       type: 'flag'
     })
+    .option('clip', {
+      describe: 'leave out the shading where the targets are transparent (e.g. outside the polygons)',
+      type: 'flag'
+    })
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);

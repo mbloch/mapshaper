@@ -1,5 +1,6 @@
 import { drawOutlineLayerToCanvas, drawStyledLayerToCanvas, DisplayCanvas } from './gui-canvas';
 import { SvgDisplayLayer } from './gui-svg-display';
+import { getDrawnBlendImage } from './gui-raster-blend-preview';
 import { internal } from './gui-core';
 import { GUI } from './gui-lib';
 import { El } from './gui-el';
@@ -185,7 +186,15 @@ export function LayerRenderer(gui, container) {
       drawOutlineLayerToCanvas(lyr, canv, ext);
     } else {
       drawStyledLayerToCanvas(lyr, canv, ext);
+      drawBlendPreviewAbove(lyr, canv);
     }
+  }
+
+  // A hillshade blend previewed on a polygon layer goes directly above it,
+  // where -blend puts its output
+  function drawBlendPreviewAbove(lyr, canv) {
+    var blend = getDrawnBlendImage(lyr);
+    if (blend) canv.drawBlendImage(blend.image, blend.bbox);
   }
 
   // Reading back a single pixel forces Chrome/Firefox to synchronously complete

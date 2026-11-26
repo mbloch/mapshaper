@@ -115,8 +115,11 @@ export function toneRgbPixels(samples, bands, opts, out) {
 // opts:
 //   shadow, highlight  {r, g, b} bytes
 //   shadowChroma, highlightChroma  0 or more
+//   clip  keep the image's alpha (see below)
 // Where the image is partly or fully transparent, the shading is stacked on
-// nothing, so the output alpha can exceed the image's.
+// nothing, so the output alpha can exceed the image's; with opts.clip, the
+// shading is clipped to the image instead: the output has the color of the
+// shaded pixel made opaque, and the image's alpha.
 // @out optional array of @samples' layout to write to (e.g. a canvas's pixels)
 // Returns @out, or a new Uint8Array
 export function blendShadingPixels(samples, bands, amounts, opts, out) {
@@ -173,11 +176,11 @@ export function blendShadingPixels(samples, bands, amounts, opts, out) {
       sg = encodeChannel(rgb[1]);
       sb = encodeChannel(rgb[2]);
     }
-    if (ta == 1) {
+    if (ta == 1 || opts.clip) {
       out[i] = Math.round(sr);
       out[i + 1] = Math.round(sg);
       out[i + 2] = Math.round(sb);
-      if (bands > 3) out[i + 3] = 255;
+      if (bands > 3) out[i + 3] = samples[i + 3];
       continue;
     }
     // the blended image over the shading alone (with chroma 0, the same as
@@ -213,20 +216,28 @@ function getChromaGray(color, lab, rgb) {
 // On an opaque image pixel the overlay has the least alpha that gives the
 // blended color exactly. Where the image is partly transparent, what is under
 // it is unknown, so the overlay is the shading color at the amount's opacity,
-// as in plain stacking.
-// Returns a new Uint8Array of RGBA pixels
-export function getShadingOverlayPixels(samples, blended, amounts, opts) {
-  var out = new Uint8Array(samples.length);
-  var i, k, a, K, c, t, r, need, alpha, a8;
+// as in plain stacking -- times the image's alpha with opts.clip, so that
+// the shading is clipped to the image.
+// @out optional array of @samples' length to write to
+// Returns @out, or a new Uint8Array of RGBA pixels
+export function getShadingOverlayPixels(samples, blended, amounts, opts, out) {
+  var i, k, a, K, c, t, r, need, alpha, a8, ta;
+  if (out) {
+    out.fill(0);
+  } else {
+    out = new Uint8Array(samples.length);
+  }
   for (i = 0, k = 0; i < samples.length; i += 4, k++) {
     a = amounts[k];
     if (a === 0 || a !== a) continue;
     if (samples[i + 3] < 255) {
+      ta = opts.clip ? samples[i + 3] : 255;
+      if (ta === 0) continue;
       K = a < 0 ? opts.shadow : opts.highlight;
       out[i] = K.r;
       out[i + 1] = K.g;
       out[i + 2] = K.b;
-      out[i + 3] = Math.round(Math.min(1, Math.abs(a)) * 255);
+      out[i + 3] = Math.round(Math.min(1, Math.abs(a)) * ta);
       continue;
     }
     alpha = 0;

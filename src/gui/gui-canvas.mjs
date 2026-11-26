@@ -271,6 +271,17 @@ export function DisplayCanvas() {
     }
   }
 
+  // A hillshade blend previewed on a polygon layer (see getDrawnBlendImage())
+  // @img {canvas, width, height}, the part of the canvas that covers @bbox
+  _self.drawBlendImage = function(img, bbox) {
+    var t = _ext.getTransform(GUI.getPixelRatio());
+    var p1 = t.transform(bbox[0], bbox[3]);
+    var p2 = t.transform(bbox[2], bbox[1]);
+    _ctx.imageSmoothingEnabled = true;
+    _ctx.drawImage(img.canvas, 0, 0, img.width, img.height,
+      p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+  };
+
   // A recolored copy of a preview that the tone or blend panel is showing,
   // as function(preview, bbox) returning {canvas, width, height}, or null
   function getRasterRecoloring(tone, blend) {

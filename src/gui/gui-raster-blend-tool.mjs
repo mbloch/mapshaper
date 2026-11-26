@@ -1,15 +1,18 @@
 import { El } from './gui-el';
 import { internal } from './gui-core';
 import { releasePanelFocus } from './gui-panel-focus';
-import { makeColorField, makePanelActionButton, makePanelSection } from './gui-panel-controls';
+import { makeColorField, makePanelActionButton, makePanelButton, makePanelSection } from './gui-panel-controls';
 import { ColorPicker, layerColorPresetRows, toSixDigitHex } from './gui-color-picker';
 import { runGuiEditCommand } from './gui-edit-command';
-import { clearRasterBlendPreview, setRasterBlendPreview } from './gui-raster-blend-preview';
-import { blendIsAvailable, getBlendSourceLayers } from './gui-blend-sources';
+import {
+  clearDrawnBlendPreview, clearRasterBlendPreview, drawBlendTarget, setDrawnBlendPreview,
+  setRasterBlendPreview
+} from './gui-raster-blend-preview';
+import { blendIsAvailable, blendTargetIsDrawn, getBlendSourceLayers } from './gui-blend-sources';
 import { formatLayerNameForDisplay } from './gui-layer-utils';
 import {
-  BLEND_SECTIONS, BLEND_SLIDERS, getBlendColorSetting, getBlendCommand, getBlendOptionValues,
-  getDefaultBlendSettings, hexToRgb, rgbToHex, roundBlendValue
+  BLEND_OUTPUTS, BLEND_SECTIONS, BLEND_SLIDERS, getBlendColorSetting, getBlendCommand,
+  getBlendOptionValues, getDefaultBlendSettings, hexToRgb, rgbToHex, roundBlendValue
 } from './gui-blend-settings';
 
 // The 'blend' mode: a menu of hillshade layers, and sliders and colors that
@@ -20,6 +23,12 @@ import {
 // the raster and removes the hillshade, unless "Keep hillshade" is checked).
 // Leaving the mode any other way --
 // Cancel, the panel's ×, another tool, another layer -- drops the preview.
+//
+// On a polygon layer, the panel also has an Output setting: an overlay, which
+// keeps the polygons, or an image, which replaces them (see BLEND_OUTPUTS),
+// and a checkbox that clips the shading to the polygons.
+// The polygons are drawn on a grid over the hillshade once per hillshade,
+// and the map shows the overlay or the image above them.
 export function RasterBlendTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel raster-tone-panel raster-blend-panel').appendTo(parent).hide();
@@ -28,10 +37,18 @@ export function RasterBlendTool(gui) {
   var settingPicker = false; // the picker echoes the colors it is given to onPreview
   var settings = getDefaultBlendSettings();
   var targetLayer = null;
+  var targetDataset = null;
+  var drawnTarget = false; // a polygon layer (see blendTargetIsDrawn())
   var sources = []; // [{layer, dataset}], as offered by the menu
   var source = null; // the selected one
   var shadings = new WeakMap(); // hillshade layer -> shading amounts, or null if unreadable
-  // the checkbox is left as it was from one blend to the next
+  // hillshade layer -> {drawing, failed}, the polygon target drawn over it;
+  // drawing is null until drawBlendTarget() is done
+  var drawings = new WeakMap();
+  // the output and the checkboxes are left as they were from one blend to the next
+  var output = BLEND_OUTPUTS[0].value;
+  var outputRow, outputButtons = {};
+  var clipRow, clipLabel, clipCheckbox;
   var sourceSelect, noteEl, slidersEl, keepLabel, keepCheckbox, applyBtn;
   var pendingFrame = null;
   var pendingExact = false;
@@ -63,7 +80,7 @@ export function RasterBlendTool(gui) {
 
   function initPanel() {
     var header = El('div').addClass('label-style-panel-title').appendTo(panel);
-    var sourceRow, btnRow;
+    var sourceRow, outputGroup, btnRow;
     El('span').appendTo(header).text('Blend hillshade');
     El('button').addClass('label-style-close').appendTo(header).text('×').on('click', cancel);
     sourceRow = El('div').addClass('label-style-row raster-blend-source-row').appendTo(panel);
@@ -73,6 +90,25 @@ export function RasterBlendTool(gui) {
         selectSource(sources[+sourceSelect.node().value] || null);
         releaseFocus();
       });
+    outputRow = El('div').addClass('label-style-row raster-tone-slider-row raster-blend-output-row').appendTo(panel);
+    El('span').addClass('raster-tone-slider-label').appendTo(outputRow).text('Output');
+    outputGroup = El('div').addClass('label-btn-group').appendTo(outputRow);
+    BLEND_OUTPUTS.forEach(function(choice) {
+      outputButtons[choice.value] = makePanelButton(outputGroup, choice.label, function() {
+        if (output == choice.value) return;
+        output = choice.value;
+        showOutput();
+        schedulePreview(true);
+      });
+    });
+    clipRow = El('div').addClass('label-style-row raster-blend-clip-row').appendTo(panel);
+    clipLabel = El('label').addClass('raster-blend-keep-label').appendTo(clipRow);
+    clipCheckbox = El('input').attr('type', 'checkbox').appendTo(clipLabel)
+      .on('change', function() {
+        schedulePreview(true);
+        releaseFocus();
+      });
+    El('span').appendTo(clipLabel).text('Clip to polygons');
     noteEl = El('div').addClass('raster-blend-note').appendTo(panel);
     slidersEl = El('div').addClass('raster-blend-sliders').appendTo(panel);
     BLEND_SECTIONS.forEach(function(section) {
@@ -204,12 +240,24 @@ export function RasterBlendTool(gui) {
   }
 
   function turnOn() {
-    targetLayer = getActiveLayer();
+    var active = gui.model.getActiveLayer();
+    targetLayer = active.layer;
+    targetDataset = active.dataset;
+    drawnTarget = blendTargetIsDrawn(targetLayer);
     settings = getDefaultBlendSettings();
     BLEND_SLIDERS.forEach(updateSlider);
+    outputRow.node().style.display = drawnTarget ? '' : 'none';
+    clipRow.node().style.display = drawnTarget ? '' : 'none';
+    showOutput();
     source = null;
     panel.show();
     updateSources();
+  }
+
+  function showOutput() {
+    BLEND_OUTPUTS.forEach(function(choice) {
+      outputButtons[choice.value].classed('selected', output == choice.value);
+    });
   }
 
   function turnOff() {
@@ -221,13 +269,15 @@ export function RasterBlendTool(gui) {
     pendingExact = false;
     hidePickers();
     if (!keepPreview) {
-      clearRasterBlendPreview(targetLayer);
+      clearPreview(targetLayer);
       gui.dispatchEvent('map-needs-refresh');
     }
     targetLayer = null;
+    targetDataset = null;
     sources = [];
     source = null;
     shadings = new WeakMap();
+    drawings = new WeakMap();
     releaseFocus();
     panel.hide();
   }
@@ -280,6 +330,8 @@ export function RasterBlendTool(gui) {
       note = 'This layer can\'t be read as a hillshade.';
     } else if (targetIsReprojected()) {
       note = 'The map is in a different projection from this layer, so the blend can\'t be previewed. Apply still blends it.';
+    } else if (source && drawnTarget && getDrawing(source).failed) {
+      note = 'This layer couldn\'t be drawn for a preview. Apply still blends it.';
     }
     noteEl.text(note);
     noteEl.node().style.display = note ? '' : 'none';
@@ -292,6 +344,7 @@ export function RasterBlendTool(gui) {
     });
     applyBtn.classed('disabled', !shading);
     keepLabel.classed('disabled', !shading);
+    clipLabel.classed('disabled', !shading);
   }
 
   // Read once per layer, as -blend reads it; null if -blend would stop on it
@@ -308,6 +361,24 @@ export function RasterBlendTool(gui) {
     return shading;
   }
 
+  // The polygon target drawn over @src's hillshade, which is drawn once per
+  // hillshade; the preview is updated when the drawing is done
+  function getDrawing(src) {
+    var entry = drawings.get(src.layer);
+    var target = {layer: targetLayer, dataset: targetDataset};
+    if (entry) return entry;
+    entry = {drawing: null, failed: false};
+    drawings.set(src.layer, entry);
+    drawBlendTarget(gui.model, target, src.layer).then(function(drawing) {
+      entry.drawing = drawing;
+      if (drawings.get(src.layer) == entry) schedulePreview(true);
+    }, function() {
+      entry.failed = true;
+      if (drawings.get(src.layer) == entry && source == src) updatePanelState();
+    });
+    return entry;
+  }
+
   function targetIsReprojected() {
     return !!(targetLayer && targetLayer.gui && targetLayer.gui.dynamic_crs);
   }
@@ -321,7 +392,8 @@ export function RasterBlendTool(gui) {
     if (!shading) return;
     cmd = getBlendCommand(settings,
       internal.formatOptionValue(internal.getLayerTargetId(gui.model, source.layer)),
-      keepCheckbox.node().checked);
+      keepCheckbox.node().checked, drawnTarget ? output : null,
+      drawnTarget && clipCheckbox.node().checked);
     updatePreviewNow();
     keepPreview = true;
     exitMode();
@@ -329,10 +401,15 @@ export function RasterBlendTool(gui) {
     runGuiEditCommand(gui, cmd, {
       title: 'Blend error',
       onDone: function() {
-        clearRasterBlendPreview(lyr);
+        clearPreview(lyr);
         gui.dispatchEvent('map-needs-refresh');
       }
     });
+  }
+
+  function clearPreview(lyr) {
+    clearRasterBlendPreview(lyr);
+    clearDrawnBlendPreview(lyr);
   }
 
   // Slider events come faster than the map can be redrawn on a large image.
@@ -356,10 +433,16 @@ export function RasterBlendTool(gui) {
   function updatePreview() {
     var exact = pendingExact;
     var shading = source && getShading(source.layer);
+    var drawing = null;
     pendingExact = false;
     if (!targetLayer) return;
-    if (!shading || targetIsReprojected()) {
-      clearRasterBlendPreview(targetLayer);
+    if (shading && drawnTarget && !targetIsReprojected()) {
+      drawing = getDrawing(source).drawing;
+    }
+    if (!shading || targetIsReprojected() || drawnTarget && !drawing) {
+      clearPreview(targetLayer);
+    } else if (drawnTarget) {
+      setDrawnBlendPreview(targetLayer, source.layer, drawing, shading, getPreviewSettings(), exact);
     } else {
       setRasterBlendPreview(targetLayer, source.layer, shading, getPreviewSettings(), exact);
     }
@@ -370,6 +453,8 @@ export function RasterBlendTool(gui) {
     var o = getBlendOptionValues(settings);
     o.shadow = settings.shadow_color ? hexToRgb(settings.shadow_color) : null;
     o.highlight = settings.highlight_color ? hexToRgb(settings.highlight_color) : null;
+    o.output = output;
+    o.clip = clipCheckbox.node().checked;
     return o;
   }
 
