@@ -147,26 +147,22 @@
 </ol>
 <h3 id="step-two-create-a-hillshade-from-the-elevation-layer">Step two: create a hillshade from the elevation layer</h3>
 <p>Select the elevation layer and choose <strong>hillshade</strong> from its options menu. The hillshade panel opens, and the map shows a live preview of the shading. Use the panel&#39;s controls to customize your hillshade and finalize it by clicking <strong>Apply</strong>.</p>
-<p><img src="/docs/images/shaded-relief-hillshade-panel.jpg" alt="The hillshade panel, with Shading, Light, Terrain and Effects controls, beside a grayscale preview of a hillshade of a river canyon"></p>
-<h4 id="shading-opaque-or-transparent">Shading: opaque or transparent</h4>
-<p>The panel&#39;s <strong>Style</strong> setting controls how the hillshade is drawn.</p>
-<ul>
-<li><strong>Opaque</strong> colors every pixel, running from a <em>shadow</em> color through a <em>base</em> color, which is the color of flat ground, to a <em>highlight</em> color.</li>
-<li><strong>Transparent</strong> uses translucent black shadows and white highlights, so the layers below the hillshade show through. Flat ground is fully transparent.</li>
-</ul>
-<p>For the most control over how a hillshade is combined with another layer, make it opaque and use the <strong>blend hillshade</strong> panel (see <a href="#step-two-blend-the-hillshade-with-the-image">part two</a>).</p>
-<p><strong>Making a colored hillshade.</strong> You can use an opaque hillshade with custom shadow, base and highlight colors as a simple background layer for a map. Picking a cool shadow color and a warm highlight color gives the shading a hand-painted look, especially when smoothing is added.</p>
-<p><img src="/docs/images/shaded-relief-colored-hillshade.jpg" alt="The same terrain in the Dolomites in three diagonal bands: a hillshade with blue shadows and pale yellow highlights in the upper left, a pale warm-gray hillshade in the middle, and a hillshade with violet shadows and peach highlights in the lower right"></p>
+<p><img src="/docs/images/shaded-relief-hillshade-panel.jpg" alt="The hillshade panel, with Light, Colors, Terrain and Effects controls, beside a grayscale preview of a hillshade of a winding river canyon"></p>
 <h4 id="light">Light</h4>
 <ul>
 <li><strong>Azimuth</strong> is the direction of the main light source, in degrees clockwise from north. The default of 315° (northwest) lights the map from the upper left, which is the usual convention.</li>
 <li><strong>Altitude</strong> is the angle of the light above the horizon (default 45°, a common convention). Mapshaper&#39;s hillshade function doesn&#39;t cast shadows. Altitude changes the tones of slopes rather than the length of shadows.</li>
 <li><strong>Lighting</strong> sets the fill light. <strong>Hard</strong> uses the main light alone, <strong>Balanced</strong> (the default) adds fainter fill lights around it, and <strong>Soft</strong> adds still more.</li>
 </ul>
+<h4 id="colors">Colors</h4>
+<p>The hillshade&#39;s tones run from a <strong>Shadow</strong> color through a <strong>Base</strong> color, which is the color of flat ground, to a <strong>Highlight</strong> color. By default, the shadow and highlight colors are <em>auto</em>: a darker shade and a lighter tint of the base color. To combine the hillshade with imagery or a tinted raster, use the <strong>blend hillshade</strong> panel (see <a href="#step-two-blend-the-hillshade-with-the-image">part two</a>).</p>
+<p><strong>Making a colored hillshade.</strong> You can use a hillshade with custom shadow, base and highlight colors as a simple background layer for a map. Picking a cool shadow color and a warm highlight color gives the shading a hand-painted look, especially when smoothing is added.</p>
+<p><img src="/docs/images/shaded-relief-colored-hillshade.jpg" alt="The same terrain in the Dolomites in three diagonal bands: a hillshade with blue shadows and pale yellow highlights in the upper left, a pale warm-gray hillshade in the middle, and a hillshade with violet shadows and peach highlights in the lower right"></p>
+<p>The panel makes opaque hillshades. For a transparent hillshade, with translucent shadows and highlights, to stack over vector layers or use in other software, run <a href="/docs/reference.html#-hillshade"><code>-hillshade</code></a> in the console.</p>
 <h4 id="terrain">Terrain</h4>
 <ul>
-<li><strong>Exaggeration</strong> adjusts the vertical scale of the terrain. The slider is centered on an automatic value based on the scale of the map (small-scale maps get more exaggeration).</li>
 <li><strong>Smoothing</strong> (Off, 1-4) removes noisy detail while keeping major landforms sharp. Mapshaper&#39;s smoothing function adapts to the terrain, smoothing more or less according to the average slope in the immediate area. Smoothing changes only the hillshade; to smooth elevations for other uses, like contours or tints, use the <a href="/docs/reference.html#-smooth-terrain"><code>-smooth-terrain</code></a> or <a href="/docs/reference.html#-blur"><code>-blur</code></a> console command. The figure below shows the difference between no smoothing and maximum smoothing.</li>
+<li><strong>Exaggeration</strong> adjusts the vertical scale of the terrain. The slider is centered on an automatic value based on the scale of the map (small-scale maps get more exaggeration).</li>
 </ul>
 <p><img src="/docs/images/shaded-relief-smoothing-compare.jpg" alt="Glaciated mountains in the Chugach range of Alaska, with no smoothing in the upper left and smoothing 4 in the lower right, divided by a diagonal line; the smoothed side has less fine detail, while the main ridges and valleys stay sharp"></p>
 <h4 id="effects">Effects</h4>

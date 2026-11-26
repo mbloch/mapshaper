@@ -142,6 +142,25 @@
   // amount, which grays out sunlit valleys.
   var AMBIENT_HIGHLIGHT_FACTOR = 1.8;
 
+  // Light falls off over this many degrees as a surface turns away from it,
+  // like light from a source of some width; light that stopped at once would
+  // crease the shading, which shows as seams on smooth slopes
+  var LIGHT_FADE = 5;
+
+  // The range of a light's contribution (see computeHillshade()) over which
+  // it fades out, around 0
+  function getLightFade(weight) {
+    return weight * Math.sin(LIGHT_FADE * Math.PI / 180);
+  }
+
+  // A light's contribution @v, faded in over -@fade to @fade (see LIGHT_FADE)
+  // along a curve that meets 0 and @v with matching slopes. Inlined in
+  // computeHillshade().
+  function fadeLight(v, fade) {
+    if (v >= fade) return v;
+    return v > -fade ? (v + fade) * (v + fade) / (4 * fade) : 0;
+  }
+
   // Returns brightness values, scaled so that flat ground is 1, lit slopes are
   // brighter and shaded slopes darker (0 is fully shaded).
   // @elev Float32Array of elevations
@@ -157,12 +176,14 @@
       var zenith = (90 - light.altitude) * Math.PI / 180;
       // mathematical angle of the direction the light comes from
       var az = (360 - light.azimuth + 90) * Math.PI / 180;
-      flat += light.weight * Math.cos(zenith);
+      var fade = getLightFade(light.weight);
+      flat += fadeLight(light.weight * Math.cos(zenith), fade);
       return {
         cosZ: Math.cos(zenith) * light.weight,
         sinZ: Math.sin(zenith) * light.weight,
         cosAz: Math.cos(az),
-        sinAz: Math.sin(az)
+        sinAz: Math.sin(az),
+        fade: fade
       };
     });
     var n = prepared.length;
@@ -212,7 +233,9 @@
           p = prepared[j];
           // cos(az - aspect) = cos(az)cos(aspect) + sin(az)sin(aspect)
           var v = p.cosZ * cosSlope + p.sinZ * sinSlope * (p.cosAz * aspectCos + p.sinAz * aspectSin);
-          if (v > 0) sum += v;
+          // fadeLight()
+          if (v >= p.fade) sum += v;
+          else if (v > -p.fade) sum += (v + p.fade) * (v + p.fade) / (4 * p.fade);
         }
         out[i] = flat > 0 ? sum / flat : 0;
       }

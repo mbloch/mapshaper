@@ -87,20 +87,7 @@ There are two ways to get started.
 
 Select the elevation layer and choose **hillshade** from its options menu. The hillshade panel opens, and the map shows a live preview of the shading. Use the panel's controls to customize your hillshade and finalize it by clicking **Apply**.
 
-![The hillshade panel, with Shading, Light, Terrain and Effects controls, beside a grayscale preview of a hillshade of a river canyon](/docs/images/shaded-relief-hillshade-panel.jpg)
-
-#### Shading: opaque or transparent
-
-The panel's **Style** setting controls how the hillshade is drawn.
-
-- **Opaque** colors every pixel, running from a *shadow* color through a *base* color, which is the color of flat ground, to a *highlight* color.
-- **Transparent** uses translucent black shadows and white highlights, so the layers below the hillshade show through. Flat ground is fully transparent.
-
-For the most control over how a hillshade is combined with another layer, make it opaque and use the **blend hillshade** panel (see [part two](#step-two-blend-the-hillshade-with-the-image)).
-
-**Making a colored hillshade.** You can use an opaque hillshade with custom shadow, base and highlight colors as a simple background layer for a map. Picking a cool shadow color and a warm highlight color gives the shading a hand-painted look, especially when smoothing is added.
-
-![The same terrain in the Dolomites in three diagonal bands: a hillshade with blue shadows and pale yellow highlights in the upper left, a pale warm-gray hillshade in the middle, and a hillshade with violet shadows and peach highlights in the lower right](/docs/images/shaded-relief-colored-hillshade.jpg)
+![The hillshade panel, with Light, Colors, Terrain and Effects controls, beside a grayscale preview of a hillshade of a winding river canyon](/docs/images/shaded-relief-hillshade-panel.jpg)
 
 #### Light
 
@@ -108,10 +95,20 @@ For the most control over how a hillshade is combined with another layer, make i
 - **Altitude** is the angle of the light above the horizon (default 45°, a common convention). Mapshaper's hillshade function doesn't cast shadows. Altitude changes the tones of slopes rather than the length of shadows.
 - **Lighting** sets the fill light. **Hard** uses the main light alone, **Balanced** (the default) adds fainter fill lights around it, and **Soft** adds still more.
 
+#### Colors
+
+The hillshade's tones run from a **Shadow** color through a **Base** color, which is the color of flat ground, to a **Highlight** color. By default, the shadow and highlight colors are *auto*: a darker shade and a lighter tint of the base color. To combine the hillshade with imagery or a tinted raster, use the **blend hillshade** panel (see [part two](#step-two-blend-the-hillshade-with-the-image)).
+
+**Making a colored hillshade.** You can use a hillshade with custom shadow, base and highlight colors as a simple background layer for a map. Picking a cool shadow color and a warm highlight color gives the shading a hand-painted look, especially when smoothing is added.
+
+![The same terrain in the Dolomites in three diagonal bands: a hillshade with blue shadows and pale yellow highlights in the upper left, a pale warm-gray hillshade in the middle, and a hillshade with violet shadows and peach highlights in the lower right](/docs/images/shaded-relief-colored-hillshade.jpg)
+
+The panel makes opaque hillshades. For a transparent hillshade, with translucent shadows and highlights, to stack over vector layers or use in other software, run [`-hillshade`](/docs/reference.html.md#-hillshade) in the console.
+
 #### Terrain
 
-- **Exaggeration** adjusts the vertical scale of the terrain. The slider is centered on an automatic value based on the scale of the map (small-scale maps get more exaggeration).
 - **Smoothing** (Off, 1-4) removes noisy detail while keeping major landforms sharp. Mapshaper's smoothing function adapts to the terrain, smoothing more or less according to the average slope in the immediate area. Smoothing changes only the hillshade; to smooth elevations for other uses, like contours or tints, use the [`-smooth-terrain`](/docs/reference.html.md#-smooth-terrain) or [`-blur`](/docs/reference.html.md#-blur) console command. The figure below shows the difference between no smoothing and maximum smoothing.
+- **Exaggeration** adjusts the vertical scale of the terrain. The slider is centered on an automatic value based on the scale of the map (small-scale maps get more exaggeration).
 
 ![Glaciated mountains in the Chugach range of Alaska, with no smoothing in the upper left and smoothing 4 in the lower right, divided by a diagonal line; the smoothed side has less fine detail, while the main ridges and valleys stay sharp](/docs/images/shaded-relief-smoothing-compare.jpg)
 
