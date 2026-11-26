@@ -94,6 +94,18 @@ export function readHillshadeTerrain(lyr, dataset, opts) {
     minElevation = opts.min_elevation * unitMeters;
     raiseLowElevations(elev, valid, minElevation);
   }
+  return makeHillshadeTerrain(source, cells, elev, valid, minElevation);
+}
+
+// The terrain of readHillshadeTerrain() with min-elevation= applied, from the
+// terrain without it, for the hillshade panel. @minElevation is in meters.
+export function raiseHillshadeTerrain(terrain, minElevation) {
+  var elev = terrain.grid.elev.slice();
+  raiseLowElevations(elev, terrain.grid.valid, minElevation);
+  return makeHillshadeTerrain(terrain.source, terrain.cells, elev, terrain.grid.valid, minElevation);
+}
+
+function makeHillshadeTerrain(source, cells, elev, valid, minElevation) {
   return {
     source: source,
     cells: cells,

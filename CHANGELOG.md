@@ -1,5 +1,6 @@
 v0.8.11
 * Renamed the Dymaxion projections. `airocean` (gnomonic facets, formerly `dymaxion2`) matches PROJ's `+proj=airocean`, including its `+orient` parameter and its handling of ellipsoids, so GDAL and other PROJ-based software can read files that use it. `airocean2` (Gray-Fuller facets, formerly `dymaxion`) uses the same layout. Both are horizontal by default. `dymaxion` and `dymaxion2` still work, with their old coordinates.
+* [web] The hillshade panel has a Bathymetry setting for elevation rasters with values below 0: Shade, or Flatten (`min-elevation=0`), which flattens the sea floor.
 
 v0.8.10
 * New -resample command, which changes the resolution of a raster layer: relative to the map frame (`2x`, `300dpi`), by a percentage (`50%`) or to a width (`4000px`). The `crop` option crops the raster to the frame, plus a margin.

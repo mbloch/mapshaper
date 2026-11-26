@@ -17,6 +17,7 @@
 //   getHillshadeHighlightColor() in mapshaper-raster-color.mjs). They are
 //   kept apart from the transparent style's colors, so that switching styles
 //   doesn't carry black and white over.
+// - below_zero is 'shade' or 'flatten', which writes min-elevation=0
 
 export var HILLSHADE_STYLES = [
   {value: 'shadow', label: 'Transparent'},
@@ -35,6 +36,11 @@ export var HILLSHADE_SMOOTHING_LEVELS = [
   {value: 2, label: '2'},
   {value: 3, label: '3'},
   {value: 4, label: '4'}
+];
+
+export var HILLSHADE_BELOW_ZERO = [
+  {value: 'shade', label: 'Shade'},
+  {value: 'flatten', label: 'Flatten'}
 ];
 
 // @section the panel section the slider is in
@@ -80,7 +86,7 @@ var COMPASS_POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 
 // The style is the exception to the command's defaults (see above)
 export function getDefaultHillshadeSettings() {
-  var settings = {style: 'opaque', lighting: 'balanced', smoothing: 0};
+  var settings = {style: 'opaque', lighting: 'balanced', smoothing: 0, below_zero: 'shade'};
   HILLSHADE_SLIDERS.forEach(function(slider) {
     settings[slider.name] = slider.value;
   });
@@ -162,7 +168,9 @@ export function getHillshadeOptions(settings, autoExaggeration, colorFns) {
   if (settings.exaggeration != defaults.exaggeration) {
     opts.exaggeration = getExaggeration(settings.exaggeration, autoExaggeration);
   }
-  ['smoothing', 'ambient', 'texture', 'aerial', 'gamma'].forEach(function(key) {
+  if (settings.smoothing != defaults.smoothing) opts.smoothing = settings.smoothing;
+  if (settings.below_zero == 'flatten') opts.min_elevation = 0;
+  ['ambient', 'texture', 'aerial', 'gamma'].forEach(function(key) {
     if (settings[key] != defaults[key]) opts[key] = settings[key];
   });
   return opts;

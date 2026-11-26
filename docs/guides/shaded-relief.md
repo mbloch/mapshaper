@@ -112,7 +112,7 @@ For the most control over how a hillshade is combined with another layer, make i
 - **Exaggeration** adjusts the vertical scale of the terrain. The slider is centered on an automatic value based on the scale of the map (small-scale maps get more exaggeration).
 - **Smoothing** (Off, 1-4) removes noisy detail while keeping major landforms sharp. Mapshaper's smoothing function adapts to the terrain, smoothing more or less according to the average slope in the immediate area. Smoothing changes only the hillshade; to smooth elevations for other uses, like contours or tints, use the [`-smooth-terrain`](/docs/reference.html#-smooth-terrain) or [`-blur`](/docs/reference.html#-blur) console command. The figure below shows the difference between no smoothing and maximum smoothing.
 
-![Hilly terrain with no smoothing in the upper left and smoothing 4 in the lower right, divided by a diagonal line; the smoothed side has less fine detail, while the main ridges and valleys stay sharp](/docs/images/shaded-relief-smoothing-compare.jpg)
+![Glaciated mountains in the Chugach range of Alaska, with no smoothing in the upper left and smoothing 4 in the lower right, divided by a diagonal line; the smoothed side has less fine detail, while the main ridges and valleys stay sharp](/docs/images/shaded-relief-smoothing-compare.jpg)
 
 #### Effects
 
@@ -125,7 +125,6 @@ For the most control over how a hillshade is combined with another layer, make i
 
 A few settings are only available in the console:
 
-- `-hillshade min-elevation=0` flattens the sea floor, so that bathymetry isn't shaded.
 - [`-sharpen`](/docs/reference.html#-sharpen) applies an unsharp mask to the finished hillshade, for a crisper appearance.
 - `-hillshade verbose` prints every settable parameter, including the automatic ones.
 

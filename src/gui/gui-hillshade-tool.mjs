@@ -7,7 +7,7 @@ import { runGuiEditCommand } from './gui-edit-command';
 import { getShrinkFactor } from './gui-raster-shrink';
 import { clearRasterHillshadePreview, setRasterHillshadePreview } from './gui-hillshade-preview';
 import {
-  HILLSHADE_COLOR_ROWS, HILLSHADE_LIGHTINGS, HILLSHADE_SLIDERS, HILLSHADE_SMOOTHING_LEVELS,
+  HILLSHADE_BELOW_ZERO, HILLSHADE_COLOR_ROWS, HILLSHADE_LIGHTINGS, HILLSHADE_SLIDERS, HILLSHADE_SMOOTHING_LEVELS,
   HILLSHADE_STYLES, formatHillshadeSliderValue, getDefaultHillshadeSettings, getHillshadeCommand,
   getHillshadeOptions, getHillshadeSliderValue
 } from './gui-hillshade-settings';
@@ -39,9 +39,10 @@ var colorFns = {
 // Cancel, the panel's ×, another tool, another layer -- drops the preview.
 //
 // The panel reads the elevations once, and keeps what takes time to compute:
-// the smoothed terrain for each smoothing level, and the fields of shading
-// (see computeShadingFields()), which depend only on the light, the
-// exaggeration and the smoothing. Other settings recombine the fields. While
+// the smoothed terrain for each smoothing level and Bathymetry setting, and the
+// fields of shading (see computeShadingFields()), which depend only on the
+// light, the exaggeration and the terrain. Other settings recombine the
+// fields. While
 // a slider is dragged, the part of the raster in view is shaded at full
 // resolution, or if that's more than WINDOW_MAX_PIXELS, a box of that many
 // pixels in the middle of the view, drawn over the last full image (see
@@ -62,7 +63,7 @@ export function HillshadeTool(gui) {
   // opens on a layer, so that work still running for an earlier one is
   // dropped when it finishes. See turnOn().
   var state = null;
-  var noteEl, titleSpinner, keepCheckbox, applyBtn;
+  var noteEl, titleSpinner, keepCheckbox, applyBtn, belowZeroRow;
   // the button whose setting is being computed, which shows the spinner in
   // place of its label; otherwise the spinner is next to the title
   var busyButton = null;
@@ -113,6 +114,9 @@ export function HillshadeTool(gui) {
     section = makePanelSection(panel, 'Terrain');
     addSliderRows(section, 'terrain');
     addButtonRow(section, 'Smoothing', 'smoothing', HILLSHADE_SMOOTHING_LEVELS);
+    // shown only if there are elevations below 0, so it doesn't suggest that
+    // an inland scene or a DEM without bathymetry has some
+    belowZeroRow = addButtonRow(section, 'Bathymetry', 'below_zero', HILLSHADE_BELOW_ZERO);
 
     section = makePanelSection(panel, 'Effects');
     addSliderRows(section, 'effects');
@@ -169,6 +173,7 @@ export function HillshadeTool(gui) {
         if (settings[key] !== choice.value) setSetting(key, choice.value, true, btn);
       });
     });
+    return row;
   }
 
   // A drag in the picker previews on the map, as a drag of a slider does.
@@ -241,6 +246,7 @@ export function HillshadeTool(gui) {
         buttonGroups[key][val].classed('selected', String(settings[key]) == val);
       });
     });
+    belowZeroRow.classed('hidden', !(state && state.belowZero));
   }
 
   function showSliderValue(slider) {
@@ -283,10 +289,11 @@ export function HillshadeTool(gui) {
     }
     state = terrain ? {
       terrain: terrain,
+      // below_zero setting -> its terrain (see getTerrainVariant())
+      variants: {shade: makeTerrainVariant(terrain)},
+      belowZero: hasElevationsBelowZero(terrain.grid),
       autoExaggeration: internal.getAutoExaggeration(terrain.cells.median),
       draftFactor: getShrinkFactor(terrain.grid.width, terrain.grid.height, DRAFT_MAX_PIXELS),
-      smoothed: {0: terrain.grid}, // smoothing level -> grid, or a promise of one
-      reduced: {}, // smoothing level -> reduced copy of the smoothed grid
       fields: {}, // field name -> {key, data}, at full size
       draftFields: {}, // field name -> {key or source, data}, reduced
       exactRaster: null, // the latest full-size image
@@ -371,22 +378,45 @@ export function HillshadeTool(gui) {
     });
   }
 
+  // The terrain of the below_zero setting, with Flatten's elevations raised
+  // to 0 (as min-elevation=0 raises them), and what is computed from it
+  function getTerrainVariant(st) {
+    var key = settings.below_zero;
+    if (!st.variants[key]) {
+      st.variants[key] = makeTerrainVariant(internal.raiseHillshadeTerrain(st.terrain, 0));
+    }
+    return st.variants[key];
+  }
+
   // Options as the command will have them, and the settings of shading they
   // give (see getHillshadeShading())
   function getShading(st) {
     return internal.getHillshadeShading(getHillshadeOptions(settings, st.autoExaggeration, colorFns),
-      st.terrain);
+      getTerrainVariant(st).terrain);
+  }
+
+  // The settings the smoothed terrain depends on, which begin the keys of the
+  // fields
+  function getTerrainKey(shading) {
+    return shading.smoothing + ',' + settings.below_zero;
   }
 
   // Keys of the settings each field depends on (see computeShadingFields()),
   // or null for a field the settings don't use
   function getFieldKeys(shading) {
     var s = shading.settings;
+    var terrainKey = getTerrainKey(shading);
     return {
-      shade: [shading.smoothing, s.azimuth, settings.altitude, settings.lighting, s.exaggeration].join(','),
-      openness: s.ambient > 0 ? [shading.smoothing, s.exaggeration].join(',') : null,
-      texture: s.texture > 0 ? [shading.smoothing, s.exaggeration].join(',') : null
+      shade: [terrainKey, s.azimuth, settings.altitude, settings.lighting, s.exaggeration].join(','),
+      openness: s.ambient > 0 ? [terrainKey, s.exaggeration].join(',') : null,
+      texture: s.texture > 0 ? [terrainKey, s.exaggeration].join(',') : null
     };
+  }
+
+  // A field computed for another exaggeration can stand in during a drag,
+  // but not one of another terrain
+  function fieldFitsTerrain(field, shading) {
+    return field.key.indexOf(getTerrainKey(shading) + ',') === 0;
   }
 
   // One full-size image is made at a time; a request while one is being made
@@ -452,13 +482,14 @@ export function HillshadeTool(gui) {
   }
 
   async function getSmoothedGrid(st, level) {
-    var terrain = st.terrain;
-    var grid = st.smoothed[level];
+    var variant = getTerrainVariant(st);
+    var terrain = variant.terrain;
+    var grid = variant.smoothed[level];
     if (!grid) {
-      grid = st.smoothed[level] = internal.runSmoothingStage(terrain.grid,
+      grid = variant.smoothed[level] = internal.runSmoothingStage(terrain.grid,
         internal.getSmoothingSettings(level, {}, terrain.cells.median, terrain.minElevation), {}
       ).then(function(result) {
-        return (st.smoothed[level] = Object.assign({}, terrain.grid, {elev: result.elev}));
+        return (variant.smoothed[level] = Object.assign({}, terrain.grid, {elev: result.elev}));
       });
     }
     return grid;
@@ -492,7 +523,7 @@ export function HillshadeTool(gui) {
   // raster.
   function renderDraft(st) {
     var shading = getShading(st);
-    var full = st.smoothed[shading.smoothing];
+    var full = getTerrainVariant(st).smoothed[shading.smoothing];
     if (!full || full.then) {
       // renderExact() makes the draft again once the smoothing is done
       return;
@@ -536,7 +567,7 @@ export function HillshadeTool(gui) {
     };
     ['openness', 'texture'].forEach(function(name) {
       var o = st.fields[name];
-      if (!keys[name] || !o || o.key.split(',')[0] != String(shading.smoothing)) return;
+      if (!keys[name] || !o || !fieldFitsTerrain(o, shading)) return;
       current[name] = cropArray(o.data, full.width, tile);
     });
     s = Object.assign({}, s, {
@@ -588,13 +619,14 @@ export function HillshadeTool(gui) {
   function renderReducedDraft(st, shading, full) {
     var keys = getFieldKeys(shading);
     var s = shading.settings;
+    var reduced = getTerrainVariant(st).reduced;
     var grid, current;
     grid = st.draftFactor > 1 ?
-      st.reduced[shading.smoothing] || (st.reduced[shading.smoothing] = reduceGrid(full, st.draftFactor)) : full;
+      reduced[shading.smoothing] || (reduced[shading.smoothing] = reduceGrid(full, st.draftFactor)) : full;
     current = {shade: getDraftShade(st, grid, shading, keys.shade)};
     ['openness', 'texture'].forEach(function(name) {
       var o = st.fields[name];
-      if (!keys[name] || !o || o.key.split(',')[0] != String(shading.smoothing)) return;
+      if (!keys[name] || !o || !fieldFitsTerrain(o, shading)) return;
       current[name] = getDraftField(st, name, o.data);
     });
     s = Object.assign({}, s, {
@@ -655,6 +687,23 @@ export function HillshadeTool(gui) {
     var o = gui.model.getActiveLayer();
     return o && o.layer || null;
   }
+}
+
+// @terrain from readHillshadeTerrain()
+function makeTerrainVariant(terrain) {
+  return {
+    terrain: terrain,
+    smoothed: {0: terrain.grid}, // smoothing level -> grid, or a promise of one
+    reduced: {} // smoothing level -> reduced copy of the smoothed grid
+  };
+}
+
+function hasElevationsBelowZero(grid) {
+  var elev = grid.elev, valid = grid.valid;
+  for (var i = 0; i < elev.length; i++) {
+    if (elev[i] < 0 && (!valid || valid[i])) return true;
+  }
+  return false;
 }
 
 // Every @k-th pixel of every @k-th row of a grid of the stages of

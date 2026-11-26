@@ -132,6 +132,26 @@ describe('gui-hillshade-settings.mjs', function () {
     assert.equal(command({opaque_shadow_color: '#203040'}), '-hillshade');
   })
 
+  it('Flatten below 0 writes min-elevation=0', async function () {
+    assert.equal(command({below_zero: 'flatten', smoothing: 1, ambient: 0.3}),
+      '-hillshade smoothing=1 min-elevation=0 ambient=0.3');
+    assert.equal(command({below_zero: 'shade'}), '-hillshade');
+    assert.strictEqual((await getDerivation(command({below_zero: 'flatten'}))).min_elevation, 0);
+  })
+
+  it('the panel\'s flattened terrain is the command\'s', function () {
+    var dataset = makeDem();
+    var lyr = dataset.layers[0];
+    var samples = lyr.raster.grid.samples;
+    for (var i = 0; i < 30; i++) samples[i] = -50 + i;
+    var plain = internal.readHillshadeTerrain(lyr, dataset, {});
+    var raised = internal.raiseHillshadeTerrain(plain, 0);
+    var expected = internal.readHillshadeTerrain(lyr, dataset, {min_elevation: 0});
+    assert.deepEqual(Array.from(raised.grid.elev), Array.from(expected.grid.elev));
+    assert.strictEqual(raised.minElevation, 0);
+    assert.equal(plain.grid.elev[0], -50); // the plain terrain is left alone
+  })
+
   it('the command runs', async function () {
     var d = await getDerivation(command({style: 'opaque', base_color: '#e0d6c4', shadow_strength: 1.4,
       azimuth: 400, exaggeration: 0.5, texture: 0.3}));
