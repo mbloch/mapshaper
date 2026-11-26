@@ -174,22 +174,33 @@ mapshaper world.geojson \
   -graticule outline \
   -o neatline-imoll-o.fgb
 </code></pre>
-<h3 id="dymaxion-projections">Dymaxion projections</h3>
-<p>Mapshaper includes two versions of Buckminster Fuller&#39;s Airocean (Dymaxion)
-world map. Both divide the globe into twenty triangles and arrange them on a
-flat map according to Fuller&#39;s design:</p>
-<p><img src="/docs/images/dymaxion-projection.jpg" alt="Dymaxion (Airocean) world projection"></p>
+<h3 id="airocean-projections">Airocean projections</h3>
+<p>Mapshaper includes two versions of Buckminster Fuller&#39;s Airocean world map,
+also known as the Dymaxion map. Both divide the globe into twenty triangles
+and arrange them on a flat map according to Fuller&#39;s design:</p>
+<p><img src="/docs/images/dymaxion-projection.jpg" alt="Airocean world projection"></p>
 <ul>
-<li><code>dymaxion</code> — a version using the Gray-Fuller transform for projecting each polyhedral face, which balances shape and area
-distortion</li>
-<li><code>dymaxion2</code> — a version using the gnomonic projection to project each face</li>
+<li><code>airocean2</code> — projects each triangle with Robert Gray&#39;s equations for
+Fuller&#39;s own transformation, which is nearly equal-area. This version
+follows Fuller&#39;s maps.</li>
+<li><code>airocean</code> — projects each triangle with the gnomonic projection, which
+enlarges areas near the corners of the triangles by up to two times. It
+matches PROJ&#39;s <code>+proj=airocean</code> (PROJ 9.6 and later), so files that use it
+can be read by GDAL, QGIS and other PROJ-based software.</li>
 </ul>
+<p>Both versions use the same layout, so their triangles line up exactly. The map
+is horizontal by default; add <code>+orient=vertical</code> to stand it on end, like
+PROJ&#39;s default. (Mapshaper writes <code>+orient=horizontal</code> into the CRS of
+horizontal maps, so PROJ reads them the same way.)</p>
 <pre><code class="hljs language-bash">mapshaper world.geojson \
-  -proj +proj=dymaxion \
-  -o world-dymaxion.geojson \
+  -proj +proj=airocean2 \
+  -o world-airocean.geojson \
   -graticule outline \
-  -o neatline-dymaxion.geojson
+  -o neatline-airocean.geojson
 </code></pre>
+<p>These projections were previously called <code>dymaxion</code> (now <code>airocean2</code>) and
+<code>dymaxion2</code> (now <code>airocean</code>). The old names still work and produce the same
+coordinates as before, which differ from the new versions in origin and scale.</p>
 <h3 id="butterfly-and-cahill-keyes-projections">Butterfly and Cahill-Keyes projections</h3>
 <p>These projections divide the globe into eight octahedral faces. The first two arrange
 the triangular faces in a butterfly layout similar to the butterfly maps of Bernard Cahill and Steve Watterman, but use Gene Keyes&#39;s facet projection; the third (<code>cahill_keyes</code>) uses Gene Keyes&#39;s M-shaped arrangement and facet projection.</p>
@@ -259,7 +270,7 @@ hemisphere on the left. The right disk overlaps the left one.</li>
 </li>
 <li><p>Projections that can only represent part of the globe — including orthographic (<code>ortho</code>), near-side perspective (<code>nsper</code>, <code>geos</code>), gnomonic (<code>gnom</code>), stereographic (<code>stere</code>), and Lambert Azimuthal Equal-Area (<code>laea</code>) — automatically clip input data to the projection&#39;s valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.</p>
 </li>
-<li><p>Interrupted and polyhedral projections (<code>igh</code>, <code>imoll</code>, <code>igh_o</code>, <code>imoll_o</code>, <code>narukawa2022</code>, <code>markley</code>, <code>calm</code>, <code>dymaxion</code>, <code>dymaxion2</code>, <code>butterfly</code>, <code>butterfly2</code>, <code>cahill_keyes</code>) can be used as destinations for vector and raster layers, but cannot be used as source CRSs. The two-hemisphere projections (<code>hemispheres</code>, <code>hemispheres2</code>) can be reprojected back to other CRSs, but cannot be read from <code>.prj</code> files.</p>
+<li><p>Interrupted and polyhedral projections (<code>igh</code>, <code>imoll</code>, <code>igh_o</code>, <code>imoll_o</code>, <code>narukawa2022</code>, <code>markley</code>, <code>calm</code>, <code>airocean</code>, <code>airocean2</code>, <code>butterfly</code>, <code>butterfly2</code>, <code>cahill_keyes</code>) can be used as destinations for vector and raster layers, but cannot be used as source CRSs. The two-hemisphere projections (<code>hemispheres</code>, <code>hemispheres2</code>) can be reprojected back to other CRSs, but cannot be read from <code>.prj</code> files.</p>
 </li>
 <li><p><code>-proj</code> adds vertices along long segments where the projection curves them, so that a segment along a parallel follows the parallel. Use <code>no-densify</code> to project only the existing vertices:</p>
 <pre><code class="hljs language-bash">mapshaper data.shp -proj +proj=lcc +lat_1=33 +lat_2=45 +lon_0=-96 no-densify -o
@@ -278,7 +289,7 @@ hemisphere on the left. The right disk overlaps the left one.</li>
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#forms-of-crs-notation">Forms of CRS notation</a></li><li class="lvl-2"><a href="#auto-fitted-parameters">Auto-fitted parameters</a></li><li class="lvl-2"><a href="#albersusa">albersusa</a></li><li class="lvl-2"><a href="#interrupted-and-polyhedral-world-projections">Interrupted and polyhedral world projections</a></li><li class="lvl-3"><a href="#goode-homolosine-and-mollweide-projections">Goode Homolosine and Mollweide projections</a></li><li class="lvl-3"><a href="#dymaxion-projections">Dymaxion projections</a></li><li class="lvl-3"><a href="#butterfly-and-cahill-keyes-projections">Butterfly and Cahill-Keyes projections</a></li><li class="lvl-3"><a href="#tetrahedral-projections">Tetrahedral projections</a></li><li class="lvl-3"><a href="#two-hemisphere-projections">Two-hemisphere projections</a></li><li class="lvl-2"><a href="#finding-crs-definitions">Finding CRS definitions</a></li><li class="lvl-2"><a href="#coordinate-system-quirks-and-limitations">Coordinate system quirks and limitations</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#forms-of-crs-notation">Forms of CRS notation</a></li><li class="lvl-2"><a href="#auto-fitted-parameters">Auto-fitted parameters</a></li><li class="lvl-2"><a href="#albersusa">albersusa</a></li><li class="lvl-2"><a href="#interrupted-and-polyhedral-world-projections">Interrupted and polyhedral world projections</a></li><li class="lvl-3"><a href="#goode-homolosine-and-mollweide-projections">Goode Homolosine and Mollweide projections</a></li><li class="lvl-3"><a href="#airocean-projections">Airocean projections</a></li><li class="lvl-3"><a href="#butterfly-and-cahill-keyes-projections">Butterfly and Cahill-Keyes projections</a></li><li class="lvl-3"><a href="#tetrahedral-projections">Tetrahedral projections</a></li><li class="lvl-3"><a href="#two-hemisphere-projections">Two-hemisphere projections</a></li><li class="lvl-2"><a href="#finding-crs-definitions">Finding CRS definitions</a></li><li class="lvl-2"><a href="#coordinate-system-quirks-and-limitations">Coordinate system quirks and limitations</a></li></ul>
   </aside>
 
 </div>

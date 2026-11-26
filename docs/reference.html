@@ -975,7 +975,7 @@ mapshaper counties.shp \
 <p><code>from-rings</code>  Convert a layer of closed polyline rings into polygons. Nested rings in multipart features are converted into holes.</p>
 <p>Common options: <code>target=</code></p>
 </section>
-<section class="cmd-section" data-id="-proj" data-name="-proj" data-options="crs densify no-densify match init nodata-color background bilinear nearest target lat_0 narukawa2022 markley calm dymaxion dymaxion2 butterfly butterfly2 cahill_keyes"><h3 id="-proj">-proj</h3>
+<section class="cmd-section" data-id="-proj" data-name="-proj" data-options="crs densify no-densify match init nodata-color background bilinear nearest target lat_0 narukawa2022 markley calm airocean airocean2 dymaxion dymaxion2 butterfly butterfly2 cahill_keyes"><h3 id="-proj">-proj</h3>
 <p>Project a dataset using a PROJ string, EPSG code or alias. This command affects all layers in the dataset(s) containing the targeted layer or layers. Information on PROJ string syntax can be found on the <a href="https://proj.org/usage/index.html">PROJ website</a>.</p>
 <p><code>&lt;crs&gt;</code> or <code>crs=</code>  Target CRS, given as a Proj.4 definition or an alias. Use the <a href="#-projections"><code>-projections</code></a> command to list available projections and aliases. In some projections that require additional parameters, Mapshaper can fit parameters automatically from the data extent, for example <code>crs=utm</code> selects a UTM zone. You can also pass a Proj4 string enclosed in quotes, for example <code>crs=&#39;+proj=utm +zone=27&#39;</code>.</p>
 <p><code>densify</code> (Deprecated) Densification is now the default, so this option is no longer needed.</p>
@@ -1009,9 +1009,9 @@ mapshaper countries.shp -proj +proj=wintri +lon_0=10 -o out.shp
 <span class="hljs-comment"># Shortcut notation for the above projection</span>
 mapshaper countries.shp -proj wintri +lon_0=10 -o out.shp
 
-<span class="hljs-comment"># Create Dymaxion-projected layers including a graticule and neatline</span>
+<span class="hljs-comment"># Create Airocean-projected layers including a graticule and neatline</span>
 mapshaper countries.geojson \
--proj dymaxion \
+-proj airocean2 \
 -graticule name=graticule \
 -graticule outline name=neatline \
 -o target=<span class="hljs-string">&quot;*&quot;</span> output/
@@ -1041,16 +1041,20 @@ the disks as a fraction of a disk&#39;s radius (default <code>0</code>); a negat
 makes the lower (or right) disk overlap the other disk.</p>
 <p>Interrupted Goode Homolosine (<code>+proj=igh</code>, <code>+proj=igh_o</code>), Interrupted
 Mollweide (<code>+proj=imoll</code>, <code>+proj=imoll_o</code>), rectangular tetrahedral
-projections (<code>+proj=narukawa2022</code>, <code>+proj=markley</code>, <code>+proj=calm</code>), Dymaxion
-(<code>+proj=dymaxion</code>, <code>+proj=dymaxion2</code>), and octahedral butterfly projections
+projections (<code>+proj=narukawa2022</code>, <code>+proj=markley</code>, <code>+proj=calm</code>), Airocean
+(<code>+proj=airocean</code>, <code>+proj=airocean2</code>), and octahedral butterfly projections
 (<code>+proj=butterfly</code>, <code>+proj=butterfly2</code>, <code>+proj=cahill_keyes</code>) cannot be used as
-source CRSs or represented by generated Shapefile <code>.prj</code> files. They can be
-used as destinations for vector and raster layers. The <code>_o</code> variants are
-oceanic layouts and default to <code>+lon_0=-160</code>.</p>
+source CRSs. They can be used as destinations for vector and raster layers.
+Of these, only <code>+proj=airocean</code> can be read by GDAL and other PROJ-based
+software. The <code>_o</code> variants are oceanic layouts and default to <code>+lon_0=-160</code>.</p>
 <p><code>narukawa2022</code> uses Narukawa&#39;s published 2022 mathematical approximation of
 the original AuthaGraph modeling process. <code>markley</code> and <code>calm</code> use L. P. Lee&#39;s
-conformal tetrahedral face projection in two rectangular aspects. <code>dymaxion</code>
-uses the Gray-Fuller facet transformation; <code>dymaxion2</code> uses gnomonic facets.
+conformal tetrahedral face projection in two rectangular aspects. <code>airocean</code>
+uses gnomonic facets and matches PROJ&#39;s <code>+proj=airocean</code>; <code>airocean2</code> uses the
+Gray-Fuller facet transformation on the same layout. Both are horizontal by
+default; <code>+orient=vertical</code> matches PROJ&#39;s default orientation. The former
+names <code>dymaxion</code> (now <code>airocean2</code>) and <code>dymaxion2</code> (now <code>airocean</code>) still work
+and keep their old coordinates.
 <code>butterfly</code> and <code>butterfly2</code> use the Cahill-Keyes 12-zone facet construction in
 a butterfly arrangement inspired by Cahill and Waterman; they differ only in
 their default central meridians of 157.5°E and 20°W, respectively.
@@ -1839,8 +1843,8 @@ mapshaper cities.json \
 -<span class="hljs-built_in">print</span> FILE IS EMPTY
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-projections" data-name="-projections" data-options="dymaxion hemispheres"><h3 id="-projections">-projections</h3>
-<p>Print list of supported proj4 projection ids and projection aliases. Projections that PROJ does not support (such as <code>dymaxion</code> and <code>hemispheres</code>) are listed separately, after the PROJ projections.</p>
+<section class="cmd-section" data-id="-projections" data-name="-projections" data-options="airocean2 hemispheres"><h3 id="-projections">-projections</h3>
+<p>Print list of supported proj4 projection ids and projection aliases. Projections that PROJ does not support (such as <code>airocean2</code> and <code>hemispheres</code>) are listed separately, after the PROJ projections.</p>
 </section>
 <section class="cmd-section" data-id="-quiet" data-name="-quiet" data-options=""><h3 id="-quiet">-quiet</h3>
 <p>Inhibit console messages.</p>

@@ -250,7 +250,7 @@ Maps can also be exported as PNG or JPEG images, labels included.
 
 <div class="whats-new-entry">
 
-**Interrupted and polyhedral world projections.** The `-proj` command supports Interrupted Goode Homolosine (`igh`, `igh_o`), Interrupted Mollweide (`imoll`, `imoll_o`), Buckminster Fuller's Dymaxion map (`dymaxion`, `dymaxion2`), two octahedral butterfly maps (`butterfly`, `butterfly2`), the Cahill-Keyes projection (`cahill_keyes`), Hajime Narukawa's 2022 update to the AuthaGraph projection (`narukawa2022`), and two rectangular world maps using tetrahedral geometry (`markley`, `calm`). The `-graticule` command can generate graticules, polygon footprints and neatlines for all of these projections.
+**Interrupted and polyhedral world projections.** The `-proj` command supports Interrupted Goode Homolosine (`igh`, `igh_o`), Interrupted Mollweide (`imoll`, `imoll_o`), Buckminster Fuller's Airocean (Dymaxion) map (`airocean`, `airocean2`), two octahedral butterfly maps (`butterfly`, `butterfly2`), the Cahill-Keyes projection (`cahill_keyes`), Hajime Narukawa's 2022 update to the AuthaGraph projection (`narukawa2022`), and two rectangular world maps using tetrahedral geometry (`markley`, `calm`). The `-graticule` command can generate graticules, polygon footprints and neatlines for all of these projections.
 
 → See [Interrupted and polyhedral world projections](/docs/guides/projections.html.md#interrupted-and-polyhedral-world-projections).
 </div>
@@ -1900,9 +1900,9 @@ mapshaper countries.shp -proj +proj=wintri +lon_0=10 -o out.shp
 # Shortcut notation for the above projection
 mapshaper countries.shp -proj wintri +lon_0=10 -o out.shp
 
-# Create Dymaxion-projected layers including a graticule and neatline
+# Create Airocean-projected layers including a graticule and neatline
 mapshaper countries.geojson \
--proj dymaxion \
+-proj airocean2 \
 -graticule name=graticule \
 -graticule outline name=neatline \
 -o target="*" output/
@@ -1934,17 +1934,21 @@ makes the lower (or right) disk overlap the other disk.
 
 Interrupted Goode Homolosine (`+proj=igh`, `+proj=igh_o`), Interrupted
 Mollweide (`+proj=imoll`, `+proj=imoll_o`), rectangular tetrahedral
-projections (`+proj=narukawa2022`, `+proj=markley`, `+proj=calm`), Dymaxion
-(`+proj=dymaxion`, `+proj=dymaxion2`), and octahedral butterfly projections
+projections (`+proj=narukawa2022`, `+proj=markley`, `+proj=calm`), Airocean
+(`+proj=airocean`, `+proj=airocean2`), and octahedral butterfly projections
 (`+proj=butterfly`, `+proj=butterfly2`, `+proj=cahill_keyes`) cannot be used as
-source CRSs or represented by generated Shapefile `.prj` files. They can be
-used as destinations for vector and raster layers. The `_o` variants are
-oceanic layouts and default to `+lon_0=-160`.
+source CRSs. They can be used as destinations for vector and raster layers.
+Of these, only `+proj=airocean` can be read by GDAL and other PROJ-based
+software. The `_o` variants are oceanic layouts and default to `+lon_0=-160`.
 
 `narukawa2022` uses Narukawa's published 2022 mathematical approximation of
 the original AuthaGraph modeling process. `markley` and `calm` use L. P. Lee's
-conformal tetrahedral face projection in two rectangular aspects. `dymaxion`
-uses the Gray-Fuller facet transformation; `dymaxion2` uses gnomonic facets.
+conformal tetrahedral face projection in two rectangular aspects. `airocean`
+uses gnomonic facets and matches PROJ's `+proj=airocean`; `airocean2` uses the
+Gray-Fuller facet transformation on the same layout. Both are horizontal by
+default; `+orient=vertical` matches PROJ's default orientation. The former
+names `dymaxion` (now `airocean2`) and `dymaxion2` (now `airocean`) still work
+and keep their old coordinates.
 `butterfly` and `butterfly2` use the Cahill-Keyes 12-zone facet construction in
 a butterfly arrangement inspired by Cahill and Waterman; they differ only in
 their default central meridians of 157.5°E and 20°W, respectively.
@@ -3038,7 +3042,7 @@ mapshaper cities.json \
 
 ### -projections
 
-Print list of supported proj4 projection ids and projection aliases. Projections that PROJ does not support (such as `dymaxion` and `hemispheres`) are listed separately, after the PROJ projections.
+Print list of supported proj4 projection ids and projection aliases. Projections that PROJ does not support (such as `airocean2` and `hemispheres`) are listed separately, after the PROJ projections.
 
 ### -quiet
 
@@ -4071,7 +4075,7 @@ For the most control over how a hillshade is combined with another layer, make i
 - **Exaggeration** adjusts the vertical scale of the terrain. The slider is centered on an automatic value based on the scale of the map (small-scale maps get more exaggeration).
 - **Smoothing** (Off, 1-4) removes noisy detail while keeping major landforms sharp. Mapshaper's smoothing function adapts to the terrain, smoothing more or less according to the average slope in the immediate area. Smoothing changes only the hillshade; to smooth elevations for other uses, like contours or tints, use the [`-smooth-terrain`](/docs/reference.html.md#-smooth-terrain) or [`-blur`](/docs/reference.html.md#-blur) console command. The figure below shows the difference between no smoothing and maximum smoothing.
 
-![Hilly terrain with no smoothing in the upper left and smoothing 4 in the lower right, divided by a diagonal line; the smoothed side has less fine detail, while the main ridges and valleys stay sharp](/docs/images/shaded-relief-smoothing-compare.jpg)
+![Glaciated mountains in the Chugach range of Alaska, with no smoothing in the upper left and smoothing 4 in the lower right, divided by a diagonal line; the smoothed side has less fine detail, while the main ridges and valleys stay sharp](/docs/images/shaded-relief-smoothing-compare.jpg)
 
 #### Effects
 
@@ -4084,7 +4088,6 @@ For the most control over how a hillshade is combined with another layer, make i
 
 A few settings are only available in the console:
 
-- `-hillshade min-elevation=0` flattens the sea floor, so that bathymetry isn't shaded.
 - [`-sharpen`](/docs/reference.html.md#-sharpen) applies an unsharp mask to the finished hillshade, for a crisper appearance.
 - `-hillshade verbose` prints every settable parameter, including the automatic ones.
 
@@ -5181,25 +5184,38 @@ mapshaper world.geojson \
   -o neatline-imoll-o.fgb
 ```
 
-### Dymaxion projections
+### Airocean projections
 
-Mapshaper includes two versions of Buckminster Fuller's Airocean (Dymaxion)
-world map. Both divide the globe into twenty triangles and arrange them on a
-flat map according to Fuller's design:
+Mapshaper includes two versions of Buckminster Fuller's Airocean world map,
+also known as the Dymaxion map. Both divide the globe into twenty triangles
+and arrange them on a flat map according to Fuller's design:
 
-![Dymaxion (Airocean) world projection](/docs/images/dymaxion-projection.jpg)
+![Airocean world projection](/docs/images/dymaxion-projection.jpg)
 
-- `dymaxion` — a version using the Gray-Fuller transform for projecting each polyhedral face, which balances shape and area
-  distortion
-- `dymaxion2` — a version using the gnomonic projection to project each face
+- `airocean2` — projects each triangle with Robert Gray's equations for
+  Fuller's own transformation, which is nearly equal-area. This version
+  follows Fuller's maps.
+- `airocean` — projects each triangle with the gnomonic projection, which
+  enlarges areas near the corners of the triangles by up to two times. It
+  matches PROJ's `+proj=airocean` (PROJ 9.6 and later), so files that use it
+  can be read by GDAL, QGIS and other PROJ-based software.
+
+Both versions use the same layout, so their triangles line up exactly. The map
+is horizontal by default; add `+orient=vertical` to stand it on end, like
+PROJ's default. (Mapshaper writes `+orient=horizontal` into the CRS of
+horizontal maps, so PROJ reads them the same way.)
 
 ```bash
 mapshaper world.geojson \
-  -proj +proj=dymaxion \
-  -o world-dymaxion.geojson \
+  -proj +proj=airocean2 \
+  -o world-airocean.geojson \
   -graticule outline \
-  -o neatline-dymaxion.geojson
+  -o neatline-airocean.geojson
 ```
+
+These projections were previously called `dymaxion` (now `airocean2`) and
+`dymaxion2` (now `airocean`). The old names still work and produce the same
+coordinates as before, which differ from the new versions in origin and scale.
 
 ### Butterfly and Cahill-Keyes projections
 
@@ -5278,7 +5294,7 @@ Several websites provide PROJ strings and EPSG codes for coordinate systems worl
 - GeoJSON and TopoJSON files are assumed to use WGS84 when their bounding boxes fall within the normal range for decimal degree coordinates.
 - Mapshaper does not support coordinate transformations that require grid-shift files (for example, NAD27 → WGS84). If a transformation silently fails, this is the likely cause.
 - Projections that can only represent part of the globe — including orthographic (`ortho`), near-side perspective (`nsper`, `geos`), gnomonic (`gnom`), stereographic (`stere`), and Lambert Azimuthal Equal-Area (`laea`) — automatically clip input data to the projection's valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.
-- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `markley`, `calm`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) can be used as destinations for vector and raster layers, but cannot be used as source CRSs. The two-hemisphere projections (`hemispheres`, `hemispheres2`) can be reprojected back to other CRSs, but cannot be read from `.prj` files.
+- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `markley`, `calm`, `airocean`, `airocean2`, `butterfly`, `butterfly2`, `cahill_keyes`) can be used as destinations for vector and raster layers, but cannot be used as source CRSs. The two-hemisphere projections (`hemispheres`, `hemispheres2`) can be reprojected back to other CRSs, but cannot be read from `.prj` files.
 - `-proj` adds vertices along long segments where the projection curves them, so that a segment along a parallel follows the parallel. Use `no-densify` to project only the existing vertices:
 
   ```bash

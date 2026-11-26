@@ -167,7 +167,7 @@
 <li><strong>Exaggeration</strong> adjusts the vertical scale of the terrain. The slider is centered on an automatic value based on the scale of the map (small-scale maps get more exaggeration).</li>
 <li><strong>Smoothing</strong> (Off, 1-4) removes noisy detail while keeping major landforms sharp. Mapshaper&#39;s smoothing function adapts to the terrain, smoothing more or less according to the average slope in the immediate area. Smoothing changes only the hillshade; to smooth elevations for other uses, like contours or tints, use the <a href="/docs/reference.html#-smooth-terrain"><code>-smooth-terrain</code></a> or <a href="/docs/reference.html#-blur"><code>-blur</code></a> console command. The figure below shows the difference between no smoothing and maximum smoothing.</li>
 </ul>
-<p><img src="/docs/images/shaded-relief-smoothing-compare.jpg" alt="Hilly terrain with no smoothing in the upper left and smoothing 4 in the lower right, divided by a diagonal line; the smoothed side has less fine detail, while the main ridges and valleys stay sharp"></p>
+<p><img src="/docs/images/shaded-relief-smoothing-compare.jpg" alt="Glaciated mountains in the Chugach range of Alaska, with no smoothing in the upper left and smoothing 4 in the lower right, divided by a diagonal line; the smoothed side has less fine detail, while the main ridges and valleys stay sharp"></p>
 <h4 id="effects">Effects</h4>
 <ul>
 <li><strong>Ambient</strong> darkens valleys, canyons and other places with a restricted view of the sky, adding depth to the image.</li>
@@ -178,7 +178,6 @@
 <h4 id="other-options">Other options</h4>
 <p>A few settings are only available in the console:</p>
 <ul>
-<li><code>-hillshade min-elevation=0</code> flattens the sea floor, so that bathymetry isn&#39;t shaded.</li>
 <li><a href="/docs/reference.html#-sharpen"><code>-sharpen</code></a> applies an unsharp mask to the finished hillshade, for a crisper appearance.</li>
 <li><code>-hillshade verbose</code> prints every settable parameter, including the automatic ones.</li>
 </ul>

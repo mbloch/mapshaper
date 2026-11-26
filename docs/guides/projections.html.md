@@ -156,25 +156,38 @@ mapshaper world.geojson \
   -o neatline-imoll-o.fgb
 ```
 
-### Dymaxion projections
+### Airocean projections
 
-Mapshaper includes two versions of Buckminster Fuller's Airocean (Dymaxion)
-world map. Both divide the globe into twenty triangles and arrange them on a
-flat map according to Fuller's design:
+Mapshaper includes two versions of Buckminster Fuller's Airocean world map,
+also known as the Dymaxion map. Both divide the globe into twenty triangles
+and arrange them on a flat map according to Fuller's design:
 
-![Dymaxion (Airocean) world projection](/docs/images/dymaxion-projection.jpg)
+![Airocean world projection](/docs/images/dymaxion-projection.jpg)
 
-- `dymaxion` — a version using the Gray-Fuller transform for projecting each polyhedral face, which balances shape and area
-  distortion
-- `dymaxion2` — a version using the gnomonic projection to project each face
+- `airocean2` — projects each triangle with Robert Gray's equations for
+  Fuller's own transformation, which is nearly equal-area. This version
+  follows Fuller's maps.
+- `airocean` — projects each triangle with the gnomonic projection, which
+  enlarges areas near the corners of the triangles by up to two times. It
+  matches PROJ's `+proj=airocean` (PROJ 9.6 and later), so files that use it
+  can be read by GDAL, QGIS and other PROJ-based software.
+
+Both versions use the same layout, so their triangles line up exactly. The map
+is horizontal by default; add `+orient=vertical` to stand it on end, like
+PROJ's default. (Mapshaper writes `+orient=horizontal` into the CRS of
+horizontal maps, so PROJ reads them the same way.)
 
 ```bash
 mapshaper world.geojson \
-  -proj +proj=dymaxion \
-  -o world-dymaxion.geojson \
+  -proj +proj=airocean2 \
+  -o world-airocean.geojson \
   -graticule outline \
-  -o neatline-dymaxion.geojson
+  -o neatline-airocean.geojson
 ```
+
+These projections were previously called `dymaxion` (now `airocean2`) and
+`dymaxion2` (now `airocean`). The old names still work and produce the same
+coordinates as before, which differ from the new versions in origin and scale.
 
 ### Butterfly and Cahill-Keyes projections
 
@@ -253,7 +266,7 @@ Several websites provide PROJ strings and EPSG codes for coordinate systems worl
 - GeoJSON and TopoJSON files are assumed to use WGS84 when their bounding boxes fall within the normal range for decimal degree coordinates.
 - Mapshaper does not support coordinate transformations that require grid-shift files (for example, NAD27 → WGS84). If a transformation silently fails, this is the likely cause.
 - Projections that can only represent part of the globe — including orthographic (`ortho`), near-side perspective (`nsper`, `geos`), gnomonic (`gnom`), stereographic (`stere`), and Lambert Azimuthal Equal-Area (`laea`) — automatically clip input data to the projection's valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.
-- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `markley`, `calm`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) can be used as destinations for vector and raster layers, but cannot be used as source CRSs. The two-hemisphere projections (`hemispheres`, `hemispheres2`) can be reprojected back to other CRSs, but cannot be read from `.prj` files.
+- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `markley`, `calm`, `airocean`, `airocean2`, `butterfly`, `butterfly2`, `cahill_keyes`) can be used as destinations for vector and raster layers, but cannot be used as source CRSs. The two-hemisphere projections (`hemispheres`, `hemispheres2`) can be reprojected back to other CRSs, but cannot be read from `.prj` files.
 - `-proj` adds vertices along long segments where the projection curves them, so that a segment along a parallel follows the parallel. Use `no-densify` to project only the existing vertices:
 
   ```bash
