@@ -16,6 +16,7 @@ Mapshaper now has a set of tools for making shaded relief maps:
 - the **adjust colors** panel modifies the colors and contrast of image layers
 - the **blend hillshade** panel combines a hillshade with imagery or a tinted raster
 - the **color palette** panel colors an elevation raster with hypsometric tints
+- the `-sharpen` command applies an unsharp mask to a hillshade or blended image.
 
 Panels are opened from a layer's options menu in the layers panel, and commands are typed in the console.
 
@@ -121,13 +122,6 @@ For the most control over how a hillshade is combined with another layer, make i
 - **Aerial** reduces contrast at low elevations, so that lowlands fade and high mountains stand out.
 - **Gamma** controls the prominence of subtle terrain relative to major landforms. Values below 1 strengthen faint shading.
 
-#### Other options
-
-A few settings are only available in the console:
-
-- [`-sharpen`](/docs/reference.html#-sharpen) applies an unsharp mask to the finished hillshade, for a crisper appearance.
-- `-hillshade verbose` prints every settable parameter, including the automatic ones.
-
 ## Part two: blend a hillshade with imagery
 
 ### Step one: prepare the imagery
@@ -146,8 +140,8 @@ Built-in imagery sources:
 | --- | --- | --- | --- |
 | `naip` | Conterminous U.S. | 0.3-1 m | Aerial photos. Use `year=` to choose a year; the default is the newest for each state. Public domain. |
 | `usgs` | U.S. (world at small scales) | about 1 m | Faster than `naip`, mostly NAIP from 2017-2021. Public domain. |
-| `sentinel2` | World | 10 m | Satellite image, season of `year=` (default is last year). Requires attribution. |
-| `landsat` | World | 30 m | Satellite image. Public domain. |
+| `sentinel2` | World | 10 m | Satellite image made from the least cloudy scenes of the summer of `year=` (the whole year in the tropics). The default is last year. Requires attribution. |
+| `landsat` | World | 30 m | Satellite image made from the least cloudy scenes of the summer of `year=` (the whole year in the tropics), 1982 and later. The default is last year. 2012 has no usable scenes. Public domain. |
 | `eox` | World | 10 m | Cloudless mosaic of Sentinel-2 images. 2018 and later editions are non-commercial. |
 | `bluemarble` | World | 500 m | A smooth, cloud-free image for world and continental maps. |
 
@@ -175,7 +169,7 @@ Select the imagery layer and choose **blend hillshade** from its options menu. T
 
 ![The Blend hillshade panel, with Strength, Chroma and Color settings for shadows and highlights, beside a preview of aerial imagery of a glaciated volcano blended with a hillshade](/docs/images/shaded-relief-blend-panel.jpg)
 
-**Strength** sets the intensity of the shading. **Chroma** controls how the shading affects the image's colors. At 0, it works like an overlay of translucent black shadows and white highlights, which dulls shadowed areas and makes highlights look hazy; at 1, it works like a luminosity blend mode, changing lightness but keeping the image's color saturation. **Color** tints the shading wherever chroma is below 1.
+The **Shadows** and **Highlights** sections of the panel each have three settings. **Strength** sets the intensity of the shading. **Chroma** controls how the shading affects the image's colors. At 0, it works like an overlay of translucent black shadows and white highlights, which dulls shadowed areas and makes highlights look hazy; at 1, it works like a luminosity blend mode, changing lightness but keeping the image's color saturation. **Color** tints the shading wherever chroma is below 1.
 
 ![A river canyon in three diagonal bands: a hillshade in the upper left, the blend of the hillshade with aerial imagery in the middle, and the aerial imagery alone in the lower right](/docs/images/shaded-relief-blend-result.jpg)
 
