@@ -14,9 +14,14 @@
 //    pages (body.is-example-map). Skipped on the Basics index, whose code
 //    blocks are short snippets where the buttons would be visual noise.
 //    Falls back gracefully if the Clipboard API is unavailable.
+//
+// 3. Makes figure images (an image alone in its paragraph) open in a
+//    full-screen overlay when clicked. A click anywhere, or Escape, closes it.
+//    Images inside links and small UI screenshots are left alone.
 (function () {
   initMobileNavToggle();
   rewriteOpenInWebAppLinks();
+  initImageOverlay();
   if (document.body.classList.contains('is-example-map')) {
     addCopyButtons();
   }
@@ -38,6 +43,58 @@
         if (label) label.textContent = 'Menu';
       }
     });
+  }
+
+  function initImageOverlay() {
+    var imgs = document.querySelectorAll('.docs-article p > img:only-child');
+    var overlay = null;
+    var opener = null;
+    for (var i = 0; i < imgs.length; i++) {
+      if (imgs[i].closest('a') || imgs[i].classList.contains('ui-screenshot')) continue;
+      makeZoomable(imgs[i]);
+    }
+
+    function makeZoomable(img) {
+      img.classList.add('zoomable');
+      img.setAttribute('tabindex', '0');
+      img.setAttribute('role', 'button');
+      img.addEventListener('click', function () { open(img); });
+      img.addEventListener('keydown', function (e) {
+        if (e.key == 'Enter' || e.key == ' ') {
+          e.preventDefault();
+          open(img);
+        }
+      });
+    }
+
+    function open(img) {
+      if (overlay) return;
+      opener = img;
+      overlay = document.createElement('div');
+      overlay.className = 'image-overlay';
+      var big = document.createElement('img');
+      big.src = img.currentSrc || img.src;
+      big.alt = img.alt;
+      overlay.appendChild(big);
+      overlay.addEventListener('click', close);
+      document.addEventListener('keydown', onKey);
+      document.body.classList.add('image-overlay-open');
+      document.body.appendChild(overlay);
+    }
+
+    function close() {
+      if (!overlay) return;
+      document.removeEventListener('keydown', onKey);
+      document.body.classList.remove('image-overlay-open');
+      overlay.remove();
+      overlay = null;
+      if (opener) opener.focus();
+      opener = null;
+    }
+
+    function onKey(e) {
+      if (e.key == 'Escape') close();
+    }
   }
 
   function rewriteOpenInWebAppLinks() {
