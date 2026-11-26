@@ -752,6 +752,35 @@ body.is-home .docs-article { padding: 32px 40px 40px; }
   margin: 4px 0 16px;
 }
 
+/* Figure images open in a full-screen overlay when clicked (see docs.js). */
+.docs-article img.zoomable {
+  cursor: zoom-in;
+}
+
+.image-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.92);
+  cursor: zoom-out;
+}
+
+.image-overlay img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+body.image-overlay-open {
+  overflow: hidden;
+}
+
 /* What's-new entries */
 .whats-new-entry {
   border-left: 3px solid #1385B7;
