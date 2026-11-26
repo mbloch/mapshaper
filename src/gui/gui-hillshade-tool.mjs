@@ -8,7 +8,7 @@ import { getShrinkFactor } from './gui-raster-shrink';
 import { clearRasterHillshadePreview, setRasterHillshadePreview } from './gui-hillshade-preview';
 import {
   HILLSHADE_BELOW_ZERO, HILLSHADE_COLOR_ROWS, HILLSHADE_LIGHTINGS, HILLSHADE_SLIDERS, HILLSHADE_SMOOTHING_LEVELS,
-  HILLSHADE_STYLES, formatHillshadeSliderValue, getDefaultHillshadeSettings, getHillshadeCommand,
+  formatHillshadeSliderValue, getDefaultHillshadeSettings, getHillshadeCommand,
   getHillshadeOptions, getHillshadeSliderValue
 } from './gui-hillshade-settings';
 
@@ -21,31 +21,29 @@ var DRAFT_MAX_PIXELS = 1e6;
 // work that takes longer than this shows a spinner
 var BUSY_DELAY = 250;
 
-var colorFns = {
-  shadow: function(hex, strength, color) {
-    return internal.formatColor(internal.getHillshadeShadowColor(internal.parseColor(hex), strength,
-      color ? internal.parseColor(color) : null));
+// The shadow and highlight colors derived from a base color, as -hillshade derives them
+var derivedColorFns = {
+  shadow: function(baseHex) {
+    return internal.formatColor(internal.getHillshadeShadowColor(internal.parseColor(baseHex), 1, null));
   },
-  highlight: function(hex, strength, color) {
-    return internal.formatColor(internal.getHillshadeHighlightColor(internal.parseColor(hex), strength,
-      color ? internal.parseColor(color) : null));
+  highlight: function(baseHex) {
+    return internal.formatColor(internal.getHillshadeHighlightColor(internal.parseColor(baseHex), 1, null));
   }
 };
 
-// The 'hillshade' mode: controls that preview -hillshade on an elevation
-// raster. The map shows the hillshade in place of the elevation layer, which
-// is not changed until Apply runs -hillshade, which is what goes into the
-// session history and the undo stack. Leaving the mode any other way --
-// Cancel, the panel's ×, another tool, another layer -- drops the preview.
+// The 'hillshade' mode: controls that preview an opaque -hillshade on an
+// elevation raster. The map shows the hillshade in place of the elevation
+// layer, which is not changed until Apply runs -hillshade, which is what goes
+// into the session history and the undo stack. Leaving the mode any other way
+// -- Cancel, the panel's ×, another tool, another layer -- drops the preview.
 //
 // The panel reads the elevations once, and keeps what takes time to compute:
-// the smoothed terrain for each smoothing level and Bathymetry setting, and the
-// fields of shading (see computeShadingFields()), which depend only on the
+// the smoothed terrain for each smoothing level and Bathymetry setting, and
+// the fields of shading (see computeShadingFields()), which depend only on the
 // light, the exaggeration and the terrain. Other settings recombine the
-// fields. While
-// a slider is dragged, the part of the raster in view is shaded at full
-// resolution, or if that's more than WINDOW_MAX_PIXELS, a box of that many
-// pixels in the middle of the view, drawn over the last full image (see
+// fields. While a slider is dragged, the part of the raster in view is shaded
+// at full resolution, or if that's more than WINDOW_MAX_PIXELS, a box of that
+// many pixels in the middle of the view, drawn over the last full image (see
 // renderWindowDraft()). When the slider is let go of, the preview is made at
 // full size, with the fields recomputed for the new settings (see
 // renderExact()), which gives the same image as -hillshade.
@@ -100,20 +98,18 @@ export function HillshadeTool(gui) {
     El('button').addClass('label-style-close').appendTo(header).text('×').on('click', cancel);
     noteEl = El('div').addClass('raster-blend-note').appendTo(panel);
 
-    section = makePanelSection(panel, 'Shading');
-    addButtonRow(section, 'Style', 'style', HILLSHADE_STYLES);
-    HILLSHADE_COLOR_ROWS.forEach(function(o) {
-      colorControls[o.name] = addColorRow(section, o);
-    });
-    addSliderRows(section, 'shading');
-
     section = makePanelSection(panel, 'Light');
     addSliderRows(section, 'light');
     addButtonRow(section, 'Lighting', 'lighting', HILLSHADE_LIGHTINGS);
 
+    section = makePanelSection(panel, 'Colors');
+    HILLSHADE_COLOR_ROWS.forEach(function(o) {
+      colorControls[o.name] = addColorRow(section, o);
+    });
+
     section = makePanelSection(panel, 'Terrain');
-    addSliderRows(section, 'terrain');
     addButtonRow(section, 'Smoothing', 'smoothing', HILLSHADE_SMOOTHING_LEVELS);
+    addSliderRows(section, 'terrain');
     // shown only if there are elevations below 0, so it doesn't suggest that
     // an inland scene or a DEM without bathymetry has some
     belowZeroRow = addButtonRow(section, 'Bathymetry', 'below_zero', HILLSHADE_BELOW_ZERO);
@@ -230,15 +226,12 @@ export function HillshadeTool(gui) {
   }
 
   function updateControls() {
-    var opaque = settings.style == 'opaque';
     HILLSHADE_SLIDERS.forEach(function(slider) {
       var control = sliderControls[slider.name];
-      control.row.classed('hidden', !!slider.style && slider.style != settings.style);
       control.input.node().value = settings[slider.name];
       showSliderValue(slider);
     });
     HILLSHADE_COLOR_ROWS.forEach(function(o) {
-      colorControls[o.name].row.node().style.display = (o.style == 'opaque') == opaque ? '' : 'none';
       showColor(o.name);
     });
     Object.keys(buttonGroups).forEach(function(key) {
@@ -259,11 +252,10 @@ export function HillshadeTool(gui) {
       state ? state.autoExaggeration : 1));
   }
 
-  // A derived color is shown at strength 1, as a chosen one is
   function showColor(name) {
     var control = colorControls[name];
     var o = HILLSHADE_COLOR_ROWS.find(function(o) { return o.name == name; });
-    var hex = settings[name] || colorFns[o.derived](settings.base_color, 1, null);
+    var hex = settings[name] || derivedColorFns[o.derived](settings.base_color);
     settingPicker = true;
     control.picker.setColor(hex);
     settingPicker = false;
@@ -348,7 +340,7 @@ export function HillshadeTool(gui) {
     var lyr = targetLayer;
     var cmd;
     if (!state) return;
-    cmd = getHillshadeCommand(settings, state.autoExaggeration, colorFns, keepCheckbox.node().checked);
+    cmd = getHillshadeCommand(settings, state.autoExaggeration, keepCheckbox.node().checked);
     keepPreview = true;
     exitMode();
     keepPreview = false;
@@ -391,7 +383,7 @@ export function HillshadeTool(gui) {
   // Options as the command will have them, and the settings of shading they
   // give (see getHillshadeShading())
   function getShading(st) {
-    return internal.getHillshadeShading(getHillshadeOptions(settings, st.autoExaggeration, colorFns),
+    return internal.getHillshadeShading(getHillshadeOptions(settings, st.autoExaggeration),
       getTerrainVariant(st).terrain);
   }
 

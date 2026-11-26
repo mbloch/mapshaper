@@ -20,8 +20,6 @@ test('the hillshade panel previews a hillshade on a DEM and applies -hillshade, 
   await page.locator('.contextmenu-item').filter({hasText: /^hillshade$/}).click();
   await expect(panel).toBeVisible();
   expect(await getMode(page)).toBe('hillshade');
-  // the panel starts on the opaque style
-  await expect(panel.getByRole('button', {name: 'Opaque'})).toHaveClass(/selected/);
   shaded = await waitForNewColors(page, plain);
 
   await panel.getByLabel('Azimuth').fill('200');

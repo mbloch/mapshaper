@@ -1,3 +1,6 @@
+v0.8.12
+* [web] Simplified the hillshade panel.
+
 v0.8.11
 * [web] The hillshade panel has a Bathymetry setting for elevation rasters with values below 0: Shade, or Flatten, which flattens the sea floor.
 * Renamed the projections derived from Buckminster Fuller's famous Airocean world map. `airocean` (gnomonic facets, formerly `dymaxion2`) matches PROJ's `+proj=airocean`, including its `+orient` parameter and its handling of ellipsoids. `airocean2` (Gray-Fuller facets, formerly `dymaxion`) uses the same layout. Both are horizontal by default.

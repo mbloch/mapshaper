@@ -1,28 +1,20 @@
 // The hillshade panel's controls (gui-hillshade-tool.mjs) and the -hillshade
 // command they add up to.
 //
-// A setting's default is the command's, so a setting left at its default is
-// left out of the command, apart from the style: the panel starts on the
-// opaque style, and writes `opaque` for it. The panel has some settings of
-// its own, which map onto options:
+// The panel makes opaque hillshades only, and writes `opaque` (or base-color=,
+// which implies it); transparent ones are made in the console. Otherwise a
+// setting's default is the command's, so a setting left at its default is
+// left out of the command. The panel has some settings of its own, which map
+// onto options:
 // - exaggeration is a factor of the automatic exaggeration, as a power of 2,
 //   so that the slider is centered on it whatever the map scale (0 is the
 //   automatic exaggeration, and leaves exaggeration= out)
 // - azimuth runs from 135 to 495 degrees, so that the default, 315, is in the
 //   middle of the slider, and directions that make terrain look inverted
 //   (light from the south) are at its ends
-// - an opaque hillshade's shadow and highlight colors are derived from the
-//   base color (with its hue), or chosen, and set by strengths, which fade
-//   from the base color to them (see getHillshadeShadowColor() and
-//   getHillshadeHighlightColor() in mapshaper-raster-color.mjs). They are
-//   kept apart from the transparent style's colors, so that switching styles
-//   doesn't carry black and white over.
+// - the shadow and highlight colors are derived from the base color (with
+//   its hue), as the command derives them, or chosen
 // - below_zero is 'shade' or 'flatten', which writes min-elevation=0
-
-export var HILLSHADE_STYLES = [
-  {value: 'shadow', label: 'Transparent'},
-  {value: 'opaque', label: 'Opaque'}
-];
 
 export var HILLSHADE_LIGHTINGS = [
   {value: 'hard', label: 'Hard'},
@@ -44,15 +36,10 @@ export var HILLSHADE_BELOW_ZERO = [
 ];
 
 // @section the panel section the slider is in
-// @style the style the slider is shown for, if only one
 // @fields the slider changes the fields of shading, which take longer to
 //   compute than the settings that combine them (see computeShadingFields())
 // @snap distance from the default within which the slider settles on it
 export var HILLSHADE_SLIDERS = [
-  {name: 'max_opacity', label: 'Shadows', section: 'shading', style: 'shadow', min: 0, max: 1, step: 0.01, value: 0.55},
-  {name: 'highlights', label: 'Highlights', section: 'shading', style: 'shadow', min: 0, max: 2, step: 0.01, value: 1},
-  {name: 'shadow_strength', label: 'Shadows', section: 'shading', style: 'opaque', min: 0, max: 2, step: 0.01, value: 1},
-  {name: 'highlight_strength', label: 'Highlights', section: 'shading', style: 'opaque', min: 0, max: 1, step: 0.01, value: 1},
   {name: 'azimuth', label: 'Azimuth', section: 'light', min: 135, max: 495, step: 1, value: 315, snap: 3, fields: true},
   {name: 'altitude', label: 'Altitude', section: 'light', min: 10, max: 80, step: 1, value: 45, snap: 1, fields: true},
   {name: 'exaggeration', label: 'Exaggeration', section: 'terrain', min: -2, max: 2, step: 0.05, value: 0, snap: 0.05, fields: true},
@@ -64,29 +51,25 @@ export var HILLSHADE_SLIDERS = [
 
 // null is a color derived from the base color
 export var DEFAULT_HILLSHADE_COLORS = {
-  shadow_color: '#000000',
-  highlight_color: '#ffffff',
   base_color: '#d7d7d7',
-  opaque_shadow_color: null,
-  opaque_highlight_color: null
+  shadow_color: null,
+  highlight_color: null
 };
 
-// The colors shown for each style, as keys of the settings
+// The color rows, as keys of the settings
 // @derived the color is null until one is chosen, and the color it is derived
-//   from the base color with (see getHillshadeOptions())
+//   from the base color with (see getHillshadeShadowColor() and
+//   getHillshadeHighlightColor() in mapshaper-raster-color.mjs)
 export var HILLSHADE_COLOR_ROWS = [
-  {name: 'shadow_color', label: 'Shadow', style: 'shadow'},
-  {name: 'highlight_color', label: 'Highlight', style: 'shadow'},
-  {name: 'base_color', label: 'Base', style: 'opaque'},
-  {name: 'opaque_shadow_color', label: 'Shadow', style: 'opaque', derived: 'shadow'},
-  {name: 'opaque_highlight_color', label: 'Highlight', style: 'opaque', derived: 'highlight'}
+  {name: 'base_color', label: 'Base'},
+  {name: 'shadow_color', label: 'Shadow', derived: 'shadow'},
+  {name: 'highlight_color', label: 'Highlight', derived: 'highlight'}
 ];
 
 var COMPASS_POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 
-// The style is the exception to the command's defaults (see above)
 export function getDefaultHillshadeSettings() {
-  var settings = {style: 'opaque', lighting: 'balanced', smoothing: 0, below_zero: 'shade'};
+  var settings = {lighting: 'balanced', smoothing: 0, below_zero: 'shade'};
   HILLSHADE_SLIDERS.forEach(function(slider) {
     settings[slider.name] = slider.value;
   });
@@ -133,33 +116,19 @@ export function getExaggeration(factor, autoExaggeration) {
 // (a key with an underscore for each option), leaving out those at their
 // defaults
 // @autoExaggeration see formatHillshadeSliderValue()
-// @colorFns {shadow(baseHex, strength, hex), highlight(baseHex, strength, hex)},
-//   returning the colors of an opaque hillshade as '#rrggbb', from the
-//   chosen color @hex, or derived from the base color if @hex is null
-export function getHillshadeOptions(settings, autoExaggeration, colorFns) {
+export function getHillshadeOptions(settings, autoExaggeration) {
   var defaults = getDefaultHillshadeSettings();
   var opts = {};
   var azimuth = getCompassDegrees(settings.azimuth);
-  var shadow = settings.opaque_shadow_color, highlight = settings.opaque_highlight_color;
-  if (settings.style == 'opaque') {
-    if (settings.base_color == defaults.base_color && settings.shadow_strength == 1 &&
-        settings.highlight_strength == 1 && !shadow && !highlight) {
-      opts.opaque = true;
-    } else {
-      // base-color= implies opaque; a shadow or highlight color without it
-      // would put the base between them
-      opts.base_color = settings.base_color;
-      if (settings.shadow_strength != 1 || shadow) {
-        opts.shadow_color = colorFns.shadow(settings.base_color, settings.shadow_strength, shadow);
-      }
-      if (settings.highlight_strength != 1 || highlight) {
-        opts.highlight_color = colorFns.highlight(settings.base_color, settings.highlight_strength, highlight);
-      }
-    }
+  var shadow = settings.shadow_color, highlight = settings.highlight_color;
+  if (settings.base_color == defaults.base_color && !shadow && !highlight) {
+    opts.opaque = true;
   } else {
-    ['max_opacity', 'highlights', 'shadow_color', 'highlight_color'].forEach(function(key) {
-      if (settings[key] != defaults[key]) opts[key] = settings[key];
-    });
+    // base-color= implies opaque; a shadow or highlight color without it
+    // would put the base between them
+    opts.base_color = settings.base_color;
+    if (shadow) opts.shadow_color = shadow;
+    if (highlight) opts.highlight_color = highlight;
   }
   if (azimuth != getCompassDegrees(defaults.azimuth)) opts.azimuth = azimuth;
   ['altitude', 'lighting'].forEach(function(key) {
@@ -178,8 +147,8 @@ export function getHillshadeOptions(settings, autoExaggeration, colorFns) {
 
 // @keepElevation keep the elevation layer (+), which -hillshade replaces by
 //   default
-export function getHillshadeCommand(settings, autoExaggeration, colorFns, keepElevation) {
-  var opts = getHillshadeOptions(settings, autoExaggeration, colorFns);
+export function getHillshadeCommand(settings, autoExaggeration, keepElevation) {
+  var opts = getHillshadeOptions(settings, autoExaggeration);
   var parts = ['-hillshade'];
   Object.keys(opts).forEach(function(key) {
     var name = key.replace(/_/g, '-');
