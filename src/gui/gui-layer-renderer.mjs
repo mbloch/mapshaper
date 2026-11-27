@@ -186,15 +186,15 @@ export function LayerRenderer(gui, container) {
       drawOutlineLayerToCanvas(lyr, canv, ext);
     } else {
       drawStyledLayerToCanvas(lyr, canv, ext);
-      drawBlendPreviewAbove(lyr, canv);
+      drawBlendPreviewAbove(lyr, canv, ext);
     }
   }
 
   // A hillshade blend previewed on a polygon layer goes directly above it,
   // where -blend puts its output
-  function drawBlendPreviewAbove(lyr, canv) {
-    var blend = getDrawnBlendImage(lyr);
-    if (blend) canv.drawBlendImage(blend.image, blend.bbox);
+  function drawBlendPreviewAbove(lyr, canv, ext) {
+    var blend = getDrawnBlendImage(lyr, ext.getBounds().toArray());
+    if (blend) canv.drawBlendImage(blend.image, blend.bbox, blend.inset);
   }
 
   // Reading back a single pixel forces Chrome/Firefox to synchronously complete

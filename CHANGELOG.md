@@ -1,9 +1,12 @@
+v0.8.13
+* -blend gives pale colors richer shadows and makes shading more even across light and dark colors: dark colors get stronger shadows and gentler highlights than before. The default `chroma=` is now 0.5 for both shadows and highlights (previously 0,1).
+* [web] The blend hillshade panel works on polygon layers, either making an overlay that retains the vector polygons, or a blended image layer.
+* Added a -blend `clip` option, which leaves out the shading where the targets are transparent (e.g. outside polygons). The blend panel has a "Clip to polygons" checkbox.
+* [web] The blending and color adjustment panels show a full-res live preview in a sub-rectangle, like the hillshade panel.
+
 v0.8.12
 * [web] Simplified the hillshade panel.
-* [web] The blend hillshade panel works on polygon layers, making an overlay that keeps the polygons, or an image.
-* Added a -blend `clip` option, which leaves out the shading where the targets are transparent (e.g. outside polygons). The blend panel has a "Clip to polygons" checkbox.
-* -blend gives pale colors richer shadows and makes shading more even across light and dark colors: dark colors get stronger shadows and gentler highlights than before. The default `chroma=` is now 0.5 for both shadows and highlights (previously 0,1).
-* Improved -hillshade lighting=soft, which darkened steep slopes facing the light.
+* Improved -hillshade lighting=soft, which used to darken steep slopes facing the light.
 
 v0.8.11
 * [web] The hillshade panel has a Bathymetry setting for elevation rasters with values below 0: Shade, or Flatten, which flattens the sea floor.

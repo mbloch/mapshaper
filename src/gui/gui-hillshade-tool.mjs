@@ -5,6 +5,7 @@ import { makeColorField, makePanelActionButton, makePanelButton, makePanelSectio
 import { ColorPicker, layerColorPresetRows, toSixDigitHex } from './gui-color-picker';
 import { runGuiEditCommand } from './gui-edit-command';
 import { getShrinkFactor } from './gui-raster-shrink';
+import { getRasterWindow } from './gui-raster-window';
 import { clearRasterHillshadePreview, setRasterHillshadePreview } from './gui-hillshade-preview';
 import {
   HILLSHADE_BELOW_ZERO, HILLSHADE_COLOR_ROWS, HILLSHADE_LIGHTINGS, HILLSHADE_SLIDERS, HILLSHADE_SMOOTHING_LEVELS,
@@ -576,30 +577,8 @@ export function HillshadeTool(gui) {
   // The rectangle of raster pixels to shade while a slider is dragged:
   // {x0, y0, x1, y1, framed}, or null if the raster is out of view
   function getPreviewWindow(source) {
-    var ext = gui.map.getExtent();
-    var view = ext.getBounds();
-    var b = source.bbox;
-    var dx = (b[2] - b[0]) / source.width, dy = (b[3] - b[1]) / source.height;
-    var vx0 = clampInt(Math.floor((view.xmin - b[0]) / dx), 0, source.width);
-    var vx1 = clampInt(Math.ceil((view.xmax - b[0]) / dx), 0, source.width);
-    var vy0 = clampInt(Math.floor((b[3] - view.ymax) / dy), 0, source.height);
-    var vy1 = clampInt(Math.ceil((b[3] - view.ymin) / dy), 0, source.height);
-    var vw = vx1 - vx0, vh = vy1 - vy0;
-    var aspect, w, h, cx, cy, x0, y0;
-    if (vw <= 0 || vh <= 0) return null;
-    if (vw * vh <= WINDOW_MAX_PIXELS) {
-      return {x0: vx0, y0: vy0, x1: vx1, y1: vy1, framed: false};
-    }
-    // the shape of the view, in raster pixels
-    aspect = (view.xmax - view.xmin) / dx / ((view.ymax - view.ymin) / dy);
-    w = Math.min(vw, Math.round(Math.sqrt(WINDOW_MAX_PIXELS * aspect)));
-    h = Math.min(vh, Math.floor(WINDOW_MAX_PIXELS / w));
-    w = Math.min(vw, Math.floor(WINDOW_MAX_PIXELS / h));
-    cx = ((view.xmin + view.xmax) / 2 - b[0]) / dx;
-    cy = (b[3] - (view.ymin + view.ymax) / 2) / dy;
-    x0 = clampInt(Math.round(cx - w / 2), vx0, vx1 - w);
-    y0 = clampInt(Math.round(cy - h / 2), vy0, vy1 - h);
-    return {x0: x0, y0: y0, x1: x0 + w, y1: y0 + h, framed: true};
+    return getRasterWindow(source.width, source.height, source.bbox,
+      gui.map.getExtent().getBounds().toArray(), WINDOW_MAX_PIXELS);
   }
 
   // An image made from reduced copies of the smoothed terrain and the fields,
@@ -787,8 +766,4 @@ function cropArray(arr, width, rect) {
     out.set(arr.subarray(i, i + w), y * w);
   }
   return out;
-}
-
-function clampInt(val, min, max) {
-  return Math.max(min, Math.min(max, val));
 }

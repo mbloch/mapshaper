@@ -1,5 +1,5 @@
 import { internal } from './gui-core';
-import { getDragPreview, makePreviewTarget } from './gui-raster-preview-copies';
+import { getRecoloredInset, getRecoloredPreview } from './gui-raster-preview-copies';
 
 // Tone settings being previewed on a raster layer, while the tone panel is
 // open. The raster's data is not changed: the map draws a toned copy of
@@ -9,10 +9,10 @@ var tonePreviews = new WeakMap();
 
 // @opts toneRgbPixels() options, or null to leave the colors alone
 // @opacity 0-1, multiplies the alpha of each pixel when the preview is drawn
-// @exact tone each pixel of the full preview as -tone does, rather than
-//   with a lookup table, which is a few times faster and close but not
-//   exact at the edge of the gamut -- good enough while a slider is being
-//   dragged, as is a reduced copy of a large preview
+// @exact tone the whole preview as -tone does; while a slider is being
+//   dragged, only the part in view is toned (see getRecoloredInset()), with
+//   a lookup table, which is a few times faster and close but not exact at
+//   the edge of the gamut
 export function setRasterTonePreview(layer, opts, opacity, exact) {
   var tone = tonePreviews.get(layer);
   if (!tone) {
@@ -34,30 +34,22 @@ export function getRasterTonePreview(layer) {
   return tonePreviews.get(layer) || null;
 }
 
-// Returns {canvas, width, height}: the canvas may be a reduced copy while a
-// slider is being dragged, which covers the preview with the (possibly
-// fractional) width and height of its pixels
+// Returns {canvas, width, height}
 export function getTonedRasterCanvas(preview, tone) {
-  var buffers = tone.buffers.get(preview);
-  var src, target;
-  if (!buffers) {
-    buffers = {version: -1, image: null, full: null, reduced: null};
-    tone.buffers.set(preview, buffers);
-  }
-  if (buffers.version == tone.version) return buffers.image;
-  src = tone.exact ? preview : getDragPreview(preview);
-  if (src == preview) {
-    target = buffers.full || (buffers.full = makePreviewTarget(src));
-  } else {
-    target = buffers.reduced || (buffers.reduced = makePreviewTarget(src));
-  }
-  if (tone.table) {
-    internal.applyToneColorTable(tone.table, src.pixels, target.imageData.data);
-  } else {
-    internal.toneRgbPixels(src.pixels, 4, tone.opts, target.imageData.data);
-  }
-  target.ctx.putImageData(target.imageData, 0, 0);
-  buffers.image = target.image;
-  buffers.version = tone.version;
-  return target.image;
+  return getRecoloredPreview(tone, preview, getToner(tone));
+}
+
+// Returns {image, bbox, framed}, or null (see getRecoloredInset())
+export function getTonedRasterInset(preview, bbox, view, tone) {
+  return getRecoloredInset(tone, preview, bbox, view, getToner(tone));
+}
+
+function getToner(tone) {
+  return function(pixels, out) {
+    if (tone.table) {
+      internal.applyToneColorTable(tone.table, pixels, out);
+    } else {
+      internal.toneRgbPixels(pixels, 4, tone.opts, out);
+    }
+  };
 }

@@ -1,6 +1,6 @@
 import { internal } from './gui-core';
-import { getDragPreview, makePreviewTarget } from './gui-raster-preview-copies';
-import { getShrunkBBox } from './gui-raster-shrink';
+import { getRecoloredInset, getRecoloredPreview } from './gui-raster-preview-copies';
+import { cropRasterWindow } from './gui-raster-window';
 
 // A hillshade blend being previewed on a raster layer, while the blend panel
 // is open. Neither layer is changed: the map draws a blended copy of
@@ -23,14 +23,13 @@ var MAX_DRAWING_MAGNIFICATION = 4;
 // @settings {strength: [shadows, highlights], chroma: [shadows, highlights],
 //   shadow, highlight}, the colors being {r, g, b} in place of the
 //   hillshade's, or null
-// @exact blend the full preview, rather than a reduced copy of a large
-//   preview, which is good enough while a slider is being dragged
+// @exact blend the whole preview; while a slider is being dragged, only the
+//   part in view is blended (see getRecoloredInset())
 export function setRasterBlendPreview(layer, source, shading, settings, exact) {
   var blend = blendPreviews.get(layer);
   if (!blend || blend.shading != shading) {
     if (blend) hiddenLayers.delete(blend.source);
-    // preview -> amounts on its grid, and blended canvases
-    blend = {version: 0, buffers: new WeakMap(), source: source, shading: shading};
+    blend = makeBlendState(source, shading);
     blendPreviews.set(layer, blend);
   }
   hiddenLayers.add(source);
@@ -54,32 +53,70 @@ export function rasterIsHiddenByBlendPreview(layer) {
   return hiddenLayers.has(layer);
 }
 
+function makeBlendState(source, shading) {
+  return {
+    version: 0,
+    source: source,
+    shading: shading,
+    buffers: new WeakMap(), // preview -> blended canvases
+    amounts: new WeakMap(), // preview -> shading amounts on its grid
+    scratch: {} // pixel count -> working arrays
+  };
+}
+
 // @bbox the extent of @preview
-// Returns {canvas, width, height}: the canvas may be a reduced copy while a
-// slider is being dragged, which covers the preview with the (possibly
-// fractional) width and height of its pixels
+// Returns {canvas, width, height}
 export function getBlendedRasterCanvas(preview, bbox, blend) {
-  var buffers = blend.buffers.get(preview);
-  var src, target;
-  if (!buffers) {
-    buffers = {version: -1, image: null, full: null, reduced: null};
-    blend.buffers.set(preview, buffers);
+  return getRecoloredPreview(blend, preview, getBlender(blend, preview, bbox, false));
+}
+
+// Returns {image, bbox, framed}, or null (see getRecoloredInset())
+export function getBlendedRasterInset(preview, bbox, view, blend) {
+  return getRecoloredInset(blend, preview, bbox, view, getBlender(blend, preview, bbox, false));
+}
+
+// A recolor function for getRecoloredPreview() that blends @src, an image
+// covering @bbox; a polygon layer's drawing (@drawn) may become an overlay
+function getBlender(blend, src, bbox, drawn) {
+  return function(pixels, out, win) {
+    var amounts = getShadingOnGrid(blend, src, bbox);
+    var scratch = getScratch(blend, pixels.length / 4, drawn);
+    var opts = getPixelOptions(blend);
+    if (win) amounts = cropRasterWindow(amounts, src.width, 1, win, scratch.amounts);
+    internal.scaleShadingAmounts(amounts, blend.settings.strength[0],
+      blend.settings.strength[1], scratch.scaled);
+    if (drawn && blend.settings.output == 'overlay') {
+      internal.blendShadingPixels(pixels, 4, scratch.scaled,
+        Object.assign({}, opts, {clip: true}), scratch.blended);
+      internal.getShadingOverlayPixels(pixels, scratch.blended, scratch.scaled, opts, out);
+    } else {
+      internal.blendShadingPixels(pixels, 4, scratch.scaled, opts, out);
+    }
+  };
+}
+
+// The shading resampled onto the grid of @src, which covers @bbox
+function getShadingOnGrid(blend, src, bbox) {
+  var amounts = blend.amounts.get(src);
+  if (!amounts) {
+    amounts = internal.resampleShadingAmounts(blend.shading, {
+      width: src.width, height: src.height, bbox: bbox
+    });
+    blend.amounts.set(src, amounts);
   }
-  if (buffers.version == blend.version) return buffers.image;
-  src = blend.exact ? preview : getDragPreview(preview);
-  if (src == preview) {
-    target = buffers.full || (buffers.full = makeBlendTarget(src, bbox, blend.shading));
-  } else {
-    target = buffers.reduced || (buffers.reduced = makeBlendTarget(src, getShrunkBBox(bbox, src), blend.shading));
+  return amounts;
+}
+
+// Working arrays for @n pixels, kept for the whole preview and the part in
+// view, which alternate while a slider is dragged
+function getScratch(blend, n, drawn) {
+  var o = blend.scratch[n];
+  if (!o) {
+    if (Object.keys(blend.scratch).length >= 2) blend.scratch = {};
+    o = blend.scratch[n] = {amounts: new Float32Array(n), scaled: new Float32Array(n), blended: null};
   }
-  internal.scaleShadingAmounts(target.amounts, blend.settings.strength[0],
-    blend.settings.strength[1], target.scaled);
-  internal.blendShadingPixels(src.pixels, 4, target.scaled, getPixelOptions(blend),
-    target.imageData.data);
-  target.ctx.putImageData(target.imageData, 0, 0);
-  buffers.image = target.image;
-  buffers.version = blend.version;
-  return target.image;
+  if (drawn && !o.blended) o.blended = new Uint8Array(n * 4);
+  return o;
 }
 
 // blendShadingPixels() options for a blend's settings
@@ -96,16 +133,6 @@ function getPixelOptions(blend) {
     evenness: s.evenness || 0,
     evennessLightness: s.evennessLightness || 0
   };
-}
-
-// The shading resampled onto the grid of @src, which covers @bbox
-function makeBlendTarget(src, bbox, shading) {
-  var target = makePreviewTarget(src);
-  target.amounts = internal.resampleShadingAmounts(shading, {
-    width: src.width, height: src.height, bbox: bbox
-  });
-  target.scaled = new Float32Array(target.amounts.length);
-  return target;
 }
 
 // A polygon layer drawn with its styles over the extent of @source, the
@@ -137,8 +164,8 @@ export function setDrawnBlendPreview(layer, source, drawing, shading, settings, 
   var blend = drawnPreviews.get(layer);
   if (!blend || blend.drawing != drawing || blend.shading != shading) {
     if (blend) hiddenLayers.delete(blend.source);
-    blend = {version: 0, source: source, drawing: drawing, shading: shading,
-      buffers: {version: -1, image: null, full: null, reduced: null}};
+    blend = makeBlendState(source, shading);
+    blend.drawing = drawing;
     drawnPreviews.set(layer, blend);
   }
   hiddenLayers.add(source);
@@ -154,42 +181,16 @@ export function clearDrawnBlendPreview(layer) {
   drawnPreviews.delete(layer);
 }
 
-// Returns {image: {canvas, width, height}, bbox}, or null if @layer has no
-// preview
-export function getDrawnBlendImage(layer) {
+// @view the map's extent, as [xmin, ymin, xmax, ymax]
+// Returns {image: {canvas, width, height}, bbox, inset}, inset being the
+// part in view with newer settings while a slider is dragged, or null (see
+// getRecoloredInset()); or null if @layer has no preview
+export function getDrawnBlendImage(layer, view) {
   var blend = drawnPreviews.get(layer);
-  var buffers, drawing, src, target, opts;
+  var drawing, blender, inset;
   if (!blend) return null;
-  buffers = blend.buffers;
   drawing = blend.drawing;
-  if (buffers.version != blend.version) {
-    src = blend.exact ? drawing : getDragPreview(drawing);
-    if (src == drawing) {
-      target = buffers.full || (buffers.full = makeDrawnBlendTarget(src, drawing.bbox, blend.shading));
-    } else {
-      target = buffers.reduced || (buffers.reduced =
-        makeDrawnBlendTarget(src, getShrunkBBox(drawing.bbox, src), blend.shading));
-    }
-    opts = getPixelOptions(blend);
-    internal.scaleShadingAmounts(target.amounts, blend.settings.strength[0],
-      blend.settings.strength[1], target.scaled);
-    if (blend.settings.output == 'overlay') {
-      internal.blendShadingPixels(src.pixels, 4, target.scaled,
-        Object.assign({}, opts, {clip: true}), target.blended);
-      internal.getShadingOverlayPixels(src.pixels, target.blended, target.scaled, opts,
-        target.imageData.data);
-    } else {
-      internal.blendShadingPixels(src.pixels, 4, target.scaled, opts, target.imageData.data);
-    }
-    target.ctx.putImageData(target.imageData, 0, 0);
-    buffers.image = target.image;
-    buffers.version = blend.version;
-  }
-  return {image: buffers.image, bbox: drawing.bbox};
-}
-
-function makeDrawnBlendTarget(src, bbox, shading) {
-  var target = makeBlendTarget(src, bbox, shading);
-  target.blended = new Uint8Array(src.pixels.length);
-  return target;
+  blender = getBlender(blend, drawing, drawing.bbox, true);
+  inset = getRecoloredInset(blend, drawing, drawing.bbox, view, blender);
+  return {image: getRecoloredPreview(blend, drawing, blender), bbox: drawing.bbox, inset: inset};
 }

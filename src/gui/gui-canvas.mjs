@@ -12,10 +12,10 @@ import {
 import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns';
 import { compositeGlows, getGlowMargin, getGlowSourceCanvas, MAX_GLOW_MARGIN } from './gui-canvas-glow';
 import { getHighlightWidth, getHandleRadius } from './gui-highlight-width';
-import { getRasterTonePreview, getTonedRasterCanvas } from './gui-raster-tone-preview';
+import { getRasterTonePreview, getTonedRasterCanvas, getTonedRasterInset } from './gui-raster-tone-preview';
 import { getRasterHillshadeStandIn } from './gui-hillshade-preview';
 import {
-  getBlendedRasterCanvas, getRasterBlendPreview, rasterIsHiddenByBlendPreview
+  getBlendedRasterCanvas, getBlendedRasterInset, getRasterBlendPreview, rasterIsHiddenByBlendPreview
 } from './gui-raster-blend-preview';
 import {
   previewHasSourcePixels,
@@ -201,7 +201,7 @@ export function DisplayCanvas() {
     var blend = getRasterBlendPreview(layer);
     var opacity = internal.getRasterViewOpacity(raster) * (tone && tone.opacity >= 0 ? tone.opacity : 1);
     var recolor = getRasterRecoloring(tone, blend);
-    var bbox, grid, sourcePixels;
+    var bbox, grid, sourcePixels, inset;
     if (rasterIsHiddenByBlendPreview(layer)) return;
     if (layer.gui && layer.gui.dynamic_crs) {
       // the hillshade can't be resampled onto a reprojected preview
@@ -237,20 +237,30 @@ export function DisplayCanvas() {
       }
     }
     if (!preview || !preview.pixels || !bbox) return;
+    inset = layer.hillshade_inset ? null : getRecoloredInset(tone, blend, preview, bbox);
     if (layer.hillshade_inset) {
-      drawRasterWithInset(layer.hillshade_inset, opacity, function() {
+      drawAroundInset(layer.hillshade_inset, function() {
         drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
+      }, function() {
+        drawRasterPreview(layer.hillshade_inset.preview, layer.hillshade_inset.bbox, true, null, opacity);
+      });
+    } else if (inset) {
+      drawAroundInset(inset, function() {
+        drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
+      }, function() {
+        drawRasterPreview(inset.image, inset.bbox, sourcePixels, function() { return inset.image; }, opacity);
       });
     } else {
       drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
     }
   };
 
-  // A full-resolution part of a hillshade being previewed with newer settings
-  // (see setRasterHillshadePreview()). The rest of the hillshade is drawn
-  // around it rather than under it, so a transparent hillshade isn't drawn
-  // twice there.
-  function drawRasterWithInset(inset, opacity, drawRest) {
+  // A full-resolution part of an image being previewed with newer settings:
+  // a hillshade (see setRasterHillshadePreview()), or a toned or blended
+  // image (see getRecoloredInset()). The rest of the image is drawn around it
+  // rather than under it, so a transparent image isn't drawn twice there.
+  // @inset {bbox, framed}
+  function drawAroundInset(inset, drawRest, drawInset) {
     var pixRatio = GUI.getPixelRatio();
     var t = _ext.getTransform(pixRatio);
     var p1 = t.transform(inset.bbox[0], inset.bbox[3]);
@@ -262,7 +272,7 @@ export function DisplayCanvas() {
     _ctx.clip('evenodd');
     drawRest();
     _ctx.restore();
-    drawRasterPreview(inset.preview, inset.bbox, true, null, opacity);
+    drawInset();
     if (inset.framed) {
       _ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
       _ctx.lineWidth = pixRatio;
@@ -273,14 +283,36 @@ export function DisplayCanvas() {
 
   // A hillshade blend previewed on a polygon layer (see getDrawnBlendImage())
   // @img {canvas, width, height}, the part of the canvas that covers @bbox
-  _self.drawBlendImage = function(img, bbox) {
+  // @inset optional {image, bbox, framed}, a part with newer settings
+  _self.drawBlendImage = function(img, bbox, inset) {
+    if (inset) {
+      drawAroundInset(inset, function() {
+        drawImageInBox(img, bbox);
+      }, function() {
+        drawImageInBox(inset.image, inset.bbox);
+      });
+    } else {
+      drawImageInBox(img, bbox);
+    }
+  };
+
+  function drawImageInBox(img, bbox) {
     var t = _ext.getTransform(GUI.getPixelRatio());
     var p1 = t.transform(bbox[0], bbox[3]);
     var p2 = t.transform(bbox[2], bbox[1]);
     _ctx.imageSmoothingEnabled = true;
     _ctx.drawImage(img.canvas, 0, 0, img.width, img.height,
       p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
-  };
+  }
+
+  // The part in view of a preview that the tone or blend panel is showing,
+  // recolored with newer settings while a slider is dragged, or null
+  function getRecoloredInset(tone, blend, preview, bbox) {
+    var view = _ext.getBounds().toArray();
+    if (blend) return getBlendedRasterInset(preview, bbox, view, blend);
+    if (tone && tone.opts) return getTonedRasterInset(preview, bbox, view, tone);
+    return null;
+  }
 
   // A recolored copy of a preview that the tone or blend panel is showing,
   // as function(preview, bbox) returning {canvas, width, height}, or null
