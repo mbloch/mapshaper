@@ -1341,16 +1341,17 @@ mapshaper polygons.shp \
 </section>
 <h2 id="raster-commands" class="cmd-category">Raster Commands</h2>
 <p><code>-join</code>, <code>-proj</code>, <code>-clip</code> and <code>-erase</code> also work with raster layers.</p>
-<section class="cmd-section" data-id="-blend" data-name="-blend" data-options="keep-source source strength chroma shadow-color highlight-color base-color overlay name target"><h3 id="-blend">-blend</h3>
+<section class="cmd-section" data-id="-blend" data-name="-blend" data-options="keep-source source strength chroma shadow-color highlight-color base-color overlay clip name target"><h3 id="-blend">-blend</h3>
 <p>Apply the shadows and highlights of a hillshade layer (made by <code>-hillshade</code>) to a raster layer, or to vector layers drawn as a raster. The hillshade layer is removed unless <code>+</code> or <code>keep-source</code> is used.</p>
 <p><code>&lt;source&gt;</code> or <code>source=</code>  Name of the hillshade layer.</p>
 <p><code>keep-source</code>  Keep the hillshade layer. The targets are still replaced.</p>
 <p><code>strength=</code>  Multiply the opacity of the shading: one value, or two values for shadows and highlights (default is 1).</p>
-<p><code>chroma=</code>  Share of the target&#39;s color kept under the shading: 0 is plain stacking, 1 keeps the color, and values above 1 make it more vivid; one value, or two values for shadows and highlights (default is 0,1).</p>
+<p><code>chroma=</code>  Share of the target&#39;s color kept under the shading: 0 is plain stacking, 1 keeps the color, and values above 1 make it more vivid; one value, or two values for shadows and highlights (default is 0.5).</p>
 <p><code>shadow-color=</code>  Color of the shadows, in place of the hillshade&#39;s own (black, or the hillshade&#39;s <code>shadow-color=</code>). Its hue shows where <code>chroma=</code> is below 1; its lightness always affects how dark the shadows are.</p>
-<p><code>highlight-color=</code>  Color of the highlights, in place of the hillshade&#39;s own (white, or the hillshade&#39;s <code>highlight-color=</code>). Its hue shows where <code>chroma=</code> is below 1, so with the default <code>chroma=0,1</code>, lower the highlights&#39; chroma to see it.</p>
+<p><code>highlight-color=</code>  Color of the highlights, in place of the hillshade&#39;s own (white, or the hillshade&#39;s <code>highlight-color=</code>). Its hue shows where <code>chroma=</code> is below 1.</p>
 <p><code>base-color=</code>  Color of flat ground in an opaque hillshade not made by <code>-hillshade</code> (default is its most common color).</p>
 <p><code>overlay</code>  Keep the targets and recolor the hillshade, so that drawn over the targets it looks like the blend.</p>
+<p><code>clip</code>  Leave out the shading where the targets are transparent, for example outside the polygons of a vector target. By default, the shading is kept there as it would look stacked on nothing.</p>
 <p>Common options: <code>name=</code> <code>target=</code> <code>+</code></p>
 </section>
 <section class="cmd-section" data-id="-blur" data-name="-blur" data-options="px radius target"><h3 id="-blur">-blur</h3>

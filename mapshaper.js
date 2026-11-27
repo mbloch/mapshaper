@@ -56654,7 +56654,7 @@ ${css.join('\n')}
         type: 'numbers'
       })
       .option('chroma', {
-        describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color, above 1 adds color; one value, or shadows,highlights (default is 0,1)',
+        describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color, above 1 adds color; one value, or shadows,highlights (default is 0.5)',
         type: 'numbers'
       })
       .option('shadow-color', {
@@ -56670,6 +56670,15 @@ ${css.join('\n')}
         describe: 'recolor the hillshade so that, drawn over the targets, it looks like the blend; the targets are kept',
         type: 'flag'
       })
+      .option('clip', {
+        describe: 'leave out the shading where the targets are transparent (e.g. outside the polygons)',
+        type: 'flag'
+      })
+      // hidden options, for tuning (see docs/development/raster-blend.md)
+      .option('depth-chroma', {type: 'number'})
+      .option('depth-fade', {type: 'number'})
+      .option('evenness', {type: 'number'})
+      .option('evenness-lightness', {type: 'number'})
       .option('name', nameOpt)
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
@@ -94505,6 +94514,14 @@ ${css.join('\n')}
   var HUE_SHIFT_MIN_CHROMA = 0.005;
   var HUE_SHIFT_FULL_CHROMA = 0.03;
   var GAMUT_STEPS = 12; // bisection steps when reducing chroma to fit the gamut
+  // blendShadingPixels() depthChroma: hues of colors below DEPTH_FULL_CHROMA
+  // are less reliable, and get less of it, none below DEPTH_MIN_CHROMA
+  var DEPTH_MIN_CHROMA = 0.005;
+  var DEPTH_FULL_CHROMA = 0.02;
+  // depthChroma fades in until a shadow has removed this share of a color's
+  // lightness, so that faint shadows match unshaded ground
+  var DEFAULT_DEPTH_FADE = 0.4;
+  var DEFAULT_EVENNESS_LIGHTNESS = 0.8;
 
   var decodeTable$1 = null; // sRGB byte -> linear
   var encodeTable$1 = null; // linear (scaled to ENCODE_SIZE - 1) -> sRGB byte
@@ -94601,15 +94618,37 @@ ${css.join('\n')}
   // opts:
   //   shadow, highlight  {r, g, b} bytes
   //   shadowChroma, highlightChroma  0 or more
+  //   clip  keep the image's alpha (see below)
+  //   depthChroma, depthFade, evenness, evennessLightness  off unless
+  //     depthChroma or evenness is given (-blend gives them; see
+  //     docs/development/raster-blend.md):
+  //     shadowChroma times depthChroma of OKLCH chroma is added to a shadow in
+  //     the image's hue per unit of lightness the shadow takes away (less on
+  //     near-grays, and less until the shadow has taken away the share
+  //     depthFade (default 0.4) of the image's lightness);
+  //     evenness (0-1) moves the lightness change of shadows and highlights
+  //     from stacking's toward the change stacking makes on a color of
+  //     lightness evennessLightness (default 0.8), so that lighter colors get
+  //     fainter shadows and stronger highlights, and darker colors the
+  //     opposite (see getEvenLightness())
   // Where the image is partly or fully transparent, the shading is stacked on
-  // nothing, so the output alpha can exceed the image's.
+  // nothing, so the output alpha can exceed the image's; with opts.clip, the
+  // shading is clipped to the image instead: the output has the color of the
+  // shaded pixel made opaque, and the image's alpha.
   // @out optional array of @samples' layout to write to (e.g. a canvas's pixels)
   // Returns @out, or a new Uint8Array
   function blendShadingPixels(samples, bands, amounts, opts, out) {
     var shadow = opts.shadow, highlight = opts.highlight;
+    var depth = opts.depthChroma || 0;
+    var depthFade = opts.depthFade >= 0 ? opts.depthFade : DEFAULT_DEPTH_FADE;
+    var evenness = opts.evenness || 0;
+    // away from 0 and 1, where shadows or highlights would vanish
+    var evenL = opts.evennessLightness > 0 ?
+      Math.max(0.05, Math.min(0.95, opts.evennessLightness)) : DEFAULT_EVENNESS_LIGHTNESS;
     var rgb = [0, 0, 0];
     var lab = [0, 0, 0];
     var i, k, a, ta, oa, K, G, q, r, g, b, sr, sg, sb, A, B, w;
+    var shade, even, deep, L, Li, Ai, Bi, C, f;
     out = out || new Uint8Array(samples.length);
     initTables();
     // the grays for chroma above 1, or null for a shading color that is gray
@@ -94628,42 +94667,58 @@ ${css.join('\n')}
         if (bands > 3) out[i + 3] = samples[i + 3];
         continue;
       }
-      K = a < 0 ? shadow : highlight;
-      G = a < 0 ? shadowGray : highlightGray;
-      q = a < 0 ? opts.shadowChroma : opts.highlightChroma;
-      a = a < 0 ? (a < -1 ? 1 : -a) : (a > 1 ? 1 : a);
+      shade = a < 0;
+      K = shade ? shadow : highlight;
+      G = shade ? shadowGray : highlightGray;
+      q = shade ? opts.shadowChroma : opts.highlightChroma;
+      a = shade ? (a < -1 ? 1 : -a) : (a > 1 ? 1 : a);
+      even = evenness > 0;
+      deep = shade && depth > 0 && q > 0;
       sr = r + (K.r - r) * a;
       sg = g + (K.g - g) * a;
       sb = b + (K.b - b) * a;
-      if (q !== 0 && ta > 0) {
+      if ((q !== 0 || even || deep) && ta > 0) {
+        srgbToOklab(r, g, b, lab);
+        Li = lab[0];
+        Ai = lab[1];
+        Bi = lab[2];
         if (q > 1 && G) {
           srgbToOklab(Math.round(r + (G - r) * a), Math.round(g + (G - g) * a), Math.round(b + (G - b) * a), lab);
-          A = lab[1];
-          B = lab[2];
-          srgbToOklab(r, g, b, lab);
-          A = lab[1] + (lab[1] - A) * (q - 1);
-          B = lab[2] + (lab[2] - B) * (q - 1);
-          srgbToOklab(Math.round(sr), Math.round(sg), Math.round(sb), lab);
-        } else {
-          srgbToOklab(r, g, b, lab);
-          A = lab[1];
-          B = lab[2];
-          srgbToOklab(Math.round(sr), Math.round(sg), Math.round(sb), lab);
-          A = lab[1] + (A - lab[1]) * q;
-          B = lab[2] + (B - lab[2]) * q;
+          A = Ai + (Ai - lab[1]) * (q - 1);
+          B = Bi + (Bi - lab[2]) * (q - 1);
         }
-        if (!oklabToLinear(lab[0], A, B, rgb)) {
-          fitChroma(lab[0], A, B, rgb);
+        srgbToOklab(Math.round(sr), Math.round(sg), Math.round(sb), lab);
+        L = lab[0];
+        if (!(q > 1 && G)) {
+          A = lab[1] + (Ai - lab[1]) * q;
+          B = lab[2] + (Bi - lab[2]) * q;
+        }
+        if (even) {
+          L = shade ? getEvenLightness(Li, L, evenness, evenL) :
+            1 - getEvenLightness(1 - Li, 1 - L, evenness, 1 - evenL);
+        }
+        if (deep) {
+          C = Math.sqrt(Ai * Ai + Bi * Bi);
+          f = (C - DEPTH_MIN_CHROMA) / (DEPTH_FULL_CHROMA - DEPTH_MIN_CHROMA);
+          f = f < 0 ? 0 : f > 1 ? 1 : f;
+          if (f > 0 && Li > L) {
+            f *= q * depth * (Li - L) * getDepthFade((Li - L) / Li, depthFade) / C;
+            A += Ai * f;
+            B += Bi * f;
+          }
+        }
+        if (!oklabToLinear(L, A, B, rgb)) {
+          fitChroma(L, A, B, rgb);
         }
         sr = encodeChannel(rgb[0]);
         sg = encodeChannel(rgb[1]);
         sb = encodeChannel(rgb[2]);
       }
-      if (ta == 1) {
+      if (ta == 1 || opts.clip) {
         out[i] = Math.round(sr);
         out[i + 1] = Math.round(sg);
         out[i + 2] = Math.round(sb);
-        if (bands > 3) out[i + 3] = 255;
+        if (bands > 3) out[i + 3] = samples[i + 3];
         continue;
       }
       // the blended image over the shading alone (with chroma 0, the same as
@@ -94681,6 +94736,24 @@ ${css.join('\n')}
     return out;
   }
 
+  // A shadow's lightness with evenness @t (0-1). Stacking multiplies the
+  // image's lightness @L by m (@Ls / @L); at 1, the image's lightness is
+  // multiplied by m raised to the power @Lref / @L, which for faint shadows
+  // takes away about what stacking takes from lightness @Lref, and never goes
+  // below 0. Highlights use it on the distance from white (1 - lightness),
+  // which stacking white multiplies in roughly the same way.
+  function getEvenLightness(L, Ls, t, Lref) {
+    if (!(L > 0) || !(Ls < L)) return Ls;
+    return L * Math.pow(Ls / L, Math.pow(Lref / L, t));
+  }
+
+  // Rises quickly from 0 and levels off toward 1 as @share (of lightness
+  // removed) grows, reaching 0.95 at @fade; the added chroma, which is this
+  // times the lightness removed, still starts flat
+  function getDepthFade(share, fade) {
+    return fade > 0 ? 1 - Math.exp(-3 * share / fade) : 1;
+  }
+
   // The sRGB channel value of the gray with the OKLab lightness of @color
   // {r, g, b}, or null if @color is gray already
   // @lab, @rgb scratch arrays
@@ -94694,42 +94767,60 @@ ${css.join('\n')}
   // The shading as an RGBA overlay that, stacked on the image (in sRGB, as
   // browsers and resvg composite), gives the image blended with the shading
   // @samples RGBA image
-  // @blended blendShadingPixels() output for @samples
+  // @blended blendShadingPixels() output for @samples with opts.clip, which
+  //   gives each pixel the blended color it would have if it were opaque
   // @amounts, opts  as given to blendShadingPixels()
   // On an opaque image pixel the overlay has the least alpha that gives the
-  // blended color exactly. Where the image is partly transparent, what is under
-  // it is unknown, so the overlay is the shading color at the amount's opacity,
-  // as in plain stacking.
-  // Returns a new Uint8Array of RGBA pixels
-  function getShadingOverlayPixels(samples, blended, amounts, opts) {
-    var out = new Uint8Array(samples.length);
-    var i, k, a, K, c, t, r, need, alpha, a8;
+  // blended color exactly. A partly transparent pixel (such as one on the
+  // edge of a polygon, or on the seam between two) gets that overlay over the
+  // part the image covers; over the rest, what is under it is unknown, so it
+  // gets the shading color at the amount's opacity, as in plain stacking --
+  // or nothing with opts.clip, so that the shading is clipped to the image.
+  // @out optional array of @samples' length to write to
+  // Returns @out, or a new Uint8Array of RGBA pixels
+  function getShadingOverlayPixels(samples, blended, amounts, opts, out) {
+    var color = [0, 0, 0];
+    var i, k, a, K, c, t, r, need, alpha, a8, ta, au, oa;
+    if (out) {
+      out.fill(0);
+    } else {
+      out = new Uint8Array(samples.length);
+    }
     for (i = 0, k = 0; i < samples.length; i += 4, k++) {
       a = amounts[k];
       if (a === 0 || a !== a) continue;
-      if (samples[i + 3] < 255) {
-        K = a < 0 ? opts.shadow : opts.highlight;
-        out[i] = K.r;
-        out[i + 1] = K.g;
-        out[i + 2] = K.b;
-        out[i + 3] = Math.round(Math.min(1, Math.abs(a)) * 255);
-        continue;
-      }
+      ta = samples[i + 3] / 255;
       alpha = 0;
-      for (c = 0; c < 3; c++) {
+      for (c = 0; c < 3 && ta > 0; c++) {
         t = samples[i + c];
         r = blended[i + c];
         need = r > t ? (r - t) / (255 - t) : r < t ? (t - r) / t : 0;
         if (need > alpha) alpha = need;
       }
-      if (alpha === 0) continue;
-      a8 = Math.ceil(alpha * 255 - 1e-9);
-      alpha = a8 / 255;
-      for (c = 0; c < 3; c++) {
-        t = samples[i + c];
-        out[i + c] = Math.max(0, Math.min(255, Math.round(t + (blended[i + c] - t) / alpha)));
+      if (alpha > 0) {
+        a8 = Math.ceil(alpha * 255 - 1e-9);
+        alpha = a8 / 255;
+        for (c = 0; c < 3; c++) {
+          t = samples[i + c];
+          color[c] = Math.max(0, Math.min(255, Math.round(t + (blended[i + c] - t) / alpha)));
+        }
       }
-      out[i + 3] = a8;
+      if (ta == 1) {
+        if (alpha === 0) continue;
+        out[i] = color[0];
+        out[i + 1] = color[1];
+        out[i + 2] = color[2];
+        out[i + 3] = a8;
+        continue;
+      }
+      K = a < 0 ? opts.shadow : opts.highlight;
+      au = opts.clip ? 0 : Math.min(1, Math.abs(a));
+      oa = ta * alpha + (1 - ta) * au;
+      if (oa === 0) continue;
+      out[i] = Math.round((ta * alpha * color[0] + (1 - ta) * au * K.r) / oa);
+      out[i + 1] = Math.round((ta * alpha * color[1] + (1 - ta) * au * K.g) / oa);
+      out[i + 2] = Math.round((ta * alpha * color[2] + (1 - ta) * au * K.b) / oa);
+      out[i + 3] = Math.round(oa * 255);
     }
     return out;
   }
@@ -102654,6 +102745,30 @@ ${css.join('\n')}
     scaleShadingAmounts: scaleShadingAmounts
   });
 
+  var DEFAULT_MAP_WIDTH = 800; // CSS pixels, as in SVG output without a frame
+
+  // Grid pixels per CSS pixel of the map, so that layers drawn on @grid look as
+  // they do in the map's frame (or, without a frame, in an SVG of the default
+  // width)
+  // @layers [{layer, dataset}]
+  function getDrawingScale(catalog, layers, grid) {
+    var frame = resolveFrameForDataset(catalog, layers[0].dataset);
+    var data, bounds, cssPerUnit;
+    if (frame) {
+      data = getFrameLayerData(frame.layer, frame.dataset.arcs);
+      cssPerUnit = data.width / (data.bbox[2] - data.bbox[0]);
+    } else {
+      bounds = new Bounds();
+      layers.forEach(function(o) {
+        var bb = getLayerBounds(o.layer, o.dataset.arcs);
+        if (bb) bounds.mergeBounds(bb);
+      });
+      cssPerUnit = bounds.hasBounds() && bounds.width() > 0 ?
+        DEFAULT_MAP_WIDTH / bounds.width() : grid.width / (grid.bbox[2] - grid.bbox[0]);
+    }
+    return grid.width / ((grid.bbox[2] - grid.bbox[0]) * cssPerUnit);
+  }
+
   // Draws layers onto the pixels of a north-up raster grid, the way PNG output
   // draws them (see mapshaper-map-image-export.mjs)
   // @layers [{layer, dataset}], bottom to top, in the grid's coordinate system
@@ -102704,6 +102819,12 @@ ${css.join('\n')}
     });
     return datasets;
   }
+
+  var RasterDraw = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    drawLayersOnGrid: drawLayersOnGrid,
+    getDrawingScale: getDrawingScale
+  });
 
   var PIVOT_PERCENTILES = [1, 99, 50];
   var PIVOT_SAMPLES = 1e6;
@@ -102913,8 +103034,9 @@ ${css.join('\n')}
   });
 
   var DEFAULT_STRENGTH = [1, 1];
-  var DEFAULT_CHROMA = [0, 1]; // shadows as stacked, highlights without haze
-  var DEFAULT_MAP_WIDTH = 800; // CSS pixels, as in SVG output without a frame
+  var DEFAULT_CHROMA = [0.5, 0.5];
+  // hidden options, for tuning (see docs/development/raster-blend.md)
+  var DEFAULT_EFFECTS = {depth_chroma: 0.15, depth_fade: 0.4, evenness: 0.8, evenness_lightness: 0.8};
   var MIN_DRAWING_SCALE = 2; // like the default pixel-ratio= of PNG output
   var MAX_DRAWING_PIXELS = 4e7;
 
@@ -102985,9 +103107,11 @@ ${css.join('\n')}
     scaleShadingAmounts(amounts, settings.strength[0], settings.strength[1]);
     pixels = await drawLayersOnGrid(layers, grid, drawing.scale);
     blendOpts = getBlendOptions(shading, settings);
-    samples = blendShadingPixels(pixels, 4, amounts, blendOpts);
     if (opts.overlay) {
+      samples = blendShadingPixels(pixels, 4, amounts, Object.assign({}, blendOpts, {clip: true}));
       samples = getShadingOverlayPixels(pixels, samples, amounts, blendOpts);
+    } else {
+      samples = blendShadingPixels(pixels, 4, amounts, blendOpts);
     }
     out = {
       raster_type: 'grid',
@@ -103024,26 +103148,6 @@ ${css.join('\n')}
     };
   }
 
-  // Grid pixels per CSS pixel of the map, so that the layers are drawn as they
-  // look in the map's frame (or, without a frame, in an SVG of the default width)
-  function getDrawingScale(catalog, layers, grid) {
-    var frame = resolveFrameForDataset(catalog, layers[0].dataset);
-    var data, bounds, cssPerUnit;
-    if (frame) {
-      data = getFrameLayerData(frame.layer, frame.dataset.arcs);
-      cssPerUnit = data.width / (data.bbox[2] - data.bbox[0]);
-    } else {
-      bounds = new Bounds();
-      layers.forEach(function(o) {
-        var bb = getLayerBounds(o.layer, o.dataset.arcs);
-        if (bb) bounds.mergeBounds(bb);
-      });
-      cssPerUnit = bounds.hasBounds() && bounds.width() > 0 ?
-        DEFAULT_MAP_WIDTH / bounds.width() : grid.width / (grid.bbox[2] - grid.bbox[0]);
-    }
-    return grid.width / ((grid.bbox[2] - grid.bbox[0]) * cssPerUnit);
-  }
-
   function getBlendSettings(opts) {
     var settings = {
       strength: readShadowHighlightPair(opts.strength, DEFAULT_STRENGTH, 'strength'),
@@ -103054,6 +103158,12 @@ ${css.join('\n')}
     // given rather than the hillshade's
     if (opts.shadow_color) settings.shadow_color = opts.shadow_color;
     if (opts.highlight_color) settings.highlight_color = opts.highlight_color;
+    if (opts.clip) settings.clip = true;
+    Object.keys(DEFAULT_EFFECTS).forEach(function(key) {
+      if (opts[key] == null) return;
+      if (!(opts[key] >= 0)) stop$1(key.replace('_', '-') + '= should be 0 or more');
+      settings[key] = opts[key];
+    });
     return settings;
   }
 
@@ -103066,8 +103176,17 @@ ${css.join('\n')}
       shadow: readColorOption(settings.shadow_color, 'shadow-color') || shading.shadow,
       highlight: readColorOption(settings.highlight_color, 'highlight-color') || shading.highlight,
       shadowChroma: settings.chroma[0],
-      highlightChroma: settings.chroma[1]
+      highlightChroma: settings.chroma[1],
+      clip: !!settings.clip,
+      depthChroma: getEffectSetting(settings, 'depth_chroma'),
+      depthFade: getEffectSetting(settings, 'depth_fade'),
+      evenness: getEffectSetting(settings, 'evenness'),
+      evennessLightness: getEffectSetting(settings, 'evenness_lightness')
     };
+  }
+
+  function getEffectSetting(settings, key) {
+    return settings[key] == null ? DEFAULT_EFFECTS[key] : settings[key];
   }
 
   // Returns {r, g, b}, or null if @str is empty
@@ -116760,7 +116879,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.8.12";
+  var version = "0.8.13";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -119292,6 +119411,7 @@ ${css.join('\n')}
     TerrainSmoothingOptions,
     RasterColor,
     RasterBlend,
+    RasterDraw,
     RasterSharpen,
     RasterResample,
     ResampleCommand,

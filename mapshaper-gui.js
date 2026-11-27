@@ -9448,12 +9448,20 @@
 
   // Whether the blend panel has something to do on @lyr: a raster displayed in
   // color (see rasterIsBlendTarget()) that -blend can blend a hillshade with,
-  // with a hillshade to blend
+  // or a polygon layer (see blendTargetIsDrawn()), with a hillshade to blend
   function blendIsAvailable(model, lyr) {
-    var grid = lyr && internal.layerHasRaster(lyr) ? internal.getRasterGrid(lyr.raster) : null;
+    var grid;
+    if (blendTargetIsDrawn(lyr)) return getBlendSourceLayers(model, lyr).length > 0;
+    grid = lyr && internal.layerHasRaster(lyr) ? internal.getRasterGrid(lyr.raster) : null;
     if (!grid || !grid.bbox || internal.rasterGridIsRotated(grid)) return false;
     if (!internal.rasterIsBlendTarget(lyr.raster)) return false;
     return getBlendSourceLayers(model, lyr).length > 0;
+  }
+
+  // A polygon layer, which -blend draws with its styles and blends as an image
+  // (see cmd.blendDrawnLayers())
+  function blendTargetIsDrawn(lyr) {
+    return !!lyr && lyr.geometry_type == 'polygon';
   }
 
   function isMadeByHillshade(o) {
@@ -13188,13 +13196,13 @@
       // With no data, the layer panel's links are the way into the editing
       // tools, so the menu offers only the tools that need no layer
       empty: ['box', 'ruler'],
-      polygons: ['info', 'polygon_style', 'selection', 'box', 'ruler'],
-      rectangles: ['info', 'selection', 'polygon_style', 'rectangles', 'box', 'ruler'],
+      polygons: ['info', 'polygon_style', 'blend', 'selection', 'box', 'ruler'],
+      rectangles: ['info', 'selection', 'polygon_style', 'rectangles', 'blend', 'box', 'ruler'],
       lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],
       table: ['info', 'selection'],
       // 'blend' is offered only where there is a hillshade to blend, and not on
-      // a hillshade, and 'hillshade' only on a raster that can be shaded as
-      // terrain (see getRasterModes())
+      // a hillshade (see blendIsAvailable()), and 'hillshade' only on a raster
+      // that can be shaded as terrain (see getRasterModes())
       raster: ['hillshade', 'blend', 'box', 'ruler'],
       // an RGB image, which -tone can adjust
       image: ['tone', 'blend', 'box', 'ruler'],
@@ -13455,8 +13463,8 @@
         return menus.lines;
       }
       if (o.layer.geometry_type == 'polygon') {
-        return internal.layerOnlyHasRectangles(o.layer, o.dataset.arcs) ||
-          rectangleModeIsAvailable() ? menus.rectangles : menus.polygons;
+        return withoutUnavailableBlend(internal.layerOnlyHasRectangles(o.layer, o.dataset.arcs) ||
+          rectangleModeIsAvailable() ? menus.rectangles : menus.polygons, o.layer);
       }
 
       return menus.standard;
@@ -13466,10 +13474,16 @@
       var modes = internal.rasterCanBeToned(lyr.raster) ? menus.image :
         internal.rasterIsGrayImage(lyr.raster) ? menus.grayImage :
         layerHasPaletteRaster(lyr) ? menus.dataRaster : menus.raster;
-      var blend = blendIsAvailable(gui.model, lyr);
       var hillshade = internal.rasterCanBeHillshaded(lyr.raster);
+      return withoutUnavailableBlend(modes, lyr).filter(function(mode) {
+        return mode != 'hillshade' || hillshade;
+      });
+    }
+
+    function withoutUnavailableBlend(modes, lyr) {
+      var blend = blendIsAvailable(gui.model, lyr);
       return modes.filter(function(mode) {
-        return (mode != 'blend' || blend) && (mode != 'hillshade' || hillshade);
+        return mode != 'blend' || blend;
       });
     }
 
@@ -28980,89 +28994,130 @@
 
   }
 
-  // Scaled-down copies of RGBA preview images. Kept free of browser and
+  // The part of an image in view, which the hillshade and blend panels redo
+  // at full resolution while a slider is dragged. Kept free of browser and
   // mapshaper dependencies so it can be tested directly.
 
-  // The whole-number factor that brings a @width x @height image down to at
-  // most @maxPixels pixels (1 if it is already small enough)
-  function getShrinkFactor(width, height, maxPixels) {
-    var k = 1;
-    while (Math.ceil(width / k) * Math.ceil(height / k) > maxPixels) k++;
-    return k;
-  }
-
-  // Averages each @k x @k block of RGBA @pixels into one pixel; blocks at the
-  // right and bottom edges may be partial. Colors are weighted by alpha, so
-  // transparent pixels (e.g. nodata) do not darken the edges of an image.
-  // Returns {pixels, width, height, coverWidth, coverHeight}, pixels being a
-  // Uint8ClampedArray. A partial block stands for less than a whole pixel of
-  // the copy, so the copy covers the original image with coverWidth x
-  // coverHeight of its pixels (fractional if there are partial blocks).
-  function shrinkRgbaPixels(pixels, width, height, k) {
-    var w2 = Math.ceil(width / k);
-    var h2 = Math.ceil(height / k);
-    var out = new Uint8ClampedArray(w2 * h2 * 4);
-    var x2, y2, x, y, x1, y1, xmax, ymax, i, o, a, r, g, b, asum, n;
-    for (y2 = 0; y2 < h2; y2++) {
-      y1 = y2 * k;
-      ymax = Math.min(y1 + k, height);
-      for (x2 = 0; x2 < w2; x2++) {
-        x1 = x2 * k;
-        xmax = Math.min(x1 + k, width);
-        r = g = b = asum = n = 0;
-        for (y = y1; y < ymax; y++) {
-          i = (y * width + x1) * 4;
-          for (x = x1; x < xmax; x++, i += 4) {
-            a = pixels[i + 3];
-            r += pixels[i] * a;
-            g += pixels[i + 1] * a;
-            b += pixels[i + 2] * a;
-            asum += a;
-            n++;
-          }
-        }
-        o = (y2 * w2 + x2) * 4;
-        if (asum > 0) {
-          out[o] = r / asum;
-          out[o + 1] = g / asum;
-          out[o + 2] = b / asum;
-          out[o + 3] = asum / n;
-        }
-      }
+  // The rectangle of pixels of a @width x @height image covering @bbox that is
+  // in @view ([xmin, ymin, xmax, ymax]), or a box of at most @maxPixels in the
+  // middle of the view, with the view's shape
+  // Returns {x0, y0, x1, y1, bbox, framed}, framed if the box doesn't cover the
+  // view, or null if the image is out of view
+  function getRasterWindow(width, height, bbox, view, maxPixels) {
+    var dx = (bbox[2] - bbox[0]) / width, dy = (bbox[3] - bbox[1]) / height;
+    var vx0 = clampInt(Math.floor((view[0] - bbox[0]) / dx), 0, width);
+    var vx1 = clampInt(Math.ceil((view[2] - bbox[0]) / dx), 0, width);
+    var vy0 = clampInt(Math.floor((bbox[3] - view[3]) / dy), 0, height);
+    var vy1 = clampInt(Math.ceil((bbox[3] - view[1]) / dy), 0, height);
+    var vw = vx1 - vx0, vh = vy1 - vy0;
+    var aspect, w, h, cx, cy, x0, y0;
+    if (vw <= 0 || vh <= 0) return null;
+    if (vw * vh <= maxPixels) {
+      return makeWindow(vx0, vy0, vx1, vy1, false);
     }
-    return {pixels: out, width: w2, height: h2, coverWidth: width / k, coverHeight: height / k};
+    // the shape of the view, in image pixels
+    aspect = (view[2] - view[0]) / dx / ((view[3] - view[1]) / dy);
+    w = Math.min(vw, Math.round(Math.sqrt(maxPixels * aspect)));
+    h = Math.min(vh, Math.floor(maxPixels / w));
+    w = Math.min(vw, Math.floor(maxPixels / h));
+    cx = ((view[0] + view[2]) / 2 - bbox[0]) / dx;
+    cy = (bbox[3] - (view[1] + view[3]) / 2) / dy;
+    x0 = clampInt(Math.round(cx - w / 2), vx0, vx1 - w);
+    y0 = clampInt(Math.round(cy - h / 2), vy0, vy1 - h);
+    return makeWindow(x0, y0, x0 + w, y0 + h, true);
+
+    function makeWindow(x0, y0, x1, y1, framed) {
+      return {
+        x0: x0, y0: y0, x1: x1, y1: y1, framed: framed,
+        bbox: [bbox[0] + x0 * dx, bbox[3] - y1 * dy, bbox[0] + x1 * dx, bbox[3] - y0 * dy]
+      };
+    }
   }
 
-  // The extent of a reduced @copy of an image covering @bbox: partial blocks
-  // make the copy reach a little past the image's right and bottom edges
-  function getShrunkBBox(bbox, copy) {
-    var dx = (bbox[2] - bbox[0]) / copy.coverWidth;
-    var dy = (bbox[3] - bbox[1]) / copy.coverHeight;
-    return [bbox[0], bbox[3] - dy * copy.height, bbox[0] + dx * copy.width, bbox[3]];
+  // Copies the pixels of @win from @arr, an image @width pixels wide with
+  // @bands values per pixel, into @out (or a new array of @arr's type)
+  function cropRasterWindow(arr, width, bands, win, out) {
+    var w = (win.x1 - win.x0) * bands;
+    var y, i;
+    out = out || new arr.constructor(w * (win.y1 - win.y0));
+    for (y = win.y0, i = 0; y < win.y1; y++, i += w) {
+      out.set(arr.subarray((y * width + win.x0) * bands, (y * width + win.x0) * bands + w), i);
+    }
+    return out;
+  }
+
+  function clampInt(val, min, max) {
+    return Math.max(min, Math.min(max, val));
   }
 
   // Recolored copies of raster previews, for the tone and blend panels. Settings
   // change many times a second while a slider is dragged, so a panel's preview
-  // keeps its canvases (and their pixel buffers) from one setting to the next,
-  // and a large preview is recolored at a reduced size until the slider is let
-  // go of.
-  var DRAG_MAX_PIXELS = 1e6;
-  var shrunkPreviews = new WeakMap(); // preview -> reduced copy, made once
+  // keeps its canvases (and their pixel buffers) from one setting to the next.
+  // While a slider is dragged, the map keeps the last recoloring of the whole
+  // preview, and recolors only the part in view, at full resolution, with the
+  // newer settings (as the hillshade panel does).
+  var INSET_MAX_PIXELS = 1e6;
 
-  // Returns @preview, or a reduced copy of it if it is large
-  function getDragPreview(preview) {
-    var k, copy = shrunkPreviews.get(preview);
-    if (copy) return copy;
-    k = getShrinkFactor(preview.width, preview.height, DRAG_MAX_PIXELS);
-    copy = k > 1 ? shrinkRgbaPixels(preview.pixels, preview.width, preview.height, k) : preview;
-    shrunkPreviews.set(preview, copy);
-    return copy;
+  // @state {version, exact, buffers: WeakMap}, a panel's preview of a layer;
+  //   version changes with the settings, and exact is false while a slider is
+  //   being dragged
+  // @recolor function(pixels, out, win): writes the recolored RGBA @pixels of
+  //   @preview to @out; @win is the window of the preview they come from (see
+  //   getRasterWindow()), or null for the whole preview
+  // Returns {canvas, width, height}: the whole preview, recolored with the
+  //   settings of the last time a slider was let go of
+  function getRecoloredPreview(state, preview, recolor) {
+    var buffers = getBuffers(state, preview);
+    var full = buffers.full;
+    if (buffers.version != state.version && (state.exact || buffers.version < 0)) {
+      recolor(preview.pixels, full.imageData.data, null);
+      full.ctx.putImageData(full.imageData, 0, 0);
+      buffers.version = state.version;
+    }
+    return full.image;
+  }
+
+  // The part of @preview (which covers @bbox) in @view, recolored with newer
+  // settings than getRecoloredPreview()'s, while a slider is dragged
+  // Returns {image, bbox, framed}, image being {canvas, width, height} and
+  //   framed if it doesn't cover the view, or null if there is nothing newer
+  function getRecoloredInset(state, preview, bbox, view, recolor) {
+    var buffers = getBuffers(state, preview);
+    var inset = buffers.inset;
+    var win, key, w, h;
+    if (state.exact || buffers.version < 0 || buffers.version == state.version) return null;
+    win = getRasterWindow(preview.width, preview.height, bbox, view, INSET_MAX_PIXELS);
+    if (!win) return null;
+    key = [win.x0, win.y0, win.x1, win.y1].join(',');
+    if (inset && inset.version == state.version && inset.key == key) return inset.result;
+    w = win.x1 - win.x0;
+    h = win.y1 - win.y0;
+    if (!inset || inset.width != w || inset.height != h) {
+      inset = buffers.inset = makePreviewTarget({width: w, height: h});
+      inset.width = w;
+      inset.height = h;
+      inset.pixels = new Uint8ClampedArray(w * h * 4);
+    }
+    cropRasterWindow(preview.pixels, preview.width, 4, win, inset.pixels);
+    recolor(inset.pixels, inset.imageData.data, win);
+    inset.ctx.putImageData(inset.imageData, 0, 0);
+    inset.version = state.version;
+    inset.key = key;
+    inset.result = {image: inset.image, bbox: win.bbox, framed: win.framed};
+    return inset.result;
+  }
+
+  function getBuffers(state, preview) {
+    var buffers = state.buffers.get(preview);
+    if (!buffers) {
+      buffers = {version: -1, full: makePreviewTarget(preview), inset: null};
+      state.buffers.set(preview, buffers);
+    }
+    return buffers;
   }
 
   // A canvas to draw a recolored copy of @src on
-  // @src a preview or a reduced copy
-  // Returns {ctx, imageData, image}, image being {canvas, width, height}, the
-  // part of the canvas that covers the preview
+  // Returns {ctx, imageData, image}, image being {canvas, width, height}
   function makePreviewTarget(src) {
     var canvas = document.createElement('canvas');
     var ctx;
@@ -29072,11 +29127,7 @@
     return {
       ctx: ctx,
       imageData: ctx.createImageData(src.width, src.height),
-      image: {
-        canvas: canvas,
-        width: src.coverWidth || src.width,
-        height: src.coverHeight || src.height
-      }
+      image: {canvas: canvas, width: src.width, height: src.height}
     };
   }
 
@@ -29088,10 +29139,10 @@
 
   // @opts toneRgbPixels() options, or null to leave the colors alone
   // @opacity 0-1, multiplies the alpha of each pixel when the preview is drawn
-  // @exact tone each pixel of the full preview as -tone does, rather than
-  //   with a lookup table, which is a few times faster and close but not
-  //   exact at the edge of the gamut -- good enough while a slider is being
-  //   dragged, as is a reduced copy of a large preview
+  // @exact tone the whole preview as -tone does; while a slider is being
+  //   dragged, only the part in view is toned (see getRecoloredInset()), with
+  //   a lookup table, which is a few times faster and close but not exact at
+  //   the edge of the gamut
   function setRasterTonePreview(layer, opts, opacity, exact) {
     var tone = tonePreviews.get(layer);
     if (!tone) {
@@ -29113,32 +29164,24 @@
     return tonePreviews.get(layer) || null;
   }
 
-  // Returns {canvas, width, height}: the canvas may be a reduced copy while a
-  // slider is being dragged, which covers the preview with the (possibly
-  // fractional) width and height of its pixels
+  // Returns {canvas, width, height}
   function getTonedRasterCanvas(preview, tone) {
-    var buffers = tone.buffers.get(preview);
-    var src, target;
-    if (!buffers) {
-      buffers = {version: -1, image: null, full: null, reduced: null};
-      tone.buffers.set(preview, buffers);
-    }
-    if (buffers.version == tone.version) return buffers.image;
-    src = tone.exact ? preview : getDragPreview(preview);
-    if (src == preview) {
-      target = buffers.full || (buffers.full = makePreviewTarget(src));
-    } else {
-      target = buffers.reduced || (buffers.reduced = makePreviewTarget(src));
-    }
-    if (tone.table) {
-      internal.applyToneColorTable(tone.table, src.pixels, target.imageData.data);
-    } else {
-      internal.toneRgbPixels(src.pixels, 4, tone.opts, target.imageData.data);
-    }
-    target.ctx.putImageData(target.imageData, 0, 0);
-    buffers.image = target.image;
-    buffers.version = tone.version;
-    return target.image;
+    return getRecoloredPreview(tone, preview, getToner(tone));
+  }
+
+  // Returns {image, bbox, framed}, or null (see getRecoloredInset())
+  function getTonedRasterInset(preview, bbox, view, tone) {
+    return getRecoloredInset(tone, preview, bbox, view, getToner(tone));
+  }
+
+  function getToner(tone) {
+    return function(pixels, out) {
+      if (tone.table) {
+        internal.applyToneColorTable(tone.table, pixels, out);
+      } else {
+        internal.toneRgbPixels(pixels, 4, tone.opts, out);
+      }
+    };
   }
 
   // The tone panel's sliders (gui-raster-tone-tool.mjs) and the -tone command
@@ -29512,23 +29555,31 @@
   // A hillshade blend being previewed on a raster layer, while the blend panel
   // is open. Neither layer is changed: the map draws a blended copy of
   // whichever preview of the target it is drawing, and leaves out the
-  // hillshade, whose shading the copy already has.
+  // hillshade, whose shading the copy already has. A polygon layer has no
+  // preview to blend, so it is drawn on a grid of its own (see
+  // setDrawnBlendPreview()).
   var blendPreviews = new WeakMap(); // target layer -> blend
+  var drawnPreviews = new WeakMap(); // polygon target layer -> blend
   var hiddenLayers = new WeakSet(); // hillshades left out of the map
+
+  // The grid a polygon layer is drawn on for a preview covers the hillshade,
+  // with about this many pixels, so that a small hillshade doesn't blur the
+  // polygons' edges and a large one doesn't slow the panel down
+  var DRAWING_PIXELS = 4e6;
+  var MAX_DRAWING_MAGNIFICATION = 4;
 
   // @source the hillshade layer
   // @shading its shading amounts, from getShadingAmounts()
   // @settings {strength: [shadows, highlights], chroma: [shadows, highlights],
   //   shadow, highlight}, the colors being {r, g, b} in place of the
   //   hillshade's, or null
-  // @exact blend the full preview, rather than a reduced copy of a large
-  //   preview, which is good enough while a slider is being dragged
+  // @exact blend the whole preview; while a slider is being dragged, only the
+  //   part in view is blended (see getRecoloredInset())
   function setRasterBlendPreview(layer, source, shading, settings, exact) {
     var blend = blendPreviews.get(layer);
     if (!blend || blend.shading != shading) {
       if (blend) hiddenLayers.delete(blend.source);
-      // preview -> amounts on its grid, and blended canvases
-      blend = {version: 0, buffers: new WeakMap(), source: source, shading: shading};
+      blend = makeBlendState(source, shading);
       blendPreviews.set(layer, blend);
     }
     hiddenLayers.add(source);
@@ -29552,46 +29603,146 @@
     return hiddenLayers.has(layer);
   }
 
+  function makeBlendState(source, shading) {
+    return {
+      version: 0,
+      source: source,
+      shading: shading,
+      buffers: new WeakMap(), // preview -> blended canvases
+      amounts: new WeakMap(), // preview -> shading amounts on its grid
+      scratch: {} // pixel count -> working arrays
+    };
+  }
+
   // @bbox the extent of @preview
-  // Returns {canvas, width, height}: the canvas may be a reduced copy while a
-  // slider is being dragged, which covers the preview with the (possibly
-  // fractional) width and height of its pixels
+  // Returns {canvas, width, height}
   function getBlendedRasterCanvas(preview, bbox, blend) {
-    var buffers = blend.buffers.get(preview);
-    var src, target;
-    if (!buffers) {
-      buffers = {version: -1, image: null, full: null, reduced: null};
-      blend.buffers.set(preview, buffers);
-    }
-    if (buffers.version == blend.version) return buffers.image;
-    src = blend.exact ? preview : getDragPreview(preview);
-    if (src == preview) {
-      target = buffers.full || (buffers.full = makeBlendTarget(src, bbox, blend.shading));
-    } else {
-      target = buffers.reduced || (buffers.reduced = makeBlendTarget(src, getShrunkBBox(bbox, src), blend.shading));
-    }
-    internal.scaleShadingAmounts(target.amounts, blend.settings.strength[0],
-      blend.settings.strength[1], target.scaled);
-    internal.blendShadingPixels(src.pixels, 4, target.scaled, {
-      shadow: blend.settings.shadow || blend.shading.shadow,
-      highlight: blend.settings.highlight || blend.shading.highlight,
-      shadowChroma: blend.settings.chroma[0],
-      highlightChroma: blend.settings.chroma[1]
-    }, target.imageData.data);
-    target.ctx.putImageData(target.imageData, 0, 0);
-    buffers.image = target.image;
-    buffers.version = blend.version;
-    return target.image;
+    return getRecoloredPreview(blend, preview, getBlender(blend, preview, bbox, false));
+  }
+
+  // Returns {image, bbox, framed}, or null (see getRecoloredInset())
+  function getBlendedRasterInset(preview, bbox, view, blend) {
+    return getRecoloredInset(blend, preview, bbox, view, getBlender(blend, preview, bbox, false));
+  }
+
+  // A recolor function for getRecoloredPreview() that blends @src, an image
+  // covering @bbox; a polygon layer's drawing (@drawn) may become an overlay
+  function getBlender(blend, src, bbox, drawn) {
+    return function(pixels, out, win) {
+      var amounts = getShadingOnGrid(blend, src, bbox);
+      var scratch = getScratch(blend, pixels.length / 4, drawn);
+      var opts = getPixelOptions(blend);
+      if (win) amounts = cropRasterWindow(amounts, src.width, 1, win, scratch.amounts);
+      internal.scaleShadingAmounts(amounts, blend.settings.strength[0],
+        blend.settings.strength[1], scratch.scaled);
+      if (drawn && blend.settings.output == 'overlay') {
+        internal.blendShadingPixels(pixels, 4, scratch.scaled,
+          Object.assign({}, opts, {clip: true}), scratch.blended);
+        internal.getShadingOverlayPixels(pixels, scratch.blended, scratch.scaled, opts, out);
+      } else {
+        internal.blendShadingPixels(pixels, 4, scratch.scaled, opts, out);
+      }
+    };
   }
 
   // The shading resampled onto the grid of @src, which covers @bbox
-  function makeBlendTarget(src, bbox, shading) {
-    var target = makePreviewTarget(src);
-    target.amounts = internal.resampleShadingAmounts(shading, {
-      width: src.width, height: src.height, bbox: bbox
+  function getShadingOnGrid(blend, src, bbox) {
+    var amounts = blend.amounts.get(src);
+    if (!amounts) {
+      amounts = internal.resampleShadingAmounts(blend.shading, {
+        width: src.width, height: src.height, bbox: bbox
+      });
+      blend.amounts.set(src, amounts);
+    }
+    return amounts;
+  }
+
+  // Working arrays for @n pixels, kept for the whole preview and the part in
+  // view, which alternate while a slider is dragged
+  function getScratch(blend, n, drawn) {
+    var o = blend.scratch[n];
+    if (!o) {
+      if (Object.keys(blend.scratch).length >= 2) blend.scratch = {};
+      o = blend.scratch[n] = {amounts: new Float32Array(n), scaled: new Float32Array(n), blended: null};
+    }
+    if (drawn && !o.blended) o.blended = new Uint8Array(n * 4);
+    return o;
+  }
+
+  // blendShadingPixels() options for a blend's settings
+  function getPixelOptions(blend) {
+    var s = blend.settings;
+    return {
+      shadow: s.shadow || blend.shading.shadow,
+      highlight: s.highlight || blend.shading.highlight,
+      shadowChroma: s.chroma[0],
+      highlightChroma: s.chroma[1],
+      clip: !!s.clip,
+      depthChroma: s.depthChroma || 0,
+      depthFade: s.depthFade,
+      evenness: s.evenness || 0,
+      evennessLightness: s.evennessLightness || 0
+    };
+  }
+
+  // A polygon layer drawn with its styles over the extent of @source, the
+  // hillshade, as -blend draws it, on a grid of about DRAWING_PIXELS
+  // @target {layer, dataset}
+  // Returns a promise of {pixels, width, height, bbox}
+  function drawBlendTarget(model, target, source) {
+    var g = internal.getRasterGrid(source.raster);
+    var k = Math.min(MAX_DRAWING_MAGNIFICATION, Math.sqrt(DRAWING_PIXELS / (g.width * g.height)));
+    var grid = {
+      width: Math.max(1, Math.round(g.width * k)),
+      height: Math.max(1, Math.round(g.height * k)),
+      bbox: g.bbox.concat()
+    };
+    var scale = internal.getDrawingScale(model, [target], g) * grid.width / g.width;
+    return internal.drawLayersOnGrid([target], grid, scale).then(function(pixels) {
+      return {pixels: pixels, width: grid.width, height: grid.height, bbox: grid.bbox};
     });
-    target.scaled = new Float32Array(target.amounts.length);
-    return target;
+  }
+
+  // A hillshade blend being previewed on a polygon layer. The map draws it
+  // directly above the layer and leaves out the hillshade: as an overlay, which
+  // gives the blended image on the polygons as the map draws them, or as the
+  // blended image, which covers them.
+  // @drawing from drawBlendTarget()
+  // @settings as for setRasterBlendPreview(), plus output, one of BLEND_OUTPUTS,
+  //   and clip (see -blend's clip option)
+  function setDrawnBlendPreview(layer, source, drawing, shading, settings, exact) {
+    var blend = drawnPreviews.get(layer);
+    if (!blend || blend.drawing != drawing || blend.shading != shading) {
+      if (blend) hiddenLayers.delete(blend.source);
+      blend = makeBlendState(source, shading);
+      blend.drawing = drawing;
+      drawnPreviews.set(layer, blend);
+    }
+    hiddenLayers.add(source);
+    blend.settings = settings;
+    blend.exact = !!exact;
+    blend.version++;
+  }
+
+  function clearDrawnBlendPreview(layer) {
+    var blend = drawnPreviews.get(layer);
+    if (!blend) return;
+    hiddenLayers.delete(blend.source);
+    drawnPreviews.delete(layer);
+  }
+
+  // @view the map's extent, as [xmin, ymin, xmax, ymax]
+  // Returns {image: {canvas, width, height}, bbox, inset}, inset being the
+  // part in view with newer settings while a slider is dragged, or null (see
+  // getRecoloredInset()); or null if @layer has no preview
+  function getDrawnBlendImage(layer, view) {
+    var blend = drawnPreviews.get(layer);
+    var drawing, blender, inset;
+    if (!blend) return null;
+    drawing = blend.drawing;
+    blender = getBlender(blend, drawing, drawing.bbox, true);
+    inset = getRecoloredInset(blend, drawing, drawing.bbox, view, blender);
+    return {image: getRecoloredPreview(blend, drawing, blender), bbox: drawing.bbox, inset: inset};
   }
 
   // The blend panel's controls (gui-raster-blend-tool.mjs) and the -blend
@@ -29613,15 +29764,35 @@
 
   var BLEND_OPTIONS = ['strength', 'chroma'];
 
+  // What Apply makes of a polygon layer: an overlay, which recolors the
+  // hillshade to stack on the polygons and keeps them, or an image of the
+  // polygons blended with the hillshade, which replaces them (see -blend's
+  // overlay option)
+  var BLEND_OUTPUTS = [
+    {value: 'overlay', label: 'Overlay'},
+    {value: 'image', label: 'Image'}
+  ];
+
   var BLEND_SLIDERS = [
-    {name: 'shadow_strength', label: 'Strength', option: 'strength', side: 0, min: 0, max: 2, value: 1},
-    {name: 'shadow_chroma', label: 'Chroma', option: 'chroma', side: 0, min: 0, max: 2, value: 0},
-    {name: 'highlight_strength', label: 'Strength', option: 'strength', side: 1, min: 0, max: 2, value: 1},
-    {name: 'highlight_chroma', label: 'Chroma', option: 'chroma', side: 1, min: 0, max: 2, value: 1}
+    {name: 'shadow_strength', label: 'Strength', option: 'strength', side: 0, min: 0, max: 1.5, value: 1},
+    {name: 'shadow_chroma', label: 'Chroma', option: 'chroma', side: 0, min: 0, max: 1.5, value: 0.5},
+    {name: 'highlight_strength', label: 'Strength', option: 'strength', side: 1, min: 0, max: 1.5, value: 1},
+    {name: 'highlight_chroma', label: 'Chroma', option: 'chroma', side: 1, min: 0, max: 1.5, value: 0.5}
+  ];
+
+  // Sliders for -blend's hidden options, for tuning (see
+  // docs/development/raster-blend.md), shown with the URL flag ?blend-testing.
+  // Each defaults to the option's default; @option is written when the slider
+  // is away from it.
+  var BLEND_TEST_SLIDERS = [
+    {name: 'depth_chroma', label: 'Depth', option: 'depth-chroma', min: 0, max: 0.5, value: 0.15},
+    {name: 'depth_fade', label: 'Depth fade', option: 'depth-fade', min: 0, max: 0.8, value: 0.4},
+    {name: 'evenness', label: 'Evenness', option: 'evenness', min: 0, max: 1, value: 0.8},
+    {name: 'evenness_lightness', label: 'Even at L', option: 'evenness-lightness', min: 0.3, max: 0.9, value: 0.8}
   ];
 
   function getDefaultBlendSettings() {
-    var settings = BLEND_SLIDERS.reduce(function(memo, slider) {
+    var settings = BLEND_SLIDERS.concat(BLEND_TEST_SLIDERS).reduce(function(memo, slider) {
       memo[slider.name] = slider.value;
       return memo;
     }, {});
@@ -29652,12 +29823,16 @@
 
   // @sourceId the hillshade layer, as a target id
   // @keepSource keep the hillshade layer, which -blend removes by default
+  // @output for a polygon layer, one of BLEND_OUTPUTS
+  // @clip leave out the shading outside the polygons
   // Options left at their defaults are left out, and an option with the same
   // value for shadows and highlights is written as one value
-  function getBlendCommand(settings, sourceId, keepSource) {
+  function getBlendCommand(settings, sourceId, keepSource, output, clip) {
     var values = getBlendOptionValues(settings);
     var defaults = getBlendOptionValues(getDefaultBlendSettings());
     var parts = ['-blend', 'source=' + sourceId];
+    if (output == 'overlay') parts.push('overlay');
+    if (clip) parts.push('clip');
     BLEND_OPTIONS.forEach(function(option) {
       var pair = values[option];
       if (pair[0] == defaults[option][0] && pair[1] == defaults[option][1]) return;
@@ -29665,6 +29840,10 @@
     });
     BLEND_SECTIONS.forEach(function(section) {
       if (settings[section.color]) parts.push(section.colorOption + '=' + settings[section.color]);
+    });
+    BLEND_TEST_SLIDERS.forEach(function(slider) {
+      var val = settings[slider.name];
+      if (val != null && val != slider.value) parts.push(slider.option + '=' + val);
     });
     if (keepSource) parts.push('keep-source');
     return parts.join(' ');
@@ -29690,6 +29869,12 @@
   // the raster and removes the hillshade, unless "Keep hillshade" is checked).
   // Leaving the mode any other way --
   // Cancel, the panel's ×, another tool, another layer -- drops the preview.
+  //
+  // On a polygon layer, the panel also has an Output setting: an overlay, which
+  // keeps the polygons, or an image, which replaces them (see BLEND_OUTPUTS),
+  // and a checkbox that clips the shading to the polygons.
+  // The polygons are drawn on a grid over the hillshade once per hillshade,
+  // and the map shows the overlay or the image above them.
   function RasterBlendTool(gui) {
     var parent = gui.container.findChild('.mshp-main-map');
     var panel = El('div').addClass('label-style-panel raster-tone-panel raster-blend-panel').appendTo(parent).hide();
@@ -29698,10 +29883,18 @@
     var settingPicker = false; // the picker echoes the colors it is given to onPreview
     var settings = getDefaultBlendSettings();
     var targetLayer = null;
+    var targetDataset = null;
+    var drawnTarget = false; // a polygon layer (see blendTargetIsDrawn())
     var sources = []; // [{layer, dataset}], as offered by the menu
     var source = null; // the selected one
     var shadings = new WeakMap(); // hillshade layer -> shading amounts, or null if unreadable
-    // the checkbox is left as it was from one blend to the next
+    // hillshade layer -> {drawing, failed}, the polygon target drawn over it;
+    // drawing is null until drawBlendTarget() is done
+    var drawings = new WeakMap();
+    // the output and the checkboxes are left as they were from one blend to the next
+    var output = BLEND_OUTPUTS[0].value;
+    var outputRow, outputButtons = {};
+    var clipRow, clipLabel, clipCheckbox;
     var sourceSelect, noteEl, slidersEl, keepLabel, keepCheckbox, applyBtn;
     var pendingFrame = null;
     var pendingExact = false;
@@ -29733,7 +29926,7 @@
 
     function initPanel() {
       var header = El('div').addClass('label-style-panel-title').appendTo(panel);
-      var sourceRow, btnRow;
+      var sourceRow, outputGroup, btnRow, testSection;
       El('span').appendTo(header).text('Blend hillshade');
       El('button').addClass('label-style-close').appendTo(header).text('×').on('click', cancel);
       sourceRow = El('div').addClass('label-style-row raster-blend-source-row').appendTo(panel);
@@ -29743,6 +29936,25 @@
           selectSource(sources[+sourceSelect.node().value] || null);
           releaseFocus();
         });
+      outputRow = El('div').addClass('label-style-row raster-tone-slider-row raster-blend-output-row').appendTo(panel);
+      El('span').addClass('raster-tone-slider-label').appendTo(outputRow).text('Output');
+      outputGroup = El('div').addClass('label-btn-group').appendTo(outputRow);
+      BLEND_OUTPUTS.forEach(function(choice) {
+        outputButtons[choice.value] = makePanelButton(outputGroup, choice.label, function() {
+          if (output == choice.value) return;
+          output = choice.value;
+          showOutput();
+          schedulePreview(true);
+        });
+      });
+      clipRow = El('div').addClass('label-style-row raster-blend-clip-row').appendTo(panel);
+      clipLabel = El('label').addClass('raster-blend-keep-label').appendTo(clipRow);
+      clipCheckbox = El('input').attr('type', 'checkbox').appendTo(clipLabel)
+        .on('change', function() {
+          schedulePreview(true);
+          releaseFocus();
+        });
+      El('span').appendTo(clipLabel).text('Clip to polygons');
       noteEl = El('div').addClass('raster-blend-note').appendTo(panel);
       slidersEl = El('div').addClass('raster-blend-sliders').appendTo(panel);
       BLEND_SECTIONS.forEach(function(section) {
@@ -29753,6 +29965,11 @@
           controls[slider.name] = addSliderRow(el, slider, section);
         });
         colorControls[section.color] = addColorRow(el, section);
+      });
+      testSection = makePanelSection(slidersEl, 'Testing');
+      if (!blendTestingIsOn()) testSection.node().style.display = 'none';
+      BLEND_TEST_SLIDERS.forEach(function(slider) {
+        controls[slider.name] = addSliderRow(testSection, slider, {title: 'Testing'});
       });
       btnRow = El('div').addClass('label-style-row label-panel-button-row raster-tone-buttons').appendTo(panel);
       keepLabel = El('label').addClass('raster-blend-keep-label').appendTo(btnRow);
@@ -29874,12 +30091,29 @@
     }
 
     function turnOn() {
-      targetLayer = getActiveLayer();
+      var active = gui.model.getActiveLayer();
+      targetLayer = active.layer;
+      targetDataset = active.dataset;
+      drawnTarget = blendTargetIsDrawn(targetLayer);
+      // the test sliders keep their values from one blend to the next
+      var prev = settings;
       settings = getDefaultBlendSettings();
-      BLEND_SLIDERS.forEach(updateSlider);
+      BLEND_TEST_SLIDERS.forEach(function(slider) {
+        settings[slider.name] = prev[slider.name];
+      });
+      BLEND_SLIDERS.concat(BLEND_TEST_SLIDERS).forEach(updateSlider);
+      outputRow.node().style.display = drawnTarget ? '' : 'none';
+      clipRow.node().style.display = drawnTarget ? '' : 'none';
+      showOutput();
       source = null;
       panel.show();
       updateSources();
+    }
+
+    function showOutput() {
+      BLEND_OUTPUTS.forEach(function(choice) {
+        outputButtons[choice.value].classed('selected', output == choice.value);
+      });
     }
 
     function turnOff() {
@@ -29891,13 +30125,15 @@
       pendingExact = false;
       hidePickers();
       if (!keepPreview) {
-        clearRasterBlendPreview(targetLayer);
+        clearPreview(targetLayer);
         gui.dispatchEvent('map-needs-refresh');
       }
       targetLayer = null;
+      targetDataset = null;
       sources = [];
       source = null;
       shadings = new WeakMap();
+      drawings = new WeakMap();
       releaseFocus();
       panel.hide();
     }
@@ -29950,11 +30186,13 @@
         note = 'This layer can\'t be read as a hillshade.';
       } else if (targetIsReprojected()) {
         note = 'The map is in a different projection from this layer, so the blend can\'t be previewed. Apply still blends it.';
+      } else if (source && drawnTarget && getDrawing(source).failed) {
+        note = 'This layer couldn\'t be drawn for a preview. Apply still blends it.';
       }
       noteEl.text(note);
       noteEl.node().style.display = note ? '' : 'none';
       slidersEl.classed('disabled', !shading);
-      BLEND_SLIDERS.forEach(function(slider) {
+      BLEND_SLIDERS.concat(BLEND_TEST_SLIDERS).forEach(function(slider) {
         controls[slider.name].input.node().disabled = !shading;
       });
       BLEND_SECTIONS.forEach(function(section) {
@@ -29962,6 +30200,7 @@
       });
       applyBtn.classed('disabled', !shading);
       keepLabel.classed('disabled', !shading);
+      clipLabel.classed('disabled', !shading);
     }
 
     // Read once per layer, as -blend reads it; null if -blend would stop on it
@@ -29978,6 +30217,24 @@
       return shading;
     }
 
+    // The polygon target drawn over @src's hillshade, which is drawn once per
+    // hillshade; the preview is updated when the drawing is done
+    function getDrawing(src) {
+      var entry = drawings.get(src.layer);
+      var target = {layer: targetLayer, dataset: targetDataset};
+      if (entry) return entry;
+      entry = {drawing: null, failed: false};
+      drawings.set(src.layer, entry);
+      drawBlendTarget(gui.model, target, src.layer).then(function(drawing) {
+        entry.drawing = drawing;
+        if (drawings.get(src.layer) == entry) schedulePreview(true);
+      }, function() {
+        entry.failed = true;
+        if (drawings.get(src.layer) == entry && source == src) updatePanelState();
+      });
+      return entry;
+    }
+
     function targetIsReprojected() {
       return !!(targetLayer && targetLayer.gui && targetLayer.gui.dynamic_crs);
     }
@@ -29991,7 +30248,8 @@
       if (!shading) return;
       cmd = getBlendCommand(settings,
         internal.formatOptionValue(internal.getLayerTargetId(gui.model, source.layer)),
-        keepCheckbox.node().checked);
+        keepCheckbox.node().checked, drawnTarget ? output : null,
+        drawnTarget && clipCheckbox.node().checked);
       updatePreviewNow();
       keepPreview = true;
       exitMode();
@@ -29999,10 +30257,15 @@
       runGuiEditCommand(gui, cmd, {
         title: 'Blend error',
         onDone: function() {
-          clearRasterBlendPreview(lyr);
+          clearPreview(lyr);
           gui.dispatchEvent('map-needs-refresh');
         }
       });
+    }
+
+    function clearPreview(lyr) {
+      clearRasterBlendPreview(lyr);
+      clearDrawnBlendPreview(lyr);
     }
 
     // Slider events come faster than the map can be redrawn on a large image.
@@ -30026,10 +30289,16 @@
     function updatePreview() {
       var exact = pendingExact;
       var shading = source && getShading(source.layer);
+      var drawing = null;
       pendingExact = false;
       if (!targetLayer) return;
-      if (!shading || targetIsReprojected()) {
-        clearRasterBlendPreview(targetLayer);
+      if (shading && drawnTarget && !targetIsReprojected()) {
+        drawing = getDrawing(source).drawing;
+      }
+      if (!shading || targetIsReprojected() || drawnTarget && !drawing) {
+        clearPreview(targetLayer);
+      } else if (drawnTarget) {
+        setDrawnBlendPreview(targetLayer, source.layer, drawing, shading, getPreviewSettings(), exact);
       } else {
         setRasterBlendPreview(targetLayer, source.layer, shading, getPreviewSettings(), exact);
       }
@@ -30040,6 +30309,12 @@
       var o = getBlendOptionValues(settings);
       o.shadow = settings.shadow_color ? hexToRgb(settings.shadow_color) : null;
       o.highlight = settings.highlight_color ? hexToRgb(settings.highlight_color) : null;
+      o.output = output;
+      o.clip = drawnTarget && clipCheckbox.node().checked;
+      o.depthChroma = settings.depth_chroma;
+      o.depthFade = settings.depth_fade;
+      o.evenness = settings.evenness;
+      o.evennessLightness = settings.evenness_lightness;
       return o;
     }
 
@@ -30051,6 +30326,72 @@
       var o = gui.model.getActiveLayer();
       return o && o.layer || null;
     }
+  }
+
+  function blendTestingIsOn() {
+    var val = GUI.getUrlVars()['blend-testing'];
+    return val === true || val == '1';
+  }
+
+  // Scaled-down copies of RGBA preview images. Kept free of browser and
+  // mapshaper dependencies so it can be tested directly.
+
+  // The whole-number factor that brings a @width x @height image down to at
+  // most @maxPixels pixels (1 if it is already small enough)
+  function getShrinkFactor(width, height, maxPixels) {
+    var k = 1;
+    while (Math.ceil(width / k) * Math.ceil(height / k) > maxPixels) k++;
+    return k;
+  }
+
+  // Averages each @k x @k block of RGBA @pixels into one pixel; blocks at the
+  // right and bottom edges may be partial. Colors are weighted by alpha, so
+  // transparent pixels (e.g. nodata) do not darken the edges of an image.
+  // Returns {pixels, width, height, coverWidth, coverHeight}, pixels being a
+  // Uint8ClampedArray. A partial block stands for less than a whole pixel of
+  // the copy, so the copy covers the original image with coverWidth x
+  // coverHeight of its pixels (fractional if there are partial blocks).
+  function shrinkRgbaPixels(pixels, width, height, k) {
+    var w2 = Math.ceil(width / k);
+    var h2 = Math.ceil(height / k);
+    var out = new Uint8ClampedArray(w2 * h2 * 4);
+    var x2, y2, x, y, x1, y1, xmax, ymax, i, o, a, r, g, b, asum, n;
+    for (y2 = 0; y2 < h2; y2++) {
+      y1 = y2 * k;
+      ymax = Math.min(y1 + k, height);
+      for (x2 = 0; x2 < w2; x2++) {
+        x1 = x2 * k;
+        xmax = Math.min(x1 + k, width);
+        r = g = b = asum = n = 0;
+        for (y = y1; y < ymax; y++) {
+          i = (y * width + x1) * 4;
+          for (x = x1; x < xmax; x++, i += 4) {
+            a = pixels[i + 3];
+            r += pixels[i] * a;
+            g += pixels[i + 1] * a;
+            b += pixels[i + 2] * a;
+            asum += a;
+            n++;
+          }
+        }
+        o = (y2 * w2 + x2) * 4;
+        if (asum > 0) {
+          out[o] = r / asum;
+          out[o + 1] = g / asum;
+          out[o + 2] = b / asum;
+          out[o + 3] = asum / n;
+        }
+      }
+    }
+    return {pixels: out, width: w2, height: h2, coverWidth: width / k, coverHeight: height / k};
+  }
+
+  // The extent of a reduced @copy of an image covering @bbox: partial blocks
+  // make the copy reach a little past the image's right and bottom edges
+  function getShrunkBBox(bbox, copy) {
+    var dx = (bbox[2] - bbox[0]) / copy.coverWidth;
+    var dy = (bbox[3] - bbox[1]) / copy.coverHeight;
+    return [bbox[0], bbox[3] - dy * copy.height, bbox[0] + dx * copy.width, bbox[3]];
   }
 
   // A hillshade being previewed in place of an elevation layer, while the
@@ -30817,30 +31158,8 @@
     // The rectangle of raster pixels to shade while a slider is dragged:
     // {x0, y0, x1, y1, framed}, or null if the raster is out of view
     function getPreviewWindow(source) {
-      var ext = gui.map.getExtent();
-      var view = ext.getBounds();
-      var b = source.bbox;
-      var dx = (b[2] - b[0]) / source.width, dy = (b[3] - b[1]) / source.height;
-      var vx0 = clampInt(Math.floor((view.xmin - b[0]) / dx), 0, source.width);
-      var vx1 = clampInt(Math.ceil((view.xmax - b[0]) / dx), 0, source.width);
-      var vy0 = clampInt(Math.floor((b[3] - view.ymax) / dy), 0, source.height);
-      var vy1 = clampInt(Math.ceil((b[3] - view.ymin) / dy), 0, source.height);
-      var vw = vx1 - vx0, vh = vy1 - vy0;
-      var aspect, w, h, cx, cy, x0, y0;
-      if (vw <= 0 || vh <= 0) return null;
-      if (vw * vh <= WINDOW_MAX_PIXELS) {
-        return {x0: vx0, y0: vy0, x1: vx1, y1: vy1, framed: false};
-      }
-      // the shape of the view, in raster pixels
-      aspect = (view.xmax - view.xmin) / dx / ((view.ymax - view.ymin) / dy);
-      w = Math.min(vw, Math.round(Math.sqrt(WINDOW_MAX_PIXELS * aspect)));
-      h = Math.min(vh, Math.floor(WINDOW_MAX_PIXELS / w));
-      w = Math.min(vw, Math.floor(WINDOW_MAX_PIXELS / h));
-      cx = ((view.xmin + view.xmax) / 2 - b[0]) / dx;
-      cy = (b[3] - (view.ymin + view.ymax) / 2) / dy;
-      x0 = clampInt(Math.round(cx - w / 2), vx0, vx1 - w);
-      y0 = clampInt(Math.round(cy - h / 2), vy0, vy1 - h);
-      return {x0: x0, y0: y0, x1: x0 + w, y1: y0 + h, framed: true};
+      return getRasterWindow(source.width, source.height, source.bbox,
+        gui.map.getExtent().getBounds().toArray(), WINDOW_MAX_PIXELS);
     }
 
     // An image made from reduced copies of the smoothed terrain and the fields,
@@ -31028,10 +31347,6 @@
       out.set(arr.subarray(i, i + w), y * w);
     }
     return out;
-  }
-
-  function clampInt(val, min, max) {
-    return Math.max(min, Math.min(max, val));
   }
 
   function Model(gui) {
@@ -45814,7 +46129,7 @@
       var blend = getRasterBlendPreview(layer);
       var opacity = internal.getRasterViewOpacity(raster) * (tone && tone.opacity >= 0 ? tone.opacity : 1);
       var recolor = getRasterRecoloring(tone, blend);
-      var bbox, grid, sourcePixels;
+      var bbox, grid, sourcePixels, inset;
       if (rasterIsHiddenByBlendPreview(layer)) return;
       if (layer.gui && layer.gui.dynamic_crs) {
         // the hillshade can't be resampled onto a reprojected preview
@@ -45850,20 +46165,30 @@
         }
       }
       if (!preview || !preview.pixels || !bbox) return;
+      inset = layer.hillshade_inset ? null : getRecoloredInset(tone, blend, preview, bbox);
       if (layer.hillshade_inset) {
-        drawRasterWithInset(layer.hillshade_inset, opacity, function() {
+        drawAroundInset(layer.hillshade_inset, function() {
           drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
+        }, function() {
+          drawRasterPreview(layer.hillshade_inset.preview, layer.hillshade_inset.bbox, true, null, opacity);
+        });
+      } else if (inset) {
+        drawAroundInset(inset, function() {
+          drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
+        }, function() {
+          drawRasterPreview(inset.image, inset.bbox, sourcePixels, function() { return inset.image; }, opacity);
         });
       } else {
         drawRasterPreview(preview, bbox, sourcePixels, recolor, opacity);
       }
     };
 
-    // A full-resolution part of a hillshade being previewed with newer settings
-    // (see setRasterHillshadePreview()). The rest of the hillshade is drawn
-    // around it rather than under it, so a transparent hillshade isn't drawn
-    // twice there.
-    function drawRasterWithInset(inset, opacity, drawRest) {
+    // A full-resolution part of an image being previewed with newer settings:
+    // a hillshade (see setRasterHillshadePreview()), or a toned or blended
+    // image (see getRecoloredInset()). The rest of the image is drawn around it
+    // rather than under it, so a transparent image isn't drawn twice there.
+    // @inset {bbox, framed}
+    function drawAroundInset(inset, drawRest, drawInset) {
       var pixRatio = GUI.getPixelRatio();
       var t = _ext.getTransform(pixRatio);
       var p1 = t.transform(inset.bbox[0], inset.bbox[3]);
@@ -45875,13 +46200,46 @@
       _ctx.clip('evenodd');
       drawRest();
       _ctx.restore();
-      drawRasterPreview(inset.preview, inset.bbox, true, null, opacity);
+      drawInset();
       if (inset.framed) {
         _ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
         _ctx.lineWidth = pixRatio;
         _ctx.strokeRect(Math.round(p1[0]) + pixRatio / 2, Math.round(p1[1]) + pixRatio / 2,
           Math.round(p2[0] - p1[0]) - pixRatio, Math.round(p2[1] - p1[1]) - pixRatio);
       }
+    }
+
+    // A hillshade blend previewed on a polygon layer (see getDrawnBlendImage())
+    // @img {canvas, width, height}, the part of the canvas that covers @bbox
+    // @inset optional {image, bbox, framed}, a part with newer settings
+    _self.drawBlendImage = function(img, bbox, inset) {
+      if (inset) {
+        drawAroundInset(inset, function() {
+          drawImageInBox(img, bbox);
+        }, function() {
+          drawImageInBox(inset.image, inset.bbox);
+        });
+      } else {
+        drawImageInBox(img, bbox);
+      }
+    };
+
+    function drawImageInBox(img, bbox) {
+      var t = _ext.getTransform(GUI.getPixelRatio());
+      var p1 = t.transform(bbox[0], bbox[3]);
+      var p2 = t.transform(bbox[2], bbox[1]);
+      _ctx.imageSmoothingEnabled = true;
+      _ctx.drawImage(img.canvas, 0, 0, img.width, img.height,
+        p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+    }
+
+    // The part in view of a preview that the tone or blend panel is showing,
+    // recolored with newer settings while a slider is dragged, or null
+    function getRecoloredInset(tone, blend, preview, bbox) {
+      var view = _ext.getBounds().toArray();
+      if (blend) return getBlendedRasterInset(preview, bbox, view, blend);
+      if (tone && tone.opts) return getTonedRasterInset(preview, bbox, view, tone);
+      return null;
     }
 
     // A recolored copy of a preview that the tone or blend panel is showing,
@@ -47380,7 +47738,15 @@
         drawOutlineLayerToCanvas(lyr, canv, ext);
       } else {
         drawStyledLayerToCanvas(lyr, canv, ext);
+        drawBlendPreviewAbove(lyr, canv, ext);
       }
+    }
+
+    // A hillshade blend previewed on a polygon layer goes directly above it,
+    // where -blend puts its output
+    function drawBlendPreviewAbove(lyr, canv, ext) {
+      var blend = getDrawnBlendImage(lyr, ext.getBounds().toArray());
+      if (blend) canv.drawBlendImage(blend.image, blend.bbox, blend.inset);
     }
 
     // Reading back a single pixel forces Chrome/Firefox to synchronously complete
