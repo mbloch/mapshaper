@@ -2,6 +2,7 @@ v0.8.12
 * [web] Simplified the hillshade panel.
 * [web] The blend hillshade panel works on polygon layers, making an overlay that keeps the polygons, or an image.
 * Added a -blend `clip` option, which leaves out the shading where the targets are transparent (e.g. outside polygons). The blend panel has a "Clip to polygons" checkbox.
+* -blend gives pale colors richer shadows and makes shading more even across light and dark colors: dark colors get stronger shadows and gentler highlights than before. The default `chroma=` is now 0.5 for both shadows and highlights (previously 0,1).
 * Improved -hillshade lighting=soft, which darkened steep slopes facing the light.
 
 v0.8.11

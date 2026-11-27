@@ -277,7 +277,7 @@ describe('mapshaper-blend.mjs', function () {
 
     function overlay(samples, amounts, opts2) {
       var o = Object.assign({}, opts, opts2);
-      var blended = internal.blendShadingPixels(samples, 4, amounts, o);
+      var blended = internal.blendShadingPixels(samples, 4, amounts, Object.assign({}, o, {clip: true}));
       return {blended: blended, overlay: internal.getShadingOverlayPixels(samples, blended, amounts, o)};
     }
 
@@ -313,23 +313,36 @@ describe('mapshaper-blend.mjs', function () {
       assert(o[3] > 0.3 * 255);
     });
 
-    it('is transparent where there is no shading, and plain shading where the image is not opaque', function () {
-      var o = overlay(new Uint8Array([40, 160, 60, 255, 40, 160, 60, 0, 40, 160, 60, 128]),
-        new Float32Array([0, -0.5, 0.25])).overlay;
-      assert.deepEqual(Array.from(o), [0, 0, 0, 0, 0, 0, 0, 128, 255, 255, 255, 64]);
+    it('is transparent where there is no shading, and plain shading where the image is transparent', function () {
+      var o = overlay(new Uint8Array([40, 160, 60, 255, 40, 160, 60, 0]),
+        new Float32Array([0, -0.5])).overlay;
+      assert.deepEqual(Array.from(o), [0, 0, 0, 0, 0, 0, 0, 128]);
     });
 
-    it('with clip, scales the shading by the image\'s alpha where it is not opaque', function () {
+    it('on a partly transparent pixel, mixes the opaque pixel\'s overlay with plain shading by coverage', function () {
+      // the opaque pixel's overlay is [157, 254, 154, 76]; half of it, and
+      // half of white at 0.25
+      var o = overlay(new Uint8Array([40, 160, 60, 128]), new Float32Array([0.25])).overlay;
+      assert.deepEqual(Array.from(o), [202, 254, 200, 70]);
+    });
+
+    it('gives a nearly opaque pixel (e.g. on a seam between polygons) the overlay of an opaque one', function () {
+      var o = overlay(new Uint8Array([209, 229, 240, 255, 209, 229, 240, 250]),
+        new Float32Array([-0.5, -0.5]), {shadowChroma: 1}).overlay;
+      assert.deepEqual(Array.from(o.slice(4)), Array.from(o.slice(0, 4)));
+    });
+
+    it('with clip, leaves out the shading over the part of a pixel the image doesn\'t cover', function () {
       var o = overlay(new Uint8Array([40, 160, 60, 255, 40, 160, 60, 0, 40, 160, 60, 128]),
         new Float32Array([-0.4, -0.5, 0.25]), {clip: true}).overlay;
-      assert.deepEqual(Array.from(o), [0, 0, 0, 102, 0, 0, 0, 0, 255, 255, 255, 32]);
+      assert.deepEqual(Array.from(o), [0, 0, 0, 102, 0, 0, 0, 0, 157, 254, 154, 38]);
     });
   });
 
   describe('-blend', function () {
-    it('chroma=0 matches stacking the hillshade on the image', async function () {
+    it('chroma=0 evenness=0 matches stacking the hillshade on the image', async function () {
       var catalog = await run(makeDataset(30, 30, ridge, [40, 160, 60]),
-        '-hillshade target=dem name=hs -blend hs target=img chroma=0 + name=out');
+        '-hillshade target=dem name=hs -blend hs target=img chroma=0 evenness=0 + name=out');
       var hs = findLayer(catalog, 'hs').raster.grid.samples;
       var out = findLayer(catalog, 'out').raster.grid.samples;
       var i, a, k, expected, shaded = 0;
@@ -347,7 +360,7 @@ describe('mapshaper-blend.mjs', function () {
     it('shadow-color= and highlight-color= replace the hillshade\'s colors in the stacking', async function () {
       var shadow = [40, 30, 120], highlight = [255, 230, 180];
       var catalog = await run(makeDataset(30, 30, ridge, [40, 160, 60]),
-        '-hillshade target=dem name=hs -blend hs target=img chroma=0 + name=out ' +
+        '-hillshade target=dem name=hs -blend hs target=img chroma=0 evenness=0 + name=out ' +
         'shadow-color=#281e78 highlight-color=#ffe6b4');
       var hs = findLayer(catalog, 'hs').raster.grid.samples;
       var out = findLayer(catalog, 'out').raster.grid.samples;
@@ -382,11 +395,23 @@ describe('mapshaper-blend.mjs', function () {
         strength: [1, 1], chroma: [0.5, 0.5], base_color: null});
     });
 
-    it('defaults to stacked shadows and highlights without haze (chroma=0,1)', async function () {
+    it('defaults to strength=1 chroma=0.5', async function () {
       var catalog = await run(makeDataset(20, 20, ridge, [40, 160, 60]),
         '-hillshade target=dem name=hs -blend hs target=img');
       var params = findLayer(catalog, 'img').raster.derivation;
-      assert.deepEqual([params.strength, params.chroma], [[1, 1], [0, 1]]);
+      assert.deepEqual([params.strength, params.chroma], [[1, 1], [0.5, 0.5]]);
+    });
+
+    it('applies depth and evenness by default, which the hidden options can turn off', async function () {
+      var dataset = makeDataset(30, 30, ridge, [209, 229, 240]);
+      var catalog = await run(dataset, '-hillshade target=dem name=hs -blend hs target=img + name=a ' +
+        '-blend hs target=img + name=b depth-chroma=0.15 depth-fade=0.4 evenness=0.8 evenness-lightness=0.8 ' +
+        '-blend hs target=img + name=c depth-chroma=0 evenness=0');
+      var a = findLayer(catalog, 'a').raster.grid.samples;
+      assert.deepEqual(Array.from(a), Array.from(findLayer(catalog, 'b').raster.grid.samples));
+      assert.notDeepEqual(Array.from(a), Array.from(findLayer(catalog, 'c').raster.grid.samples));
+      assert.equal(findLayer(catalog, 'b').raster.derivation.evenness, 0.8);
+      assert.equal(findLayer(catalog, 'a').raster.derivation.evenness, undefined);
     });
 
     it('+ keeps the target and the hillshade', async function () {
@@ -519,7 +544,7 @@ describe('mapshaper-blend.mjs', function () {
 
     it('guesses the flat-ground color of a hillshade from elsewhere', async function () {
       var catalog = await run(addGrayHillshade(makeDataset(10, 10, ridge, [40, 160, 60])),
-        '-blend gdal target=img chroma=0');
+        '-blend gdal target=img chroma=0 evenness=0');
       var out = findLayer(catalog, 'img').raster.grid.samples;
       assert.deepEqual(Array.from(out.subarray(0, 3)), [40, 160, 60]);
       assert.deepEqual(Array.from(out.subarray(33, 36)), [20, 80, 30]);
@@ -542,7 +567,7 @@ describe('mapshaper-blend.mjs', function () {
       samples.set([0, 0, 0, 128], 44);
       samples.set([255, 255, 255, 64], 48);
       addRaster(dataset, 'shade', samples, 4);
-      var out = findLayer(await run(dataset, '-blend shade target=img chroma=0'), 'img').raster.grid.samples;
+      var out = findLayer(await run(dataset, '-blend shade target=img chroma=0 evenness=0'), 'img').raster.grid.samples;
       assert.deepEqual(Array.from(out.subarray(0, 3)), [40, 160, 60]);
       assert.deepEqual(Array.from(out.subarray(33, 36)), [20, 80, 30]);
       assert(out[36] > 40);

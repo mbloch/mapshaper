@@ -7,7 +7,7 @@ import {
 describe('gui-blend-settings.mjs', function () {
   it('defaults are -blend\'s defaults', function () {
     var settings = getDefaultBlendSettings();
-    assert.deepEqual(getBlendOptionValues(settings), {strength: [1, 1], chroma: [0, 1]});
+    assert.deepEqual(getBlendOptionValues(settings), {strength: [1, 1], chroma: [0.5, 0.5]});
     assert.equal(settings.shadow_color, null);
     assert.equal(settings.highlight_color, null);
     assert.equal(BLEND_SLIDERS.length, 4);
@@ -17,11 +17,18 @@ describe('gui-blend-settings.mjs', function () {
     assert.equal(getBlendCommand(getDefaultBlendSettings(), 'relief'), '-blend source=relief');
   })
 
+  it('writes the Testing sliders that are away from their defaults', function () {
+    var settings = getDefaultBlendSettings();
+    settings.evenness = 0;
+    settings.depth_fade = 0.25;
+    assert.equal(getBlendCommand(settings, 'relief'), '-blend source=relief depth-fade=0.25 evenness=0');
+  })
+
   it('adds keep-source to keep the hillshade', function () {
     var settings = getDefaultBlendSettings();
-    settings.shadow_chroma = 0.5;
+    settings.shadow_chroma = 0;
     assert.equal(getBlendCommand(settings, 'relief', true),
-      '-blend source=relief chroma=0.5,1 keep-source');
+      '-blend source=relief chroma=0,0.5 keep-source');
   })
 
   it('writes overlay for an overlay of a polygon layer, and nothing for an image', function () {
@@ -46,12 +53,12 @@ describe('gui-blend-settings.mjs', function () {
     settings.shadow_strength = 0.8;
     assert.equal(getBlendCommand(settings, 'relief'), '-blend source=relief strength=0.8,1');
     settings.highlight_strength = 0.8;
-    settings.shadow_chroma = 0.5;
+    settings.shadow_chroma = 1;
     assert.equal(getBlendCommand(settings, 'relief'),
-      '-blend source=relief strength=0.8 chroma=0.5,1');
-    settings.highlight_chroma = 0.5;
+      '-blend source=relief strength=0.8 chroma=1,0.5');
+    settings.highlight_chroma = 1;
     assert.equal(getBlendCommand(settings, '"my relief"'),
-      '-blend source="my relief" strength=0.8 chroma=0.5');
+      '-blend source="my relief" strength=0.8 chroma=1');
   })
 
   it('writes colors that are not the hillshade\'s own', function () {

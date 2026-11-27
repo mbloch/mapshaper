@@ -1,4 +1,5 @@
 import { El } from './gui-el';
+import { GUI } from './gui-lib';
 import { internal } from './gui-core';
 import { releasePanelFocus } from './gui-panel-focus';
 import { makeColorField, makePanelActionButton, makePanelButton, makePanelSection } from './gui-panel-controls';
@@ -11,8 +12,9 @@ import {
 import { blendIsAvailable, blendTargetIsDrawn, getBlendSourceLayers } from './gui-blend-sources';
 import { formatLayerNameForDisplay } from './gui-layer-utils';
 import {
-  BLEND_OUTPUTS, BLEND_SECTIONS, BLEND_SLIDERS, getBlendColorSetting, getBlendCommand,
-  getBlendOptionValues, getDefaultBlendSettings, hexToRgb, rgbToHex, roundBlendValue
+  BLEND_OUTPUTS, BLEND_SECTIONS, BLEND_SLIDERS, BLEND_TEST_SLIDERS, getBlendColorSetting,
+  getBlendCommand, getBlendOptionValues, getDefaultBlendSettings, hexToRgb, rgbToHex,
+  roundBlendValue
 } from './gui-blend-settings';
 
 // The 'blend' mode: a menu of hillshade layers, and sliders and colors that
@@ -80,7 +82,7 @@ export function RasterBlendTool(gui) {
 
   function initPanel() {
     var header = El('div').addClass('label-style-panel-title').appendTo(panel);
-    var sourceRow, outputGroup, btnRow;
+    var sourceRow, outputGroup, btnRow, testSection;
     El('span').appendTo(header).text('Blend hillshade');
     El('button').addClass('label-style-close').appendTo(header).text('×').on('click', cancel);
     sourceRow = El('div').addClass('label-style-row raster-blend-source-row').appendTo(panel);
@@ -119,6 +121,11 @@ export function RasterBlendTool(gui) {
         controls[slider.name] = addSliderRow(el, slider, section);
       });
       colorControls[section.color] = addColorRow(el, section);
+    });
+    testSection = makePanelSection(slidersEl, 'Testing');
+    if (!blendTestingIsOn()) testSection.node().style.display = 'none';
+    BLEND_TEST_SLIDERS.forEach(function(slider) {
+      controls[slider.name] = addSliderRow(testSection, slider, {title: 'Testing'});
     });
     btnRow = El('div').addClass('label-style-row label-panel-button-row raster-tone-buttons').appendTo(panel);
     keepLabel = El('label').addClass('raster-blend-keep-label').appendTo(btnRow);
@@ -244,8 +251,13 @@ export function RasterBlendTool(gui) {
     targetLayer = active.layer;
     targetDataset = active.dataset;
     drawnTarget = blendTargetIsDrawn(targetLayer);
+    // the test sliders keep their values from one blend to the next
+    var prev = settings;
     settings = getDefaultBlendSettings();
-    BLEND_SLIDERS.forEach(updateSlider);
+    BLEND_TEST_SLIDERS.forEach(function(slider) {
+      settings[slider.name] = prev[slider.name];
+    });
+    BLEND_SLIDERS.concat(BLEND_TEST_SLIDERS).forEach(updateSlider);
     outputRow.node().style.display = drawnTarget ? '' : 'none';
     clipRow.node().style.display = drawnTarget ? '' : 'none';
     showOutput();
@@ -336,7 +348,7 @@ export function RasterBlendTool(gui) {
     noteEl.text(note);
     noteEl.node().style.display = note ? '' : 'none';
     slidersEl.classed('disabled', !shading);
-    BLEND_SLIDERS.forEach(function(slider) {
+    BLEND_SLIDERS.concat(BLEND_TEST_SLIDERS).forEach(function(slider) {
       controls[slider.name].input.node().disabled = !shading;
     });
     BLEND_SECTIONS.forEach(function(section) {
@@ -454,7 +466,11 @@ export function RasterBlendTool(gui) {
     o.shadow = settings.shadow_color ? hexToRgb(settings.shadow_color) : null;
     o.highlight = settings.highlight_color ? hexToRgb(settings.highlight_color) : null;
     o.output = output;
-    o.clip = clipCheckbox.node().checked;
+    o.clip = drawnTarget && clipCheckbox.node().checked;
+    o.depthChroma = settings.depth_chroma;
+    o.depthFade = settings.depth_fade;
+    o.evenness = settings.evenness;
+    o.evennessLightness = settings.evenness_lightness;
     return o;
   }
 
@@ -466,4 +482,9 @@ export function RasterBlendTool(gui) {
     var o = gui.model.getActiveLayer();
     return o && o.layer || null;
   }
+}
+
+function blendTestingIsOn() {
+  var val = GUI.getUrlVars()['blend-testing'];
+  return val === true || val == '1';
 }

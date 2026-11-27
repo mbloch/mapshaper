@@ -249,17 +249,18 @@ toward the target pixel's:
   highlights, lit slopes are lighter but not hazy. In shadows, colors stay
   vivid (and so become more saturated, since they are darker).
 - Values above 1 go further than the target's own color: more vivid
-  slopes, limited by the gamut. The GUI's sliders go to 2. They extrapolate
+  slopes, limited by the gamut. The GUI's sliders go to 1.5. They extrapolate
   away from the target stacked with a gray of the shading color's lightness
   rather than from the stacked pixel itself, which is the same for black,
   white or gray shading. With a colored shading color, extrapolating from
   the stacked pixel would subtract that color, pushing slopes toward its
   opposite hue (a red shadow color gave teal shadows at `chroma=2`).
 
-The default is `chroma=0,1`: shadows as stacked, highlights without haze.
-(`chroma=0`, plain stacking, was considered as a more neutral default, but
-then a default `-blend` would look the same as the hillshade drawn over the
-target.)
+The default is `chroma=0.5`, for shadows and highlights, chosen by eye on
+polygon fills, tints and imagery along with the depth and evenness
+settings below. It was `chroma=0,1` (shadows as stacked, highlights
+without haze), but with depth tied to shadow chroma, shadows at 0 got no
+depth, and highlights at 1 were too strong on dark colors.
 
 Colors outside the sRGB gamut are fitted at the same lightness and hue by
 reducing chroma, as `oklchToRgb()` does. Very saturated colors lose some
@@ -274,7 +275,7 @@ change is also scaled by the local shading depth for free: where the
 shading is faint, the stacked and target colors are nearly the same, so
 `chroma=` has little effect there.
 
-So `strength=1 chroma=0` is exactly stacking, including on partly
+So `strength=1 chroma=0 evenness=0` is exactly stacking, including on partly
 transparent target pixels, and no separate `mode=normal` is needed.
 
 ### Hue
@@ -298,6 +299,48 @@ and chroma depend on `chroma=`. That makes the colors a way to tint the
 relief without re-running `-hillshade`, and the blend panel's color fields
 a way to try them out. The derivation records them as `shadow_color` and
 `highlight_color`, if given.
+
+### Depth and evenness
+
+Two effects are built in, with settings chosen by eye across polygon
+fills, tints and imagery rather than offered as controls. Hidden `-blend`
+options set them, for tuning; the blend panel has sliders for them in a
+Testing section, shown with the URL flag `?blend-testing`, whose values
+carry over from one blend to the next:
+
+- `depth-chroma=` (default 0.15, a rate per unit of shadow `chroma=`;
+  calibrated on a pale blue at chroma 1): the shadow gains shadow chroma times
+  `depth-chroma` of OKLCH chroma in the target's hue per unit of lightness
+  it loses, on top of the color `chroma=` gives, so chroma 0 is still plain
+  stacking. Stacking black takes chroma away in proportion, so pale colors,
+  which have little chroma to keep or extrapolate, otherwise get gray
+  shadows; with this, they darken like the next color of a sequential ramp
+  (RdBu gains about 0.3 of chroma per unit of lightness from its pale blue
+  to its mid blue, which 0.15 gives at chroma 2). Colors with less chroma
+  than 0.02 get less of it, and none below 0.005, since their hue is
+  unreliable.
+- `depth-fade=` (default 0.4; 0 turns the fade off): the depth rate fades
+  in, reaching 95% when a shadow has removed this share of the color's
+  lightness, so faint shadows blend into unshaded ground. The fade is
+  exponential (1 − e^(−3 × share / fade)), so it rises quickly and levels
+  off slowly, and the added chroma, the rate times the lightness removed,
+  still starts flat. A smoothstep fade took too much from light shadows,
+  and 1 − (1 − x)² leveled off too abruptly. `depth-chroma=0.2
+  depth-fade=0.4` gives the same light shadows and richer deep ones on pale
+  colors; 0.15 was the more prudent default. Deep shadows end up at the
+  edge of the sRGB gamut, which narrows in dark tones, so at high depth a
+  cyan or green is most vivid in mid shadow, where the gamut is widest.
+- `evenness=` (0-1, default 0.8) and `evenness-lightness=` (default 0.8): stacking
+  multiplies lightness by a factor in shadows (and the distance from white,
+  roughly, in highlights), so shadows take away about twice as much
+  lightness from a pale color as from a dark one, and highlights add far
+  more to a dark color than to a pale one. Evenness moves both changes
+  toward the ones stacking makes on a color of lightness
+  `evenness-lightness` (`getEvenLightness()`), which is mostly an overall
+  strength: colors lighter than it get fainter shadows and stronger
+  highlights, darker colors the opposite. At the defaults, pale colors
+  change little, and colors of lightness 0.3-0.5 get nearly twice the
+  shadow and half the highlight that stacking gives them.
 
 ### Other blend modes
 
@@ -382,7 +425,7 @@ overlay uses the least such alpha, which is
 
 (`getShadingOverlayPixels()`). The result is exact after 8-bit rounding.
 
-- **Shadows** at the default `chroma=0` are plain stacking, so the overlay
+- **Shadows** at `chroma=0` (with evenness off) are plain stacking, so the overlay
   has the hillshade's own shadow color and alpha there.
 - **Highlights** that keep the target's color (`chroma=1`) can't be white:
   the overlay takes the target's color, lightened, and is more opaque than
@@ -521,14 +564,12 @@ rounding of the alpha channel.
 
 ## Open questions
 
-- **Default chroma in shadows.** `chroma=0,1` stacks shadows. `0.5,1`
-  would keep shadowed colors richer, which may be what most maps want. A
-  sweep over a few targets (imagery, `-tint` output, a land cover layer)
-  would settle it.
 - **Grayer shadows.** `chroma=` can't go below stacking's chroma. Negative
   values could move shadows toward gray (the "darken and desaturate"
   effect), if stacking's reduction turns out not to be enough.
-- **Dark targets.** Lightness taken from stacking makes the relief faint on
-  dark colors (water, dense forest), and highlights can't lighten white. A
-  later option could use an absolute lightness change in shadows, or a
-  minimum contrast.
+- **Dark targets.** Evenness gives dark colors (water, dense forest)
+  stronger shadows than stacking would; highlights still can't lighten
+  white.
+- **Olive yellows.** Depth turns pale yellows and tans olive in deep shadow
+  (seen on atlas-style tints). Drifting their hue toward orange as they
+  darken might help.

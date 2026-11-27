@@ -74,16 +74,28 @@ export function getBlendedRasterCanvas(preview, bbox, blend) {
   }
   internal.scaleShadingAmounts(target.amounts, blend.settings.strength[0],
     blend.settings.strength[1], target.scaled);
-  internal.blendShadingPixels(src.pixels, 4, target.scaled, {
-    shadow: blend.settings.shadow || blend.shading.shadow,
-    highlight: blend.settings.highlight || blend.shading.highlight,
-    shadowChroma: blend.settings.chroma[0],
-    highlightChroma: blend.settings.chroma[1]
-  }, target.imageData.data);
+  internal.blendShadingPixels(src.pixels, 4, target.scaled, getPixelOptions(blend),
+    target.imageData.data);
   target.ctx.putImageData(target.imageData, 0, 0);
   buffers.image = target.image;
   buffers.version = blend.version;
   return target.image;
+}
+
+// blendShadingPixels() options for a blend's settings
+function getPixelOptions(blend) {
+  var s = blend.settings;
+  return {
+    shadow: s.shadow || blend.shading.shadow,
+    highlight: s.highlight || blend.shading.highlight,
+    shadowChroma: s.chroma[0],
+    highlightChroma: s.chroma[1],
+    clip: !!s.clip,
+    depthChroma: s.depthChroma || 0,
+    depthFade: s.depthFade,
+    evenness: s.evenness || 0,
+    evennessLightness: s.evennessLightness || 0
+  };
 }
 
 // The shading resampled onto the grid of @src, which covers @bbox
@@ -158,17 +170,12 @@ export function getDrawnBlendImage(layer) {
       target = buffers.reduced || (buffers.reduced =
         makeDrawnBlendTarget(src, getShrunkBBox(drawing.bbox, src), blend.shading));
     }
-    opts = {
-      shadow: blend.settings.shadow || blend.shading.shadow,
-      highlight: blend.settings.highlight || blend.shading.highlight,
-      shadowChroma: blend.settings.chroma[0],
-      highlightChroma: blend.settings.chroma[1],
-      clip: !!blend.settings.clip
-    };
+    opts = getPixelOptions(blend);
     internal.scaleShadingAmounts(target.amounts, blend.settings.strength[0],
       blend.settings.strength[1], target.scaled);
     if (blend.settings.output == 'overlay') {
-      internal.blendShadingPixels(src.pixels, 4, target.scaled, opts, target.blended);
+      internal.blendShadingPixels(src.pixels, 4, target.scaled,
+        Object.assign({}, opts, {clip: true}), target.blended);
       internal.getShadingOverlayPixels(src.pixels, target.blended, target.scaled, opts,
         target.imageData.data);
     } else {

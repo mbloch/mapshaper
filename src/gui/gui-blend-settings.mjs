@@ -27,14 +27,25 @@ export var BLEND_OUTPUTS = [
 ];
 
 export var BLEND_SLIDERS = [
-  {name: 'shadow_strength', label: 'Strength', option: 'strength', side: 0, min: 0, max: 2, value: 1},
-  {name: 'shadow_chroma', label: 'Chroma', option: 'chroma', side: 0, min: 0, max: 2, value: 0},
-  {name: 'highlight_strength', label: 'Strength', option: 'strength', side: 1, min: 0, max: 2, value: 1},
-  {name: 'highlight_chroma', label: 'Chroma', option: 'chroma', side: 1, min: 0, max: 2, value: 1}
+  {name: 'shadow_strength', label: 'Strength', option: 'strength', side: 0, min: 0, max: 1.5, value: 1},
+  {name: 'shadow_chroma', label: 'Chroma', option: 'chroma', side: 0, min: 0, max: 1.5, value: 0.5},
+  {name: 'highlight_strength', label: 'Strength', option: 'strength', side: 1, min: 0, max: 1.5, value: 1},
+  {name: 'highlight_chroma', label: 'Chroma', option: 'chroma', side: 1, min: 0, max: 1.5, value: 0.5}
+];
+
+// Sliders for -blend's hidden options, for tuning (see
+// docs/development/raster-blend.md), shown with the URL flag ?blend-testing.
+// Each defaults to the option's default; @option is written when the slider
+// is away from it.
+export var BLEND_TEST_SLIDERS = [
+  {name: 'depth_chroma', label: 'Depth', option: 'depth-chroma', min: 0, max: 0.5, value: 0.15},
+  {name: 'depth_fade', label: 'Depth fade', option: 'depth-fade', min: 0, max: 0.8, value: 0.4},
+  {name: 'evenness', label: 'Evenness', option: 'evenness', min: 0, max: 1, value: 0.8},
+  {name: 'evenness_lightness', label: 'Even at L', option: 'evenness-lightness', min: 0.3, max: 0.9, value: 0.8}
 ];
 
 export function getDefaultBlendSettings() {
-  var settings = BLEND_SLIDERS.reduce(function(memo, slider) {
+  var settings = BLEND_SLIDERS.concat(BLEND_TEST_SLIDERS).reduce(function(memo, slider) {
     memo[slider.name] = slider.value;
     return memo;
   }, {});
@@ -82,6 +93,10 @@ export function getBlendCommand(settings, sourceId, keepSource, output, clip) {
   });
   BLEND_SECTIONS.forEach(function(section) {
     if (settings[section.color]) parts.push(section.colorOption + '=' + settings[section.color]);
+  });
+  BLEND_TEST_SLIDERS.forEach(function(slider) {
+    var val = settings[slider.name];
+    if (val != null && val != slider.value) parts.push(slider.option + '=' + val);
   });
   if (keepSource) parts.push('keep-source');
   return parts.join(' ');

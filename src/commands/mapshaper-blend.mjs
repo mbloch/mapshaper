@@ -10,7 +10,9 @@ import { getColoredRaster, rasterCanBeToned } from './mapshaper-tone';
 import { stop } from '../utils/mapshaper-logging';
 
 var DEFAULT_STRENGTH = [1, 1];
-var DEFAULT_CHROMA = [0, 1]; // shadows as stacked, highlights without haze
+var DEFAULT_CHROMA = [0.5, 0.5];
+// hidden options, for tuning (see docs/development/raster-blend.md)
+var DEFAULT_EFFECTS = {depth_chroma: 0.15, depth_fade: 0.4, evenness: 0.8, evenness_lightness: 0.8};
 var MIN_DRAWING_SCALE = 2; // like the default pixel-ratio= of PNG output
 var MAX_DRAWING_PIXELS = 4e7;
 
@@ -81,9 +83,11 @@ cmd.blendDrawnLayers = async function(catalog, layers, source, opts) {
   scaleShadingAmounts(amounts, settings.strength[0], settings.strength[1]);
   pixels = await drawLayersOnGrid(layers, grid, drawing.scale);
   blendOpts = getBlendOptions(shading, settings);
-  samples = blendShadingPixels(pixels, 4, amounts, blendOpts);
   if (opts.overlay) {
+    samples = blendShadingPixels(pixels, 4, amounts, Object.assign({}, blendOpts, {clip: true}));
     samples = getShadingOverlayPixels(pixels, samples, amounts, blendOpts);
+  } else {
+    samples = blendShadingPixels(pixels, 4, amounts, blendOpts);
   }
   out = {
     raster_type: 'grid',
@@ -131,6 +135,11 @@ function getBlendSettings(opts) {
   if (opts.shadow_color) settings.shadow_color = opts.shadow_color;
   if (opts.highlight_color) settings.highlight_color = opts.highlight_color;
   if (opts.clip) settings.clip = true;
+  Object.keys(DEFAULT_EFFECTS).forEach(function(key) {
+    if (opts[key] == null) return;
+    if (!(opts[key] >= 0)) stop(key.replace('_', '-') + '= should be 0 or more');
+    settings[key] = opts[key];
+  });
   return settings;
 }
 
@@ -144,8 +153,16 @@ function getBlendOptions(shading, settings) {
     highlight: readColorOption(settings.highlight_color, 'highlight-color') || shading.highlight,
     shadowChroma: settings.chroma[0],
     highlightChroma: settings.chroma[1],
-    clip: !!settings.clip
+    clip: !!settings.clip,
+    depthChroma: getEffectSetting(settings, 'depth_chroma'),
+    depthFade: getEffectSetting(settings, 'depth_fade'),
+    evenness: getEffectSetting(settings, 'evenness'),
+    evennessLightness: getEffectSetting(settings, 'evenness_lightness')
   };
+}
+
+function getEffectSetting(settings, key) {
+  return settings[key] == null ? DEFAULT_EFFECTS[key] : settings[key];
 }
 
 // Returns {r, g, b}, or null if @str is empty

@@ -2691,7 +2691,7 @@ export function getOptionParser() {
       type: 'numbers'
     })
     .option('chroma', {
-      describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color, above 1 adds color; one value, or shadows,highlights (default is 0,1)',
+      describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color, above 1 adds color; one value, or shadows,highlights (default is 0.5)',
       type: 'numbers'
     })
     .option('shadow-color', {
@@ -2711,6 +2711,11 @@ export function getOptionParser() {
       describe: 'leave out the shading where the targets are transparent (e.g. outside the polygons)',
       type: 'flag'
     })
+    // hidden options, for tuning (see docs/development/raster-blend.md)
+    .option('depth-chroma', {type: 'number'})
+    .option('depth-fade', {type: 'number'})
+    .option('evenness', {type: 'number'})
+    .option('evenness-lightness', {type: 'number'})
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
