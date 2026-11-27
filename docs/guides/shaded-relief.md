@@ -87,6 +87,8 @@ There are two ways to get started.
 
 Select the elevation layer and choose **hillshade** from its options menu. The hillshade panel opens, and the map shows a live preview of the shading. Use the panel's controls to customize your hillshade and finalize it by clicking **Apply**.
 
+The panel makes opaque hillshades. For a transparent hillshade, with translucent shadows and highlights, to stack over vector layers or use in other software, run [`-hillshade`](/docs/reference.html#-hillshade) in the console.
+
 ![The hillshade panel, with Light, Colors, Terrain and Effects controls, beside a grayscale preview of a hillshade of a winding river canyon](/docs/images/shaded-relief-hillshade-panel.jpg)
 
 #### Light
@@ -102,8 +104,6 @@ The hillshade's tones run from a **Shadow** color through a **Base** color, whic
 **Making a colored hillshade.** You can use a hillshade with custom shadow, base and highlight colors as a simple background layer for a map. Picking a cool shadow color and a warm highlight color gives the shading a hand-painted look, especially when smoothing is added.
 
 ![The same terrain in the Dolomites in three diagonal bands: a hillshade with blue shadows and pale yellow highlights in the upper left, a pale warm-gray hillshade in the middle, and a hillshade with violet shadows and peach highlights in the lower right](/docs/images/shaded-relief-colored-hillshade.jpg)
-
-The panel makes opaque hillshades. For a transparent hillshade, with translucent shadows and highlights, to stack over vector layers or use in other software, run [`-hillshade`](/docs/reference.html#-hillshade) in the console.
 
 #### Terrain
 

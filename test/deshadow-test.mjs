@@ -456,6 +456,16 @@ describe('mapshaper-deshadow.mjs', function () {
       mask = internal.getShadowMask(s.L, nir, s.valid, s.predicted, W, H, 0.6, 24);
       assert.equal(mask.hard[80 * W + 70], 1);
     });
+
+    it('keeps shadows a pixel wide in coarse imagery, if they\'re in the DEM\'s shadows', function () {
+      // 8 m pixels: dark lines a pixel wide, one of them in the DEM's shadows
+      var s = scene(function(x, y) { return bigShadow(x, y) || (x == 150 || x == 170) && y >= 40 && y < 120; });
+      for (var y = 40; y < 120; y++) s.predicted[y * W + 150] = 1;
+      var mask = internal.getShadowMask(s.L, null, s.valid, s.predicted, W, H, 8, 24);
+      assert.equal(mask.hard[80 * W + 70], 1);
+      assert.equal(mask.hard[80 * W + 150], 1);
+      assert.equal(mask.hard[80 * W + 170], 0);
+    });
   });
 
   describe('removeUnmatchedAreas()', function () {
@@ -901,6 +911,82 @@ describe('mapshaper-deshadow.mjs', function () {
       var allValid = valid.map(function(v, i) { return i % w < 150 ? 0 : 1; });
       assert.equal(internal.addSignatureShadows(mask, image, allValid, predicted, cells, t, region, [fitted],
         w, h, 40), 0);
+    });
+
+    it('adds shadows next to the mask that no plausible sun explains, if they don\'t go on farther', function () {
+      // the image's shadows of the wall at 60 reach 6 m past it, toward the
+      // sun (as if the image misplaced the wall); shadow-colored ground
+      // reaches 36 m past the wall at 150 (as a lake would)
+      var walls2 = [60, 150], t2 = wallTerrain(w, h, walls2);
+      var pred2 = internal.castTerrainShadow(t2.Z, w, h, 1, 1, fitted);
+      var strip = new Uint8Array(N), lake = new Uint8Array(N), samples2 = new Uint8Array(N * 3);
+      for (var i = 0; i < N; i++) {
+        var x = i % w, y = Math.floor(i / w), c = lit;
+        strip[i] = x >= 60 && x < 66 && y >= 20 && y < 100 ? 1 : 0;
+        lake[i] = x >= 150 && x < 186 && y >= 20 && y < 100 ? 1 : 0;
+        if (pred2[i] || strip[i] || lake[i]) c = shade;
+        for (var k = 0; k < 3; k++) samples2[i * 3 + k] = Math.round(c[k] * (1 + 0.1 * noise(i * 3 + k)));
+      }
+      var image2 = {samples: samples2, bands: 3, width: w, height: h};
+      var mask = {hard: pred2.slice()};
+      internal.addSignatureShadows(mask, image2, valid, pred2, cells, t2, region, [fitted], w, h, 4, 10);
+      var nStrip = 0, nFound = 0;
+      for (i = 0; i < N; i++) {
+        if (strip[i]) nStrip++;
+        if (strip[i] && mask.hard[i]) nFound++;
+      }
+      assert(nFound >= nStrip * 0.9, nFound + ' of ' + nStrip);
+      assert(lake.every(function(v, i) { return !v || !mask.hard[i]; }));
+      mask = {hard: pred2.slice()};
+      internal.addSignatureShadows(mask, image2, valid, pred2, cells, t2, region, [fitted], w, h, 4);
+      assert(strip.every(function(v, i) { return !v || !mask.hard[i]; }));
+    });
+  });
+
+  describe('getAdjacentPixels()', function () {
+    it('is the largest of a distance in meters, in image pixels and in DEM pixels', function () {
+      assert.equal(internal.getAdjacentPixels(4, 4), 20);
+      assert.equal(internal.getAdjacentPixels(40, 40), 4);
+      assert.equal(internal.getAdjacentPixels(4, 30), 30);
+    });
+  });
+
+  describe('writeRelitSamples()', function () {
+    // a shadow brightened 5 times, whose source has blocks of noise of up to
+    // 2 levels in red and blue, as JPEG compression leaves, and a patch that
+    // is redder by 12 levels
+    var w = 64, h = 64, N = w * h, gain = 5;
+    var src = new Uint8Array(N * 3), relit = [new Float32Array(N), new Float32Array(N), new Float32Array(N)];
+    var alpha = new Float32Array(N).fill(1), edge = new Float32Array(N), valid = new Uint8Array(N).fill(1);
+    var patch = function(x, y) { return x >= 40 && x < 56 && y >= 40 && y < 56; };
+    for (var i = 0; i < N; i++) {
+      var x = i % w, y = Math.floor(i / w), b = (x >> 3) * 8 + (y >> 3);
+      var c = [27 + Math.round(2 * noise(b)), 33, 47 + Math.round(2 * noise(b + 100))];
+      if (patch(x, y)) c[0] += 12;
+      for (var k = 0; k < 3; k++) {
+        src[i * 3 + k] = c[k];
+        relit[k][i] = c[k] * gain;
+      }
+    }
+    var out = internal.writeRelitSamples(src, 3, relit, alpha, edge, valid, w, h, 1);
+    function redness(i) {
+      return out[i * 3] - out[i * 3 + 1];
+    }
+
+    it('evens out the brightened noise', function () {
+      var min = Infinity, max = -Infinity;
+      for (var i = 0; i < N; i++) {
+        var x = i % w, y = Math.floor(i / w);
+        if (x < 4 || y < 4 || x >= 20 || y >= 20) continue;
+        min = Math.min(min, redness(i));
+        max = Math.max(max, redness(i));
+      }
+      assert(max - min <= 6, min + ' to ' + max);
+    });
+
+    it('keeps differences in color larger than the noise', function () {
+      var a = redness(48 * w + 48), b = redness(20 * w + 20);
+      assert(a - b >= 12 * gain * 0.7, a + ' vs ' + b);
     });
   });
 

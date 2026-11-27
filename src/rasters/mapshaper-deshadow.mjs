@@ -291,6 +291,9 @@ var SMALL_SHADOW_NEIGHBORS = 4;
 var NEAR_SHADOW_ALTITUDE = 6; // degrees
 var BLOCK_SIZE = 18;
 var CHROMA_RADIUS = 1.8;
+// see writeRelitSamples()
+var CHROMA_NOISE = 3; // 8-bit levels
+var CHROMA_NOISE_RADIUS = 20; // pixels
 var CONTRAST_RADIUS = 3.6;
 var CONTRAST_BRIGHT = 0.35;
 var CONTRAST_DARK = 0.85;
@@ -326,6 +329,13 @@ var PLAUSIBLE_AZIMUTH = 30; // degrees
 var PLAUSIBLE_DROP = 15; // degrees
 var PLAUSIBLE_STEP = 10; // degrees
 var SIGNATURE_LLR = Math.log(8);
+// shadows next to the mask are added up to the largest of these distances
+// from it (see addAdjacentShadows()): offsets of the image from the DEM are
+// in meters, the DEM's shadows' edges are blurred over DEM pixels, and the
+// image's over its own pixels
+var ADJACENT_DISTANCE = 80; // meters
+var ADJACENT_DEM_PIXELS = 4;
+var ADJACENT_PIXELS = 4;
 var AREA_SUN_MATCH = 0.6;
 var MIN_SUNLIT_SHARE = 0.25;
 var MIN_SIGNATURE_PIXELS = 1000;
@@ -335,6 +345,24 @@ var LIT_COMPONENTS = 12;
 var KMEANS_ROUNDS = 20;
 var MIXTURE_VARIANCE = 0.01;
 var SIGNATURE_EPSILON = 1e-3;
+// A shadow is sunlit ground lit by sky alone: its color is a sunlit color
+// shifted by about the difference between shadows and sunlit ground, by these
+// shares of it in luma and in color (shadows are lit by more or less sky, and
+// by light reflected from sunlit ground) (see getShiftedScorer())
+var SHIFT_LUMA = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3];
+var SHIFT_COLOR = [0.5, 0.75, 1, 1.25, 1.5];
+// Areas are compared with the ground around them from this many pixels inside
+// and outside their edges, which are mixed, within EDGE_WINDOW pixels of each
+// other (see getEdgeRatios())
+var EDGE_GAP = 2;
+var EDGE_WINDOW = 4;
+var EDGE_COMPONENTS = 3;
+var MIN_EDGE_SAMPLES = 200;
+// share of an area in sunlit ground for it to be taken as dark ground
+var EDGE_LIT_SHARE = 0.8;
+// mean log likelihood ratio (per pixel compared) of dark ground to shadow, by
+// their edges, that leaves out areas that are shadows by their color
+var EDGE_VETO = 1;
 // Shadows are lit by blue skylight, so they need more red gain than blue
 // (measured as 8-bit values); dark slopes that don't are probably something
 // else, e.g. forest
@@ -3739,18 +3767,33 @@ function compressContrast(relit, alpha, W, H, r) {
 
 // Smooths the color (not the lightness) of brightened pixels, which is noisy
 // in shadows, and blurs the shadows' edges, where sharpening in the source
-// leaves a dark rim
-function writeRelitSamples(src, bands, relit, alpha, edge, valid, W, H, pixelSize) {
+// leaves a dark rim. A pixel's color differs from the color around it (within
+// CHROMA_NOISE_RADIUS pixels) only by as much as the difference in the source
+// exceeds the source's noise, CHROMA_NOISE per band (as JPEG compression
+// leaves in dark areas): brightening magnifies the noise into speckles.
+export function writeRelitSamples(src, bands, relit, alpha, edge, valid, W, H, pixelSize) {
   var N = W * H, r = toPixels(CHROMA_RADIUS, pixelSize), out = src.slice();
-  var Y = new Float32Array(N), wsum = boxMean(alpha, W, H, r), t = new Float32Array(N);
-  var blurred = new Float32Array(N), i, k, a, c, v;
+  var Y = new Float32Array(N), wsum = boxMean(alpha, W, H, r), wide = boxMean(alpha, W, H, CHROMA_NOISE_RADIUS);
+  var t = new Float32Array(N), around = new Float32Array(N), keep = new Float32Array(N);
+  var L = getLuma(src, bands, N), blurred = new Float32Array(N), i, k, a, c, v, d, noise;
   for (i = 0; i < N; i++) Y[i] = 0.299 * relit[0][i] + 0.587 * relit[1][i] + 0.114 * relit[2][i];
   for (k = 0; k < 3; k++) {
-    for (i = 0; i < N; i++) t[i] = alpha[i] * relit[k][i] / (Y[i] + 1);
-    boxMean(t, W, H, r, t);
+    getChromaRatios(relit[k], Y, alpha, wsum, wide, W, H, r, t, around);
+    for (i = 0; i < N; i++) {
+      d = (t[i] - around[i]) * (L[i] + 1);
+      keep[i] += d * d;
+    }
+  }
+  for (i = 0; i < N; i++) {
+    // pixels that are hardly brightened keep their color
+    noise = 3 * CHROMA_NOISE * CHROMA_NOISE * Math.max(0, Math.min(1, (Y[i] + 1) / (L[i] + 1) - 1));
+    keep[i] = keep[i] > noise ? 1 - noise / keep[i] : 0;
+  }
+  for (k = 0; k < 3; k++) {
+    getChromaRatios(relit[k], Y, alpha, wsum, wide, W, H, r, t, around);
     for (i = 0; i < N; i++) {
       a = alpha[i];
-      c = wsum[i] > 0.01 ? Math.min(255, (Y[i] + 1) * t[i] / wsum[i]) : relit[k][i];
+      c = Math.min(255, (Y[i] + 1) * (around[i] + keep[i] * (t[i] - around[i])));
       t[i] = relit[k][i] * (1 - a) + c * a;
     }
     boxMean(t, W, H, toPixels(EDGE_BLUR_RADIUS, pixelSize), blurred);
@@ -3761,6 +3804,20 @@ function writeRelitSamples(src, bands, relit, alpha, edge, valid, W, H, pixelSiz
     }
   }
   return out;
+}
+
+// Each pixel's ratio of @band to luma (@Y), averaged over the pixels within
+// @r pixels (written to @near) and within CHROMA_NOISE_RADIUS pixels (to
+// @around), weighted by @alpha, whose box means are @wsum and @wide
+function getChromaRatios(band, Y, alpha, wsum, wide, W, H, r, near, around) {
+  var N = W * H, i;
+  for (i = 0; i < N; i++) near[i] = alpha[i] * band[i] / (Y[i] + 1);
+  boxMean(near, W, H, CHROMA_NOISE_RADIUS, around);
+  boxMean(near, W, H, r, near);
+  for (i = 0; i < N; i++) {
+    near[i] = wsum[i] > 0.01 ? near[i] / wsum[i] : band[i] / (Y[i] + 1);
+    around[i] = wide[i] > 0.01 ? around[i] / wide[i] : near[i];
+  }
 }
 
 // boxMean() of a mask's values
@@ -4106,7 +4163,7 @@ function getPixelShadows(image, nir, valid, predicted, nearShadows, cells, terra
   if (mask && mask.count > 0 && (imageShadows == 'on' || mask.count <= n * MAX_MASK_RATIO * stretch)) {
     addDemShadows(mask, predicted, valid, W, H);
     addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, regions.suns, W, H,
-      band / pixelSize, progress);
+      band / pixelSize, getAdjacentPixels(pixelSize, demPixelSize), progress);
     addSmallShadows(mask, image, valid, nearShadows, W, H, pixelSize, demPixelSize, despeckle);
     for (i = 0; i < N; i++) shadow[i] = mask.hard[i];
     return {shadow: shadow, masked: true, count: mask.count, ratio: mask.count / n, mask: mask,
@@ -4131,11 +4188,13 @@ function getPixelShadows(image, nir, valid, predicted, nearShadows, cells, terra
 // kinds of sunlit ground (e.g. forest on slopes facing away from the sun),
 // which can then look like shadow.
 // @bandPx distance (pixels) around the DEM's shadows that the mask searches
+// @adjacentPx optional distance (pixels) from the mask of shadows that no
+//   plausible sun explains (see addAdjacentShadows())
 // @progress optional function receiving the share done of the stages after
 //   the sun's fit (see PROGRESS)
 // Returns the number of pixels added
 export function addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, suns, W, H, bandPx,
-    progress) {
+    adjacentPx, progress) {
   var N = W * H, hard = mask.hard, d = 3, shadows = getShadowCache(terrain, region);
   var plausible = getPixelValues(getPlausibleShadows(terrain, region, suns, shadows), cells, Uint8Array);
   if (progress) progress(PROGRESS.casts);
@@ -4165,28 +4224,249 @@ export function addSignatureShadows(mask, image, valid, predicted, cells, terrai
   if (S.length === 0 || L.length === 0) return 0;
   S = getMixtureScorer(S, d);
   L = getMixtureScorer(L, d);
+  var shifted = getShiftedScorer(L, getShadowShift(features, shadowIdx, litIdx));
+  // llr: from the shadows' signature; wide: also from shifted sunlit colors,
+  // which takes in lighter shadows, and dark ground that the edge test leaves out
+  var wide = new Float32Array(N), lit = new Uint8Array(N), edges, score;
   llr = new Float32Array(N);
   cand = new Uint8Array(N);
   // a pixel's features are from its color
-  var src = image.samples, bands = image.bands, byColor = new Map(), key, v;
+  var src = image.samples, bands = image.bands, byColor = new Map(), key, v, w;
   F = new Float32Array(d);
   for (i = 0; i < N; i++) {
-    if (!valid[i] || hard[i] || !plausible[i]) continue;
+    if (!valid[i] || hard[i]) continue;
     key = src[i * bands] << 16 | src[i * bands + 1] << 8 | src[i * bands + 2];
     v = byColor.get(key);
     if (v === undefined) {
       features(i, F, 0);
-      v = S(F, 0) - L(F, 0);
+      w = L(F, 0);
+      v = [S(F, 0) - w, Math.max(S(F, 0), shifted(F, 0)) - w];
       byColor.set(key, v);
     }
-    llr[i] = v;
-    if (llr[i] > 0) cand[i] = 1;
+    llr[i] = v[0];
+    wide[i] = v[1];
   }
+  byColor = null;
+  for (i = 0; i < litIdx.length; i++) lit[litIdx[i]] = 1;
+  for (i = 0; i < N; i++) agreed[i] = hard[i] && predicted[i] && !(mask.dem && mask.dem[i]) ? 1 : 0;
+  edges = getEdgeTest(image, agreed, hard, valid, lit, wide, W, H);
+  for (i = 0; i < N; i++) cand[i] = llr[i] > 0 && plausible[i] && !hard[i] ? 1 : 0;
   areas = getCandidateAreas(cand, llr, W, H);
   matchAreaSuns(areas, hard, cells, terrain, region, suns, W, H,
     Math.max(1, Math.round(bandPx * SHADOW_REFERENCE)), shadows);
+  areas = areas.filter(function(a) { return a.explained; });
+  // these are shadows by their color and a plausible sun: they're left out
+  // only if their edges are clearly those of dark ground
+  if (edges) areas = edges.filter(areas, cand, hard, llr, -EDGE_VETO);
   areas.forEach(function(a) {
-    if (!a.explained) return;
+    for (var k = 0; k < a.pixels.length; k++) hard[a.pixels[k]] = 1;
+    added += a.pixels.length;
+  });
+  // lighter shadows are taken in only next to the mask: by the wider score,
+  // dark ground that touches shadows (e.g. a lake) would join them in areas
+  // that a plausible sun explains
+  score = edges ? wide : llr;
+  if (adjacentPx > 0) added += addAdjacentShadows(hard, score, valid, W, H, adjacentPx, edges, llr);
+  return added;
+}
+
+// Difference (in @features' units) between the median shadow pixel (of
+// @shadowIdx) and the median sunlit pixel (of @litIdx)
+function getShadowShift(features, shadowIdx, litIdx) {
+  var f = new Float32Array(3);
+  function medians(idx) {
+    var ids = getMixtureSample(idx), cols = [0, 1, 2].map(function() { return new Float32Array(ids.length); });
+    for (var j = 0; j < ids.length; j++) {
+      features(ids[j], f, 0);
+      for (var k = 0; k < 3; k++) cols[k][j] = f[k];
+    }
+    return cols.map(function(c) { return c.sort()[c.length >> 1]; });
+  }
+  var s = medians(shadowIdx), l = medians(litIdx);
+  return [s[0] - l[0], s[1] - l[1], s[2] - l[2]];
+}
+
+// Scores the features of a pixel as the shadow of sunlit ground: the best
+// score by @lit (a mixture scorer) of its features less shares (SHIFT_LUMA,
+// SHIFT_COLOR) of @shift
+function getShiftedScorer(lit, shift) {
+  var G = new Float32Array(3);
+  return function(X, i) {
+    var best = -Infinity, a, b, v;
+    for (a = 0; a < SHIFT_LUMA.length; a++) {
+      G[0] = X[i * 3] - SHIFT_LUMA[a] * shift[0];
+      for (b = 0; b < SHIFT_COLOR.length; b++) {
+        G[1] = X[i * 3 + 1] - SHIFT_COLOR[b] * shift[1];
+        G[2] = X[i * 3 + 2] - SHIFT_COLOR[b] * shift[2];
+        v = lit(G, 0);
+        if (v > best) best = v;
+      }
+    }
+    return best;
+  };
+}
+
+// Tells shadows from dark ground (e.g. vegetation) by how much darker and
+// bluer they are than the ground around them. A shadow is the ground around it
+// lit by sky alone, so its ratios to that ground are about those across the
+// edges of the shadows where the mask and the DEM agree (@agreed); dark
+// ground's are those of dark areas in ground that no plausible sun shadows
+// (@lit), that are more likely shadow than sunlit by their color (@llr > 0)
+// Returns null if either is too scarce, or {filter(areas, cand, mask, llr, min)},
+//   which returns the areas (of @cand pixels) whose mean log likelihood ratio
+//   of shadow to dark ground, by their edges, is more than @min; or, if
+//   they're too thin to compare, those whose mean @llr is SIGNATURE_LLR
+export function getEdgeTest(image, agreed, mask, valid, lit, llr, W, H) {
+  var N = W * H, cand = new Uint8Array(N), blocked = new Uint8Array(N), ref = new Uint8Array(N), shadowPx = [], i;
+  for (i = 0; i < N; i++) {
+    cand[i] = valid[i] && !mask[i] && llr[i] > 0 ? 1 : 0;
+    blocked[i] = mask[i] || cand[i] ? 1 : 0;
+  }
+  // with the candidate pixels at their edges, as an area's edges include them
+  var dist = chamferDistance(agreed, W, H);
+  for (i = 0; i < N; i++) {
+    ref[i] = agreed[i] || cand[i] && dist[i] <= EDGE_GAP * 3 + 3 ? 1 : 0;
+    if (ref[i]) shadowPx.push(i);
+  }
+  dist = null;
+  var shadow = getEdgeRatios(image, ref, blocked, [shadowPx], W, H)[0];
+  var dark = getCandidateAreas(cand, llr, W, H).filter(function(a) {
+    for (var k = 0, n = 0; k < a.pixels.length; k++) n += lit[a.pixels[k]];
+    return n >= a.pixels.length * EDGE_LIT_SHARE;
+  });
+  dark = concatRows(getEdgeRatios(image, cand, mask, dark.map(function(a) { return a.pixels; }), W, H));
+  if (shadow.length < MIN_EDGE_SAMPLES * 3 || dark.length < MIN_EDGE_SAMPLES * 3) return null;
+  var S = getMixtureScorer(fitGaussianMixture(shadow, 3, getRowIds(shadow), EDGE_COMPONENTS), 3);
+  var D = getMixtureScorer(fitGaussianMixture(dark, 3, getRowIds(dark), EDGE_COMPONENTS), 3);
+  return {filter: function(areas, cand, mask, llr, min) {
+    var ratios = getEdgeRatios(image, cand, mask, areas.map(function(a) { return a.pixels; }), W, H);
+    return areas.filter(function(a, j) {
+      var r = ratios[j], n = r.length / 3, sum = 0, k;
+      if (n === 0) {
+        for (k = 0; k < a.pixels.length; k++) sum += llr[a.pixels[k]];
+        return sum / a.pixels.length >= SIGNATURE_LLR;
+      }
+      for (k = 0; k < n; k++) sum += S(r, k) - D(r, k);
+      return sum / n > min;
+    });
+  }};
+}
+
+function getRowIds(X) {
+  var ids = new Int32Array(X.length / 3);
+  for (var j = 0; j < ids.length; j++) ids[j] = j;
+  return ids;
+}
+
+function concatRows(list) {
+  var n = 0, out, o = 0;
+  list.forEach(function(r) { n += r.length; });
+  out = new Float32Array(n);
+  list.forEach(function(r) { out.set(r, o); o += r.length; });
+  return out;
+}
+
+// Log ratios of the pixels of areas to the ground around them: of linear luma,
+// and the differences of log blue and log green from log red. Pixels EDGE_GAP
+// pixels inside an area's edge (or as deep as it goes) are compared with the
+// mean of pixels within EDGE_WINDOW pixels that are EDGE_GAP to EDGE_GAP + 1
+// pixels outside @set and not @blocked
+// @set 1 for pixels of all the areas
+// @areas arrays of pixel ids
+// Returns a Float32Array of 3 values per pixel compared, for each area
+export function getEdgeRatios(image, set, blocked, areas, W, H) {
+  var N = W * H, src = image.samples, bands = image.bands, decode = getDecodeTable();
+  var outside = new Uint8Array(N), ring = new Uint8Array(N), inside, around, i;
+  for (i = 0; i < N; i++) outside[i] = set[i] ? 0 : 1;
+  inside = chamferDistance(outside, W, H);
+  around = chamferDistance(set, W, H);
+  for (i = 0; i < N; i++) {
+    ring[i] = outside[i] && !blocked[i] && around[i] >= EDGE_GAP * 3 && around[i] <= EDGE_GAP * 3 + 3 ? 1 : 0;
+  }
+  around = outside = null;
+  function lin(j, k) { return decode[src[j * bands + k]] + SIGNATURE_EPSILON; }
+  return areas.map(function(pixels) {
+    var deepest = 0, out = [], k, j, x, y, X, Y, dx, dy, n, r, g, b, depth;
+    for (k = 0; k < pixels.length; k++) deepest = Math.max(deepest, inside[pixels[k]]);
+    depth = Math.min(EDGE_GAP * 3, deepest);
+    for (k = 0; k < pixels.length; k++) {
+      i = pixels[k];
+      if (inside[i] < depth || inside[i] > depth + 2) continue;
+      x = i % W;
+      y = (i - x) / W;
+      for (n = 0, r = 0, g = 0, b = 0, dy = -EDGE_WINDOW; dy <= EDGE_WINDOW; dy++) {
+        Y = y + dy;
+        if (Y < 0 || Y >= H) continue;
+        for (dx = -EDGE_WINDOW; dx <= EDGE_WINDOW; dx++) {
+          X = x + dx;
+          j = Y * W + X;
+          if (X < 0 || X >= W || !ring[j]) continue;
+          r += lin(j, 0);
+          g += lin(j, 1);
+          b += lin(j, 2);
+          n++;
+        }
+      }
+      if (n < 3) continue;
+      out.push(Math.log((0.2126 * lin(i, 0) + 0.7152 * lin(i, 1) + 0.0722 * lin(i, 2)) * n /
+        (0.2126 * r + 0.7152 * g + 0.0722 * b)));
+      r = Math.log(lin(i, 0) * n / r);
+      out.push(Math.log(lin(i, 2) * n / b) - r, Math.log(lin(i, 1) * n / g) - r);
+    }
+    return Float32Array.from(out);
+  });
+}
+
+// Distance (pixels) from the mask of shadows that addAdjacentShadows() adds
+export function getAdjacentPixels(pixelSize, demPixelSize) {
+  return Math.max(toPixels(ADJACENT_DISTANCE, pixelSize), ADJACENT_PIXELS,
+    Math.round(ADJACENT_DEM_PIXELS * demPixelSize / pixelSize));
+}
+
+// Adds shadows next to the mask that no plausible sun explains, where the
+// image is offset from the DEM (e.g. at ridges that an orthophoto misplaces):
+// connected areas of pixels that are more likely shadow than sunlit (@llr > 0)
+// whose mean log likelihood ratio is at least SIGNATURE_LLR, that touch the
+// mask, and that are all within @maxPx pixels of it. Dark ground that goes on
+// farther (e.g. forest, or a lake) is left out.
+// @edges optional, see getEdgeTest(); @signature the llr it falls back on
+// Returns the number of pixels added
+function addAdjacentShadows(hard, llr, valid, W, H, maxPx, edges, signature) {
+  var N = W * H, cand = new Uint8Array(N), added = 0, i, areas;
+  for (i = 0; i < N; i++) cand[i] = valid[i] && !hard[i] && llr[i] > 0 ? 1 : 0;
+  areas = getAdjacentAreas(hard, cand, llr, W, H, maxPx);
+  added += addAreas(hard, edges ? edges.filter(areas.near, cand, hard, signature, 0) : areas.near);
+  if (!edges || llr == signature) return added;
+  // by the wider @llr, a shadow can join dark ground that goes on farther;
+  // its parts that are shadow by @signature can still be taken in
+  cand.fill(0);
+  areas.far.forEach(function(a) {
+    for (var k = 0; k < a.pixels.length; k++) cand[a.pixels[k]] = signature[a.pixels[k]] > 0 ? 1 : 0;
+  });
+  areas = getAdjacentAreas(hard, cand, signature, W, H, maxPx);
+  return added + addAreas(hard, edges.filter(areas.near, cand, hard, signature, 0));
+}
+
+// Candidate areas (see getCandidateAreas()) that touch @hard: {near, far},
+// those that are all within @maxPx pixels of it and those that aren't
+function getAdjacentAreas(hard, cand, llr, W, H, maxPx) {
+  var dist = chamferDistance(hard, W, H), near = [], far = [];
+  getCandidateAreas(cand, llr, W, H).forEach(function(a) {
+    var touches = false, k, d;
+    for (k = 0; k < a.pixels.length; k++) {
+      d = dist[a.pixels[k]];
+      if (d <= 4) touches = true;
+      if (d > maxPx * 3) break;
+    }
+    if (k < a.pixels.length) far.push(a);
+    else if (touches) near.push(a);
+  });
+  return {near: near, far: far};
+}
+
+function addAreas(hard, areas) {
+  var added = 0;
+  areas.forEach(function(a) {
     for (var k = 0; k < a.pixels.length; k++) hard[a.pixels[k]] = 1;
     added += a.pixels.length;
   });
@@ -4603,17 +4883,19 @@ export function getShadowMask(L, nir, valid, predicted, W, H, pixelSize, band, f
   // (3 pixels of 8m, for 1.2 pixels), and would leave out shadows a few
   // pixels wide: it needs the share of itself that the window would have
   var regionShare = REGION_SHARE * Math.min(1, (2 * REGION_RADIUS / pixelSize + 1) / (2 * regionR + 1));
-  var share, region, dist, grow, count = 0;
+  var share, region, dist, grow, count = 0, inDem = fitted || predicted;
   region = new Uint8Array(N);
   for (i = 0; i < N; i++) majBoth[i] = majBoth[i] > 0.5 ? 1 : 0;
   share = boxMean(majBoth, W, H, regionR);
   for (i = 0; i < N; i++) region[i] = share[i] > regionShare ? 1 : 0;
-  share = majBoth = darkBoth = null;
+  share = darkBoth = null;
   dist = chamferDistance(region, W, H);
   // the window test pulls a straight edge in by about this many pixels
   grow = Math.max(0, Math.ceil(regionR * (2 * regionShare - 1))) + 1;
-  for (i = 0; i < N; i++) hard[i] = maj[i] > 0.5 && dist[i] <= grow * 3 ? 1 : 0;
-  dist = maj = null;
+  // dark pixels in the DEM's shadows are shadowed, however narrow the shadows
+  // are (in coarse imagery the window leaves out shadows a pixel wide)
+  for (i = 0; i < N; i++) hard[i] = maj[i] > 0.5 && (dist[i] <= grow * 3 || inDem[i] && majBoth[i]) ? 1 : 0;
+  dist = maj = majBoth = null;
   removeUnmatchedAreas(hard, predicted, W, H, SMALL_AREA / (pixelSize * pixelSize));
   for (i = 0; i < N; i++) count += hard[i];
   return {hard: hard, near: inc, threshold: T, count: count, posterior: px.posterior};
