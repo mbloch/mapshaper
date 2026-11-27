@@ -308,6 +308,8 @@ var MIN_SPECKLE_REF = 200;
 var SPECKLE_SLOPE = 15; // degrees
 var LARGE_SPECKLE_SLOPE = 35;
 var SPECKLE_GREEN = 1.03;
+var RAKING_LIGHT = 0.8;
+var SHADOW_COLOR_DIFF = 0.1;
 // see addSignatureShadows()
 var MIN_LIGHT_INNER = 0.25;
 var NEAR_SHADOW_ALTITUDE = 6; // degrees
@@ -1919,7 +1921,7 @@ function* deshadowSteps(image, terrain, nir, pixelSize, demPixelSize, path, prog
     cells, terrain, region, regions,
     W, H, pixelSize, demPixelSize, work.rest, !!(options && options.balancedThreshold),
     options && options.imageShadows, !!(options && options.despeckle),
-    Math.max(demPixelSize, options && options.demSpacing || 0));
+    Math.max(demPixelSize, options && options.demSpacing || 0), {direct: direct, flat: flat});
   work.rest(PROGRESS.shadows);
   result.masked = shadows.masked;
   result.maskRatio = shadows.ratio;
@@ -3177,9 +3179,12 @@ function getOtherShadows(hard, light) {
 // @steepness with @despeckle, the mean slope of the terrain around each pixel
 //   (see getSteepness())
 // @demSpacing optional, see deshadowImage() (default @demPixelSize)
+// @lighting optional, with @despeckle: {direct, flat}, each pixel's direct
+//   light from the DEM without cast shadows and on flat ground (see
+//   getCellLighting())
 // Returns the number of pixels added
 export function addSmallShadows(mask, image, valid, nearShadows, W, H, pixelSize, demPixelSize, despeckle,
-    steepness, demSpacing) {
+    steepness, demSpacing, lighting) {
   var N = W * H, src = image.samples, bands = image.bands, hard = mask.hard;
   var L = getLuma(src, bands, N), samples = getMaskSamples(L, valid, mask, W, H, pixelSize);
   var gains = measureGains(src, bands, L, valid, samples.gap, samples.litT, W, H, pixelSize);
@@ -3216,7 +3221,8 @@ export function addSmallShadows(mask, image, valid, nearShadows, W, H, pixelSize
   }
   if (despeckle) {
     mask.despeckled = !!mask.signature &&
-      filterSpeckles(ratio, nearShadows, mask.signature, steepness, sizes, fillSize, image, ref, w, W, H);
+      filterSpeckles(ratio, nearShadows, mask.signature, steepness, sizes, fillSize, image, ref, w, W, H,
+        lighting, getMaskColor(image, valid, hard, N));
     if (!mask.despeckled) {
       for (i = 0; i < N; i++) if (!nearShadows[i]) ratio[i] = 0;
     }
@@ -3328,9 +3334,10 @@ function getAreaGains(all, ratio, sizes, src, bands, L, ref, w, fillSize, maxSiz
 // than SPECKLE_SLOPE (LARGE_SPECKLE_SLOPE for those with pixels in areas
 // larger than @fillSize pixels, by @sizes: the shadows that large that the
 // DEM misses are of cliffs), those in forest: whose mean color in @image is
-// green (see isGreenArea()) or whose sunlit surroundings are (by @ref and @w,
-// see isGreenGround()), since the DEM shows the ground under the trees but
-// not the trees, whose clumps and the gaps between them look like shadow,
+// green (see looksLikeTrees(), by @lighting and @shadowColor) or whose
+// sunlit surroundings are (by @ref and @w, see isGreenGround()), since the
+// DEM shows the ground under the trees but not the trees, whose clumps and
+// the gaps between them look like shadow,
 // and those that look less like shadow than most of
 // those in the lower suns' shadows: whose mean @signature (log likelihood
 // ratio of shadow to sunlit ground by color, see addSignatureShadows()) is
@@ -3345,7 +3352,8 @@ function getAreaGains(all, ratio, sizes, src, bands, L, ref, w, fillSize, maxSiz
 // shadow (e.g. junipers on red soil).
 // Returns false, leaving out nothing, if fewer than MIN_SPECKLE_REF pixels
 // are in the lower suns' shadows
-function filterSpeckles(ratio, nearShadows, signature, steepness, sizes, fillSize, image, ref, w, W, H) {
+function filterSpeckles(ratio, nearShadows, signature, steepness, sizes, fillSize, image, ref, w, W, H,
+    lighting, shadowColor) {
   var N = W * H, near = new Uint8Array(N), far = new Uint8Array(N), n = 0, i, t, d;
   for (i = 0; i < N; i++) {
     if (!(ratio[i] > 0)) continue;
@@ -3368,11 +3376,66 @@ function filterSpeckles(ratio, nearShadows, signature, steepness, sizes, fillSiz
   getCandidateAreas(far, signature, W, H, -Infinity).forEach(function(a) {
     var large = getMaxValue(sizes, a.pixels) > fillSize;
     if (getMeanValue(steepness, a.pixels) >= (large ? LARGE_SPECKLE_SLOPE : SPECKLE_SLOPE) &&
-        !isGreenArea(image, a.pixels) && !isGreenGround(ref, w, a.pixels) &&
+        !looksLikeTrees(image, a.pixels, lighting, shadowColor) && !isGreenGround(ref, w, a.pixels) &&
         (a.mean >= t || getMeanLogValue(ratio, a.pixels) >= d)) return;
     for (var k = 0; k < a.pixels.length; k++) ratio[a.pixels[k]] = 0;
   });
   return true;
+}
+
+// Whether the mean color of @pixels is green (see isGreenArea()), as clumps
+// of dark trees are, unless the DEM shows the sun grazing the ground there
+// (its direct light less than RAKING_LIGHT of that on flat ground, by
+// @lighting) and the color is within SHADOW_COLOR_DIFF (in log ratios of
+// green to red and to blue) of @shadowColor, the mask's: where the sun grazes
+// rock, relief too fine for the DEM casts shadows, and in some imagery
+// shadows are a little greener than red and blue. (Trees on slopes facing
+// the sun, or greener than the image's shadows, are still left out.)
+function looksLikeTrees(image, pixels, lighting, shadowColor) {
+  return isGreenArea(image, pixels) &&
+    !(isRaking(lighting, pixels) && hasShadowColor(image, pixels, shadowColor));
+}
+
+// Sums of the bands of the valid pixels of @hard; null if there are none
+function getMaskColor(image, valid, hard, N) {
+  var src = image.samples, bands = image.bands, sum = [0, 0, 0], n = 0, i, b;
+  for (i = 0; i < N; i++) {
+    if (!hard[i] || !valid[i]) continue;
+    for (b = 0; b < 3; b++) sum[b] += src[i * bands + b];
+    n++;
+  }
+  return n > 0 && sum[0] > 0 && sum[1] > 0 && sum[2] > 0 ? sum : null;
+}
+
+// Sums of the bands of @pixels
+function getColorSums(image, pixels) {
+  var src = image.samples, bands = image.bands, sum = [0, 0, 0], k, b;
+  for (k = 0; k < pixels.length; k++) {
+    for (b = 0; b < 3; b++) sum[b] += src[pixels[k] * bands + b];
+  }
+  return sum;
+}
+
+// @shadowColor optional, sums of bands (see getMaskColor())
+function hasShadowColor(image, pixels, shadowColor) {
+  if (!shadowColor) return false;
+  var c = getColorSums(image, pixels);
+  return Math.abs(Math.log(c[1] / c[0] * shadowColor[0] / shadowColor[1])) < SHADOW_COLOR_DIFF &&
+    Math.abs(Math.log(c[1] / c[2] * shadowColor[2] / shadowColor[1])) < SHADOW_COLOR_DIFF;
+}
+
+// @lighting optional, see addSmallShadows()
+function isRaking(lighting, pixels) {
+  if (!lighting) return false;
+  var d = 0, f = 0, k, p;
+  for (k = 0; k < pixels.length; k++) {
+    p = pixels[k];
+    if (lighting.flat[p] > 0) {
+      d += lighting.direct[p];
+      f += lighting.flat[p];
+    }
+  }
+  return f > 0 && d < f * RAKING_LIGHT;
 }
 
 function getMeanValue(arr, pixels) {
@@ -3384,10 +3447,7 @@ function getMeanValue(arr, pixels) {
 // bluest (lit by the sky) or reddest (lit by rock around them), and clumps of
 // trees as dark are greenest
 function isGreenArea(image, pixels) {
-  var src = image.samples, bands = image.bands, sum = [0, 0, 0], k, b;
-  for (k = 0; k < pixels.length; k++) {
-    for (b = 0; b < 3; b++) sum[b] += src[pixels[k] * bands + b];
-  }
+  var sum = getColorSums(image, pixels);
   return sum[1] > sum[0] && sum[1] > sum[2];
 }
 
@@ -4413,12 +4473,12 @@ function softenShadows(shadow, direct, W, H, r) {
 // @balanced see getAgreementThreshold()
 // @imageShadows optional 'on' to use the mask whatever its size (see
 //   MAX_MASK_RATIO), or 'off' to use the DEM's shadows
-// @despeckle, @demSpacing see addSmallShadows()
+// @despeckle, @demSpacing, @lighting see addSmallShadows()
 // Returns {shadow, masked, count, ratio, mask, sun}: masked is true if the
 //   shadows are from the mask (see getShadowMask()), cast by @sun; ratio is
 //   the mask's size over the DEM's shadows'
 function getPixelShadows(image, nir, valid, predicted, nearShadows, cells, terrain, region, regions,
-    W, H, pixelSize, demPixelSize, progress, balanced, imageShadows, despeckle, demSpacing) {
+    W, H, pixelSize, demPixelSize, progress, balanced, imageShadows, despeckle, demSpacing, lighting) {
   var N = W * H, L = getLuma(image.samples, image.bands, N);
   var band = Math.max(MIN_BAND, demPixelSize * BAND_DEM_PIXELS);
   var shadow = new Float32Array(N), stretch = 1, mask, n, i, maskSun, dark, lowered;
@@ -4444,7 +4504,7 @@ function getPixelShadows(image, nir, valid, predicted, nearShadows, cells, terra
     addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, regions.suns, W, H,
       band / pixelSize, getAdjacentPixels(pixelSize, demPixelSize), progress);
     addSmallShadows(mask, image, valid, nearShadows, W, H, pixelSize, demPixelSize, despeckle,
-      despeckle ? getSteepness(terrain, cells, demPixelSize) : null, demSpacing);
+      despeckle ? getSteepness(terrain, cells, demPixelSize) : null, demSpacing, lighting);
     mask.signature = null;
     for (i = 0; i < N; i++) shadow[i] = mask.hard[i];
     return {shadow: shadow, masked: true, count: mask.count, ratio: mask.count / n, mask: mask,

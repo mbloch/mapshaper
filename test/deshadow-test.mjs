@@ -976,6 +976,26 @@ describe('mapshaper-deshadow.mjs', function () {
       // speckles on terrain as steep are added
       assert.equal(s.mask.hard[4 * SW + 20], 1);
     });
+
+    it('with despeckle, adds greenish dark areas colored like the image\'s shadows where the sun grazes the terrain', function () {
+      // the image's shadows are gray and a little greener than red and blue,
+      // as in some imagery
+      function run(c, direct) {
+        var s = largeBlockScene(c, 40), lighting = {
+          direct: new Float32Array(SN).fill(0.9), flat: new Float32Array(SN).fill(0.9)}, x, y;
+        for (var i = 0; i < SN; i++) if (i % SW < 15) s.image.samples.set([40, 42, 41], i * 3);
+        for (y = 20; y < 32; y++) {
+          for (x = 44; x < 56; x++) lighting.direct[y * SW + x] = direct;
+        }
+        internal.addSmallShadows(s.mask, s.image, new Uint8Array(SN).fill(1), s.near, SW, SH, 8, 8, true,
+          s.steepness, 16, lighting);
+        return s.mask.hard[25 * SW + 50];
+      }
+      assert.equal(run([62, 66, 63], 0.3), 1);
+      assert.equal(run([62, 66, 63], 0.9), 0);
+      // trees are greener than shadows
+      assert.equal(run([50, 62, 45], 0.3), 0);
+    });
   });
 
   describe('limitGainsInProportion()', function () {
