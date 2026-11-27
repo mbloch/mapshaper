@@ -2774,8 +2774,12 @@ export function getOptionParser() {
     .option('date', {
       // describe: 'date of the imagery (e.g. 2023-06-15), to fit the sun along its path that day; default is the dates of imagery from -fetch naip (up to three months apart)'
     })
+    .option('no-despeckle', {
+      describe: 'don\'t brighten small dark spots that the elevation data can\'t explain, e.g. the shadows of low ledges',
+      type: 'flag'
+    })
     .option('despeckle', {
-      describe: 'also brighten small dark spots that the elevation data can\'t explain, e.g. the shadows of low ledges (for terrain without trees or water)',
+      // the default; accepted for commands written when it wasn't
       type: 'flag'
     })
     .option('verbose', {

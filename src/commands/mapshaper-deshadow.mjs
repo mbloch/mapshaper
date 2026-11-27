@@ -111,7 +111,7 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume, signal
         nodata: grid.nodata},
       terrain: terrain, nir: nir, pixelSize: pixelSize, demPixelSize: demPixelSize, path: path,
       options: {balancedThreshold: !!opts.balanced_threshold || coarseDem, imageShadows: opts.image_shadows,
-        despeckle: !!opts.despeckle, demSpacing: demSpacing}
+        despeckle: !opts.no_despeckle, demSpacing: demSpacing}
     }, printer.update, signal, opts.workers);
   } finally {
     resume();
@@ -147,8 +147,8 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume, signal
       ' brightened by typical amounts');
   }
   if (result.despeckleSkipped) {
-    message('Despeckle was skipped: the image has too few of the shadows the elevation data predicts' +
-      ' to tell small shadows from other dark spots');
+    (opts.despeckle ? message : verbose)('Despeckle was skipped: the image has too few of the shadows the' +
+      ' elevation data predicts to tell small shadows from other dark spots');
   }
   if (result.response > 1) {
     verbose('Slopes facing away from the sun are darker than the elevation data\'s lighting explains' +

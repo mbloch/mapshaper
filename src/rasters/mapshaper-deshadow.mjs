@@ -307,6 +307,7 @@ var SPECKLE_DEPTH_QUANTILE = 0.75;
 var MIN_SPECKLE_REF = 200;
 var SPECKLE_SLOPE = 15; // degrees
 var LARGE_SPECKLE_SLOPE = 35;
+var SPECKLE_GREEN = 1.03;
 // see addSignatureShadows()
 var MIN_LIGHT_INNER = 0.25;
 var NEAR_SHADOW_ALTITUDE = 6; // degrees
@@ -3215,7 +3216,7 @@ export function addSmallShadows(mask, image, valid, nearShadows, W, H, pixelSize
   }
   if (despeckle) {
     mask.despeckled = !!mask.signature &&
-      filterSpeckles(ratio, nearShadows, mask.signature, steepness, sizes, fillSize, image, W, H);
+      filterSpeckles(ratio, nearShadows, mask.signature, steepness, sizes, fillSize, image, ref, w, W, H);
     if (!mask.despeckled) {
       for (i = 0; i < N; i++) if (!nearShadows[i]) ratio[i] = 0;
     }
@@ -3325,11 +3326,12 @@ function getAreaGains(all, ratio, sizes, src, bands, L, ref, w, fillSize, maxSiz
 // Leaves out of the small shadows that @despeckle adds (@ratio > 0 outside
 // @nearShadows) the connected areas on terrain whose mean @steepness is less
 // than SPECKLE_SLOPE (LARGE_SPECKLE_SLOPE for those with pixels in areas
-// larger than @fillSize pixels, by @sizes, which are also left out if their
-// mean color is green (see isGreenArea()): clumps of trees on slopes look
-// like shadow more often than speckles do, and the shadows that large that
-// the DEM misses are of cliffs), and those that look less like shadow than
-// most of
+// larger than @fillSize pixels, by @sizes: the shadows that large that the
+// DEM misses are of cliffs), those in forest: whose mean color in @image is
+// green (see isGreenArea()) or whose sunlit surroundings are (by @ref and @w,
+// see isGreenGround()), since the DEM shows the ground under the trees but
+// not the trees, whose clumps and the gaps between them look like shadow,
+// and those that look less like shadow than most of
 // those in the lower suns' shadows: whose mean @signature (log likelihood
 // ratio of shadow to sunlit ground by color, see addSignatureShadows()) is
 // below SPECKLE_QUANTILE of theirs, unless they are as deep as
@@ -3343,7 +3345,7 @@ function getAreaGains(all, ratio, sizes, src, bands, L, ref, w, fillSize, maxSiz
 // shadow (e.g. junipers on red soil).
 // Returns false, leaving out nothing, if fewer than MIN_SPECKLE_REF pixels
 // are in the lower suns' shadows
-function filterSpeckles(ratio, nearShadows, signature, steepness, sizes, fillSize, image, W, H) {
+function filterSpeckles(ratio, nearShadows, signature, steepness, sizes, fillSize, image, ref, w, W, H) {
   var N = W * H, near = new Uint8Array(N), far = new Uint8Array(N), n = 0, i, t, d;
   for (i = 0; i < N; i++) {
     if (!(ratio[i] > 0)) continue;
@@ -3366,7 +3368,7 @@ function filterSpeckles(ratio, nearShadows, signature, steepness, sizes, fillSiz
   getCandidateAreas(far, signature, W, H, -Infinity).forEach(function(a) {
     var large = getMaxValue(sizes, a.pixels) > fillSize;
     if (getMeanValue(steepness, a.pixels) >= (large ? LARGE_SPECKLE_SLOPE : SPECKLE_SLOPE) &&
-        !(large && isGreenArea(image, a.pixels)) &&
+        !isGreenArea(image, a.pixels) && !isGreenGround(ref, w, a.pixels) &&
         (a.mean >= t || getMeanLogValue(ratio, a.pixels) >= d)) return;
     for (var k = 0; k < a.pixels.length; k++) ratio[a.pixels[k]] = 0;
   });
@@ -3387,6 +3389,21 @@ function isGreenArea(image, pixels) {
     for (b = 0; b < 3; b++) sum[b] += src[pixels[k] * bands + b];
   }
   return sum[1] > sum[0] && sum[1] > sum[2];
+}
+
+// Whether the mean color of the sunlit ground around @pixels (@ref, sums over
+// @w sunlit pixels) is green, by SPECKLE_GREEN over red, and above blue: the
+// gaps between the crowns of trees are shadows that the DEM can't show, and
+// relighting them would flatten the forest's texture (gray rock can be a
+// little greener than red)
+function isGreenGround(ref, w, pixels) {
+  var sum = [0, 0, 0], k, b, p;
+  for (k = 0; k < pixels.length; k++) {
+    p = pixels[k];
+    if (!(w[p] > 0.25)) continue;
+    for (b = 0; b < 3; b++) sum[b] += ref[b][p] / w[p];
+  }
+  return sum[1] > sum[0] * SPECKLE_GREEN && sum[1] > sum[2];
 }
 
 function getMaxValue(arr, pixels) {

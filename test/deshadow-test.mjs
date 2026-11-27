@@ -903,6 +903,20 @@ describe('mapshaper-deshadow.mjs', function () {
       assert.equal(s.mask.hard[31 * SW + 45], 0);
     });
 
+    it('with despeckle, leaves out small dark areas in forest: green ones and those on green ground', function () {
+      var s = speckleScene(), x, y;
+      for (y = 20; y < 41; y++) {
+        for (x = 40; x < SW; x++) s.image.samples.set([110, 140, 90], (y * SW + x) * 3);
+      }
+      speckleBlock(s.image.samples, s.signature, 45, 10, [80, 66, 55], 0);
+      speckleBlock(s.image.samples, s.signature, 45, 30, [80, 66, 55], 0);
+      speckleBlock(s.image.samples, s.signature, 45, 50, [50, 62, 45], 0);
+      addSpeckles(s);
+      assert.equal(s.mask.hard[11 * SW + 45], 1);
+      assert.equal(s.mask.hard[31 * SW + 45], 0);
+      assert.equal(s.mask.hard[51 * SW + 45], 0);
+    });
+
     it('with despeckle, still adds the parts of larger dark areas in the shadows of a lower sun', function () {
       // a dark band across the edge of the lower sun's shadows (x = 40): only
       // its part inside them is small enough

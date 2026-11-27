@@ -150,7 +150,7 @@ Aerial photos often include shadows cast by the terrain. These tend to clash wit
 -deshadow dem=mapterhorn
 ```
 
-Add `despeckle` to also brighten small dark spots that are too fine for the DEM to account for. It works best on bare rock and areas without visible tree shadows.
+It also brightens small dark spots that are too fine for the DEM to account for, such as the shadows of ledges on bare rock. Add `no-despeckle` to brighten only the shadows that the DEM predicts.
 
 ![Aerial imagery of a river canyon, with the original image in the upper left and the image after -deshadow in the lower right, divided by a diagonal line](/docs/images/shaded-relief-deshadow-compare.jpg)
 
