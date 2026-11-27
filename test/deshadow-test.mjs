@@ -782,6 +782,35 @@ describe('mapshaper-deshadow.mjs', function () {
     });
   });
 
+  describe('getAdjacentAreas()', function () {
+    // a shadow along x = 0 and, next to it, a 100-pixel area within 10 pixels
+    // of it (x 1-10) that reaches farther at @extra pixels
+    function getKinds(extra) {
+      var W = 20, H = 10, hard = new Uint8Array(W * H), cand = new Uint8Array(W * H);
+      var llr = new Float32Array(W * H).fill(5), x, y;
+      for (y = 0; y < H; y++) {
+        hard[y * W] = 1;
+        for (x = 1; x <= 10; x++) cand[y * W + x] = 1;
+      }
+      extra.forEach(function(p) { cand[p[1] * W + p[0]] = 1; });
+      var areas = internal.getAdjacentAreas(hard, cand, llr, W, H, 10);
+      return [areas.near.length, areas.far.length];
+    }
+
+    it('takes in an area all within the distance', function () {
+      assert.deepEqual(getKinds([]), [1, 0]);
+    });
+
+    it('takes in an area with a few pixels a little past the distance', function () {
+      assert.deepEqual(getKinds([[11, 4], [11, 5]]), [1, 0]);
+    });
+
+    it('leaves out an area with more pixels past the distance, or any much past it', function () {
+      assert.deepEqual(getKinds([[11, 3], [11, 4], [11, 5]]), [0, 1]);
+      assert.deepEqual(getKinds([[11, 4], [12, 4]]), [0, 1]);
+    });
+  });
+
   describe('addSmallShadows()', function () {
     // 8m pixels and DEM cells: sunlit ground, a large masked shadow (x < 15),
     // and dark ground 1.84 times darker than the ground, in a line (x = 40)

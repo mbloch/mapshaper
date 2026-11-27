@@ -360,6 +360,12 @@ var SIGNATURE_LLR = Math.log(8);
 var ADJACENT_DISTANCE = 80; // meters
 var ADJACENT_DEM_PIXELS = 4;
 var ADJACENT_PIXELS = 4;
+// ... though a few of a shadow's pixels (this share) may reach a little past
+// that distance (up to this multiple of it), as at the far end of a long shadow
+// whose image is offset from the DEM's; dark ground next to a shadow usually
+// goes on farther
+var ADJACENT_OVERRUN = 0.02;
+var ADJACENT_REACH = 1.1;
 var AREA_SUN_MATCH = 0.6;
 var MIN_SUNLIT_SHARE = 0.25;
 var MIN_SIGNATURE_PIXELS = 1000;
@@ -4828,15 +4834,16 @@ function addAdjacentShadows(hard, llr, valid, W, H, maxPx, edges, signature) {
 }
 
 // Candidate areas (see getCandidateAreas()) that touch @hard: {near, far},
-// those that are all within @maxPx pixels of it and those that aren't
-function getAdjacentAreas(hard, cand, llr, W, H, maxPx) {
+// those that are within @maxPx pixels of it (but for ADJACENT_OVERRUN of
+// their pixels, within ADJACENT_REACH times that) and those that aren't
+export function getAdjacentAreas(hard, cand, llr, W, H, maxPx) {
   var dist = chamferDistance(hard, W, H), near = [], far = [];
   getCandidateAreas(cand, llr, W, H).forEach(function(a) {
-    var touches = false, k, d;
+    var maxOver = a.pixels.length * ADJACENT_OVERRUN, over = 0, touches = false, k, d;
     for (k = 0; k < a.pixels.length; k++) {
       d = dist[a.pixels[k]];
       if (d <= 4) touches = true;
-      if (d > maxPx * 3) break;
+      if (d > maxPx * 3 && (d > maxPx * 3 * ADJACENT_REACH || ++over > maxOver)) break;
     }
     if (k < a.pixels.length) far.push(a);
     else if (touches) near.push(a);
