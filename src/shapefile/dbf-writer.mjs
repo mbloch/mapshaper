@@ -167,7 +167,7 @@ function initDateField(info, arr, name) {
   info.write = function(i, bin) {
     var d = arr[i][name],
         str;
-    if (d instanceof Date === false) {
+    if (d instanceof Date === false || isNaN(d.getTime())) {
       str = '00000000';
     } else {
       str = utils.lpad(d.getUTCFullYear(), 4, '0') +
