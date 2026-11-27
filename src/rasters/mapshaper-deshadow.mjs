@@ -11,7 +11,8 @@
 //
 // 1. The sun's position is fitted by correlating I with the image's linear
 //    luma within tiles (across the whole image, albedo varies with the
-//    terrain, e.g. from forested valleys to snowy peaks), and by how
+//    terrain, e.g. from forested valleys to snowy peaks), other than nearly
+//    flat ones (see FLAT_TILE_SLOPE), and by how
 //    consistently the image is darker just inside the edges of the DEM's
 //    cast shadows than just outside them. With the image's date (or range
 //    of dates), only positions on the sun's path are tried.
@@ -33,6 +34,18 @@ import { getMessagePortClient, serveMessagePort } from '../utils/mapshaper-worke
 var FIT_TILES = 240;
 var MIN_FIT_TILE = 16;
 var MIN_TILE_CELLS = 50;
+// Tiles whose cells have a mean slope of less than FLAT_TILE_SLOPE degrees
+// aren't scored, as their shading varies too little to show among the
+// variation of the ground cover (e.g. fields), and their correlations, near
+// 0 for any sun, would dilute those of the image's hills and mountains;
+// unless the sun casts shadows on at least FLAT_TILE_SHADOWS of their cells
+// (e.g. a plain below cliffs). In gentler terrain, tiles less steep than
+// FLAT_TILE_SHARE of the tile at the FLAT_TILE_QUANTILE of mean slopes are
+// left out instead.
+var FLAT_TILE_SLOPE = 5;
+var FLAT_TILE_SHADOWS = 0.02;
+var FLAT_TILE_SHARE = 0.5;
+var FLAT_TILE_QUANTILE = 0.9;
 // lowest sun altitude fitted, in degrees
 export var MIN_ALTITUDE = 10;
 var MAX_ALTITUDE = 88;
@@ -526,18 +539,65 @@ function getFitLevels(Z, B, w, h, cellW, cellH, region, free, demPixelSize) {
   var fit = getFitLevel(Z, B, w, h, cellW, cellH, region, FIT_CELLS, MAX_FIT_CELL);
   var edges = getFitLevel(Z, B, w, h, cellW, cellH, region, Infinity, Infinity);
   var coarseEdges = getFitLevel(Z, B, w, h, cellW, cellH, region, COARSE_EDGE_CELLS, MAX_COARSE_EDGE_CELL);
+  var coarse = free ? getFitLevel(fit.Z, fit.B, fit.w, fit.h, fit.cellW, fit.cellH, fit.region, COARSE_FIT_CELLS,
+    MAX_COARSE_FIT_CELL) : null;
   [edges, coarseEdges].forEach(function(lev) {
     var cell = Math.sqrt(lev.cellW * lev.cellH);
     lev.pairStep = Math.max(EDGE_PAIR_STEP, Math.round((demPixelSize || 0) / cell));
     lev.slopeStep = Math.max(lev.pairStep, Math.round(FACING_SPAN / cell / 2));
   });
+  // the coarse level's tiles are judged by the fit level's slopes, which its
+  // larger cells would smooth
+  var slopes = getCellSlopes(getLevelNormals(fit));
+  fit.scoredTiles = getScoredTiles(fit, slopes);
+  if (coarse) coarse.scoredTiles = getScoredTiles(coarse, coarse.factor > 1 ?
+    downsampleMeans(slopes, fit.w, fit.h, coarse.factor) : slopes);
   return {
     fit: fit,
-    coarse: free ? getFitLevel(fit.Z, fit.B, fit.w, fit.h, fit.cellW, fit.cellH, fit.region, COARSE_FIT_CELLS,
-      MAX_COARSE_FIT_CELL) : null,
+    coarse: coarse,
     edges: edges,
     coarseEdges: coarseEdges
   };
+}
+
+// The slope of each cell, in degrees (NaN where its normal is)
+function getCellSlopes(normals) {
+  var NZ = normals.z, out = new Float32Array(NZ.length), i;
+  for (i = 0; i < NZ.length; i++) out[i] = Math.acos(Math.min(1, NZ[i])) * 180 / Math.PI;
+  return out;
+}
+
+// Whether each tile of @level is scored by scoreSun() (see FLAT_TILE_SLOPE):
+// a Uint8Array, by tile row
+// @S the slope of each cell of @level (degrees)
+function getScoredTiles(level, S) {
+  var r = level.region, T = level.tile, B = level.B;
+  var tw = Math.ceil((r.x1 - r.x0) / T), th = Math.ceil((r.y1 - r.y0) / T);
+  var sum = new Float64Array(tw * th), count = new Uint32Array(tw * th), x, y, i, t;
+  for (y = r.y0; y < r.y1; y++) {
+    for (x = r.x0; x < r.x1; x++) {
+      i = y * level.w + x;
+      if (S[i] !== S[i] || B[i] !== B[i]) continue;
+      t = ((y - r.y0) / T | 0) * tw + ((x - r.x0) / T | 0);
+      sum[t] += S[i];
+      count[t]++;
+    }
+  }
+  for (t = 0; t < sum.length; t++) sum[t] = count[t] > 0 ? sum[t] / count[t] : NaN;
+  return getSteepTiles(sum);
+}
+
+// @slopes mean slope of each tile (degrees; NaN for tiles without cells)
+// Returns a Uint8Array with 1 for each tile steep enough to be scored (see
+//   FLAT_TILE_SLOPE)
+export function getSteepTiles(slopes) {
+  var known = Float64Array.from(slopes.filter(function(s) { return s === s; })).sort();
+  var out = new Uint8Array(slopes.length), min, t;
+  if (known.length === 0) return out;
+  min = Math.min(FLAT_TILE_SLOPE,
+    FLAT_TILE_SHARE * known[Math.min(known.length - 1, Math.floor(known.length * FLAT_TILE_QUANTILE))]);
+  for (t = 0; t < slopes.length; t++) out[t] = slopes[t] >= min ? 1 : 0;
+  return out;
 }
 
 function setLevelsContext(levels, work, latitude) {
@@ -919,21 +979,23 @@ function getCastShadowContrast(level, azimuth, altitude) {
 }
 
 // Mean correlation of I with brightness within the tiles of @level.region
-// (weighted by cells); -1 if no tile has both varying
+// (weighted by cells), other than nearly flat ones that level.scoredTiles
+// (optional) leaves out, unless the sun casts shadows on them; -1 if no tile
+// has both varying
 // @tileR optional array for each tile's correlation (NaN if not scored)
 function scoreSun(level, azimuth, altitude, tileR) {
   if (level.latitude != null && !isPossibleSun(level.latitude, azimuth, altitude)) {
     if (tileR) tileR.fill(NaN);
     return -1;
   }
-  var r = level.region, w = level.w, B = level.B, T = level.tile;
+  var r = level.region, w = level.w, B = level.B, T = level.tile, scored = level.scoredTiles;
   var tw = Math.ceil((r.x1 - r.x0) / T), th = Math.ceil((r.y1 - r.y0) / T);
   var nrm = getLevelNormals(level), NX = nrm.x, NY = nrm.y, NZ = nrm.z;
   var P = castTerrainShadow(level.Z, w, level.h, level.cellW, level.cellH,
     {azimuth: azimuth, altitude: altitude}, r);
   var sx = Math.sin(azimuth) * Math.cos(altitude), sy = Math.cos(azimuth) * Math.cos(altitude);
   var sz = Math.sin(altitude);
-  var acc = new Float64Array(tw * 6), total = 0, wsum = 0;
+  var acc = new Float64Array(tw * 7), total = 0, wsum = 0;
   var tx, ty, x, y, y1, i, k, a, b, n, cov, va, vb, rr;
   if (level.work) level.work.fit(getRegionCells(r));
   B = getLevelLogBrightness(level);
@@ -947,20 +1009,21 @@ function scoreSun(level, azimuth, altitude, tileR) {
         if (b !== b || NZ[i] !== NZ[i]) continue;
         a = P[i] ? 0 : NX[i] * sx + NY[i] * sy + NZ[i] * sz;
         a = Math.log((a > 0 ? a : 0) + FIT_DIFFUSE);
-        k = ((x - r.x0) / T | 0) * 6;
+        k = ((x - r.x0) / T | 0) * 7;
         acc[k]++;
         acc[k + 1] += a;
         acc[k + 2] += b;
         acc[k + 3] += a * a;
         acc[k + 4] += b * b;
         acc[k + 5] += a * b;
+        acc[k + 6] += P[i];
       }
     }
     for (tx = 0; tx < tw; tx++) {
-      k = tx * 6;
+      k = tx * 7;
       n = acc[k];
       rr = NaN;
-      if (n >= MIN_TILE_CELLS) {
+      if (n >= MIN_TILE_CELLS && (!scored || scored[ty * tw + tx] || acc[k + 6] >= FLAT_TILE_SHADOWS * n)) {
         cov = acc[k + 5] / n - acc[k + 1] / n * acc[k + 2] / n;
         va = acc[k + 3] / n - (acc[k + 1] / n) * (acc[k + 1] / n);
         vb = acc[k + 4] / n - (acc[k + 2] / n) * (acc[k + 2] / n);
@@ -1460,6 +1523,13 @@ function getAreaLevels(levels, labels, k, tw, th) {
       tx = tx0 + ((x - sub.region.x0) / T | 0);
       ty = ty0 + ((y - sub.region.y0) / T | 0);
       if (labels[ty * tw + tx] != k) sub.B[y * sub.w + x] = NaN;
+    }
+  }
+  if (fit.scoredTiles) {
+    t = tx1 - tx0 + 1;
+    sub.scoredTiles = new Uint8Array(t * (ty1 - ty0 + 1));
+    for (ty = ty0; ty <= ty1; ty++) {
+      for (tx = tx0; tx <= tx1; tx++) sub.scoredTiles[(ty - ty0) * t + tx - tx0] = fit.scoredTiles[ty * tw + tx];
     }
   }
   crop = cropLevel(ce, {x0: Math.floor(region.x0 * f), y0: Math.floor(region.y0 * f),
@@ -2053,7 +2123,7 @@ function getHelperLevels(levels) {
     var lev = levels[k];
     out[k] = lev ? {Z: toSharedArray(lev.Z), B: toSharedArray(lev.B), w: lev.w, h: lev.h, cellW: lev.cellW,
       cellH: lev.cellH, factor: lev.factor, tile: lev.tile, region: lev.region, latitude: lev.latitude,
-      pairStep: lev.pairStep, slopeStep: lev.slopeStep} : null;
+      pairStep: lev.pairStep, slopeStep: lev.slopeStep, scoredTiles: lev.scoredTiles} : null;
   });
   return out;
 }

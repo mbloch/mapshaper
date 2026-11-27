@@ -374,6 +374,40 @@ describe('mapshaper-deshadow.mjs', function () {
         {x0: 0, y0: 0, x1: w, y1: h});
       assert.equal(fit.score, -1);
     });
+
+    it('scores the shading of hills beside a larger plain of fields by the hills alone', function () {
+      // hills in the western third; nearly flat ground elsewhere, with fields
+      // that vary more than its shading
+      var w = 192, h = 96, sun = {azimuth: 120 * deg, altitude: 40 * deg};
+      var Z = flatGrid(w, h, function(x, y) {
+        return x < 64 ? hills(x, y) * 0.02 : 0.02 * noise(y * w + x + 5);
+      });
+      var nrm = internal.getNormals(Z, w, h, 1, 1);
+      var shadow = internal.castTerrainShadow(Z, w, h, 1, 1, sun);
+      var s = [Math.sin(sun.azimuth) * Math.cos(sun.altitude), Math.cos(sun.azimuth) * Math.cos(sun.altitude),
+        Math.sin(sun.altitude)];
+      var B = Float32Array.from(Z, function(z, i) {
+        var x = i % w, y = Math.floor(i / w);
+        var I = shadow[i] || !(nrm.z[i] > 0) ? 0 : Math.max(0, nrm.x[i] * s[0] + nrm.y[i] * s[1] + nrm.z[i] * s[2]);
+        var albedo = x < 64 ? 1 + 0.05 * noise(i) : 1 + 0.5 * noise(Math.floor(y / 12) * 100 + Math.floor(x / 12));
+        return (I + 0.3) * albedo;
+      });
+      var fit = internal.fitSunPosition(Z, B, w, h, 1, 1, {x0: 0, y0: 0, x1: w, y1: h});
+      assert(Math.abs(fit.azimuth / deg - 120) < 5, 'azimuth ' + fit.azimuth / deg);
+      assert(fit.score > 0.6, 'score ' + fit.score);
+    });
+  });
+
+  describe('getSteepTiles()', function () {
+    it('leaves out tiles with a mean slope of less than 5 degrees, and tiles without cells', function () {
+      var slopes = [1, 2, 4.9, 5, 12, 20, 30, NaN];
+      assert.deepEqual(Array.from(internal.getSteepTiles(slopes)), [0, 0, 0, 1, 1, 1, 1, 0]);
+    });
+
+    it('in gentle terrain, leaves out tiles less than half as steep as the steepest tenth', function () {
+      var slopes = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4, 4];
+      assert.deepEqual(Array.from(internal.getSteepTiles(slopes)), [0, 0, 0, 1, 1, 1, 1, 1, 1, 1]);
+    });
   });
 
   describe('shadowsConfirmSun()', function () {
