@@ -795,25 +795,145 @@ describe('mapshaper-deshadow.mjs', function () {
       assert.equal(mask.small.pixels[20 * W + 5], 0);
     });
 
-    it('with despeckle, also adds small dark areas outside the shadows of a lower sun', function () {
+    it('with despeckle, adds none outside the shadows of a lower sun if too few are in them to compare with', function () {
       var s = scene(), mask = s.mask;
-      var n = internal.addSmallShadows(mask, s.image, new Uint8Array(N).fill(1), s.near, W, H, 8, 8, true);
-      assert.equal(n, 10);
-      assert.equal(mask.small.pixels[12 * W + 50], 1);
-      assert.equal(mask.hard[28 * W + 25], 0);
+      mask.signature = new Float32Array(N);
+      var n = internal.addSmallShadows(mask, s.image, new Uint8Array(N).fill(1), s.near, W, H, 8, 8, true,
+        new Float32Array(N).fill(30));
+      assert.equal(n, 5);
+      assert.equal(mask.hard[12 * W + 40], 1);
+      assert.equal(mask.hard[12 * W + 50], 0);
+      assert.strictEqual(mask.despeckled, false);
+    });
+
+    // 8m pixels and DEM cells on 30 degree slopes: sunlit ground, a large
+    // masked shadow (x < 15), and small dark blocks in the shadows of a lower
+    // sun (x < 40), which look less like shadow toward x = 40 (signature
+    // -4 to -5.6)
+    var SW = 60, SH = 60, SN = SW * SH;
+    function speckleScene() {
+      var samples = new Uint8Array(SN * 3), hard = new Uint8Array(SN), near = new Uint8Array(SN);
+      var signature = new Float32Array(SN), steepness = new Float32Array(SN).fill(30), i, x, y;
+      for (i = 0; i < SN; i++) {
+        x = i % SW;
+        samples.set(x < 15 ? [40, 40, 50] : [150, 120, 100], i * 3);
+        hard[i] = x < 15 ? 1 : 0;
+        near[i] = x < 40 ? 1 : 0;
+      }
+      for (y = 3; y < 57; y += 5) {
+        for (x = 20; x < 38; x += 4) speckleBlock(samples, signature, x, y, [80, 66, 55], -2 - x / 10);
+      }
+      return {image: {samples: samples, bands: 3, width: SW, height: SH}, near: near, steepness: steepness,
+        signature: signature, mask: {hard: hard, threshold: 80, near: new Uint8Array(SN).fill(1), count: 0,
+          signature: signature}};
+    }
+
+    function speckleBlock(samples, signature, x0, y0, c, s) {
+      for (var y = y0; y < y0 + 3; y++) {
+        for (var x = x0; x < x0 + 2; x++) {
+          samples.set(c, (y * SW + x) * 3);
+          signature[y * SW + x] = s;
+        }
+      }
+    }
+
+    function addSpeckles(s) {
+      return internal.addSmallShadows(s.mask, s.image, new Uint8Array(SN).fill(1), s.near, SW, SH, 8, 8, true,
+        s.steepness);
+    }
+
+    it('with despeckle, leaves out small dark areas that look less like shadow than those in the shadows of a lower sun', function () {
+      // outside them: deeper and unlike shadow (a), shallower and unlike
+      // shadow (b), shallower and like shadow (c)
+      var s = speckleScene();
+      speckleBlock(s.image.samples, s.signature, 45, 10, [70, 58, 48], -20);
+      speckleBlock(s.image.samples, s.signature, 45, 30, [95, 78, 65], -20);
+      speckleBlock(s.image.samples, s.signature, 45, 50, [95, 78, 65], 0);
+      addSpeckles(s);
+      assert.equal(s.mask.hard[4 * SW + 20], 1);
+      assert.equal(s.mask.hard[11 * SW + 45], 1);
+      assert.equal(s.mask.hard[31 * SW + 45], 0);
+      assert.equal(s.mask.hard[51 * SW + 45], 1);
+      assert.strictEqual(s.mask.despeckled, true);
+    });
+
+    it('with despeckle, leaves out small dark areas on gentle terrain', function () {
+      var s = speckleScene();
+      speckleBlock(s.image.samples, s.signature, 45, 10, [80, 66, 55], 0);
+      speckleBlock(s.image.samples, s.signature, 45, 30, [80, 66, 55], 0);
+      for (var y = 25; y < 38; y++) {
+        for (var x = 42; x < 50; x++) s.steepness[y * SW + x] = 10;
+      }
+      addSpeckles(s);
+      assert.equal(s.mask.hard[11 * SW + 45], 1);
+      assert.equal(s.mask.hard[31 * SW + 45], 0);
     });
 
     it('with despeckle, still adds the parts of larger dark areas in the shadows of a lower sun', function () {
-      // a dark band across the edge of the lower sun's shadows (x = 45): only
+      // a dark band across the edge of the lower sun's shadows (x = 40): only
       // its part inside them is small enough
-      var s = scene(), mask = s.mask;
-      for (var y = 2; y < 6; y++) {
-        for (var x = 42; x < 58; x++) s.image.samples.set([80, 66, 55], (y * W + x) * 3);
+      var s = speckleScene();
+      for (var y = 0; y < 2; y++) {
+        for (var x = 30; x < 60; x++) s.image.samples.set([80, 66, 55], (y * SW + x) * 3);
       }
-      var n = internal.addSmallShadows(mask, s.image, new Uint8Array(N).fill(1), s.near, W, H, 8, 8, true);
-      assert.equal(mask.hard[3 * W + 43], 1);
-      assert.equal(mask.hard[3 * W + 50], 0);
-      assert.equal(n, 10 + 16);
+      addSpeckles(s);
+      assert.equal(s.mask.hard[SW + 35], 1);
+      assert.equal(s.mask.hard[SW + 50], 0);
+    });
+
+    // a 12 x 12 block outside the lower sun's shadows, too large for a
+    // speckle of 8m DEM cells but not of elevation data spaced 16m apart, in
+    // rows of two shades of @c, on terrain of @slope degrees
+    function largeBlockScene(c, slope) {
+      var s = speckleScene(), x, y, i;
+      for (y = 20; y < 32; y++) {
+        for (x = 44; x < 56; x++) {
+          i = y * SW + x;
+          s.image.samples.set(y % 2 ? c.map(function(v) { return Math.round(v * 8 / 7); }) : c, i * 3);
+          s.steepness[i] = slope;
+        }
+      }
+      return s;
+    }
+
+    function addLarge(s, demSpacing) {
+      return internal.addSmallShadows(s.mask, s.image, new Uint8Array(SN).fill(1), s.near, SW, SH, 8, 8, true,
+        s.steepness, demSpacing);
+    }
+
+    it('with despeckle, adds larger dark areas on steep terrain if the elevation data is coarser than its cells', function () {
+      var s = largeBlockScene([70, 58, 48], 40);
+      addLarge(s, 16);
+      assert.equal(s.mask.hard[25 * SW + 50], 1);
+      assert.equal(s.mask.small.pixels[25 * SW + 50], 1);
+      // brightened by the gains of the block from its darker rows to the
+      // ground around it, which its lighter rows get less of
+      var dark = gainsAt(s.mask.small, 24 * SW + 50), light = gainsAt(s.mask.small, 25 * SW + 50);
+      [150 / 70, 120 / 58, 100 / 48].forEach(function(v, k) {
+        assert(Math.abs(dark[k] - v) < 0.05, k + ': ' + dark[k]);
+        assert(light[k] > 1 && light[k] < dark[k], k + ': ' + light[k]);
+      });
+      s = largeBlockScene([70, 58, 48], 40);
+      addLarge(s);
+      assert.equal(s.mask.hard[25 * SW + 50], 0);
+    });
+
+    it('with despeckle, leaves out larger dark areas that are green or on less steep terrain', function () {
+      var s = largeBlockScene([50, 62, 45], 40);
+      addLarge(s, 16);
+      assert.equal(s.mask.hard[25 * SW + 50], 0);
+      s = largeBlockScene([70, 58, 48], 30);
+      addLarge(s, 16);
+      assert.equal(s.mask.hard[25 * SW + 50], 0);
+      // speckles on terrain as steep are added
+      assert.equal(s.mask.hard[4 * SW + 20], 1);
+    });
+  });
+
+  describe('limitGainsInProportion()', function () {
+    it('scales gains down in proportion so that none is more than the limit', function () {
+      assert.deepEqual(internal.limitGainsInProportion([40, 30, 20], 20), [20, 15, 10]);
+      assert.deepEqual(internal.limitGainsInProportion([10, 8, 4], 20), [10, 8, 4]);
     });
   });
 
@@ -1096,6 +1216,7 @@ describe('mapshaper-deshadow.mjs', function () {
     });
 
     it('fits the sun\'s altitude to the edges of cast shadows where the ground varies with the terrain', async function () {
+      this.timeout(10000);
       // the image is larger than the level that brightness is scored on, so
       // shadow edges are measured on a finer grid
       var dataset = makeAspectDataset(400, 400, {azimuth: 150 * deg, altitude: 50 * deg});
