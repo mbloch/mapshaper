@@ -98,12 +98,15 @@ export function layerIsPinnable(lyr, dataset) {
     internal.layerHasFurniture(lyr);
 }
 
-// A layer that arrives without becoming the active one is visible, so that a
-// command that makes several layers does not hide all but one. The active
-// layer is shown by being active, and is left unpinned so that it hides
-// when another layer becomes active. Only layers whose visibility has never
-// been set are touched: a snapshot stores every layer's, and a layer hidden
-// with its eye icon stays hidden.
+// A layer that arrives without becoming the active one is pinned if all the
+// unframed layers that were already there are pinned (as the show/hide all
+// button tests), so that a command that makes several layers does not hide
+// all but one of them when everything is being shown. The active layer is
+// shown by being active, and is left unpinned so that it hides when another
+// layer becomes active. Only layers whose visibility has never been set are
+// touched: a snapshot stores every layer's, and a layer hidden with its eye
+// icon stays hidden. (Visibility in a frame is set by the -frame command; see
+// hideNewFrameLayers().)
 //
 // The exception is a new layer with nothing in it, made to be drawn in: the
 // layer that was active stays visible, as a guide for the drawing.
@@ -112,9 +115,13 @@ export function layerIsPinnable(lyr, dataset) {
 // active: the active layer, {layer, dataset}
 // prevActive: (optional) the layer that was active before, if the active
 //   layer is new
-export function showNewLayers(layers, active, prevActive) {
+// unframed: (optional) the unframed layers among @layers (default is all)
+export function showNewLayers(layers, active, prevActive, unframed) {
   var activeLyr = active && active.layer;
   var prev = prevActive && prevActive.layer;
+  var pinNew = (unframed || layers).every(function(o) {
+    return o.layer.pinned !== undefined ? o.layer.pinned : true;
+  });
   if (prev && prev != activeLyr && !prev.hidden && activeLyr.geometry_type &&
       !internal.layerHasGeometry(activeLyr) &&
       layerIsPinnable(prev, prevActive.dataset)) {
@@ -122,7 +129,7 @@ export function showNewLayers(layers, active, prevActive) {
   }
   layers.forEach(function(o) {
     if (o.layer.pinned === undefined && layerIsPinnable(o.layer, o.dataset)) {
-      setLayerPinning(o.layer, o.layer != activeLyr);
+      setLayerPinning(o.layer, pinNew && o.layer != activeLyr);
     }
   });
 }

@@ -62,7 +62,7 @@ export function Model(gui) {
 
   self.updated = function(flags) {
     var targets = self.getDefaultTargets();
-    var active, relocated;
+    var active, relocated, layers;
     if (targetsAreStale(targets)) {
       relocated = relocateTargets(targets);
       setDefaultTargets.call(self, relocated.length ? relocated : getFirstContentTarget());
@@ -75,8 +75,10 @@ export function Model(gui) {
     }
     // Before anything hears of the update, so that the map draws a layer that
     // has just arrived along with the ones already showing.
-    showNewLayers(self.getLayers(), active,
-      active && !seenLayers.has(active.layer) ? prevActive : null);
+    layers = self.getLayers();
+    showNewLayers(layers, active,
+      active && !seenLayers.has(active.layer) ? prevActive : null,
+      layers.filter(function(o) { return !internal.getFrameForDataset(self, o.dataset); }));
     self.getLayers().forEach(function(o) { seenLayers.add(o.layer); });
     prevActive = active;
     if (flags.select) {

@@ -558,6 +558,11 @@ Several tools (style, label, point) clear `hidden` directly when they open.
   replacement layers by `replaceLayers()`, captured by the layer-metadata
   undo unit, copied when a frame is copied, and cleared when a layer leaves
   its frame (its unframed visibility follows its previous state).
+- A layer that a command adds to a frame (e.g. `-hillshade +`) starts hidden
+  if any other member is hidden, and shown only if they all are; replacement
+  layers keep the visibility they are handed. In the Layers section, a new
+  layer that isn't active is likewise pinned only if all the unframed layers
+  are.
 - In frame view the eye icon runs `-frame target=<frame> hide-layers=` or
   `show-layers=`, so hiding is undoable and replayable. Tools that unhide the
   layer they open must do it through the same command for frame members.

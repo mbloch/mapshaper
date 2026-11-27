@@ -14,6 +14,27 @@ describe('gui-layer-utils.mjs', function () {
       assert.strictEqual(lyr.pinned, true);
     });
 
+    it('leaves a new layer unpinned if an unframed layer that was already there is unpinned', function () {
+      var old = Object.assign(points(), {pinned: false}), lyr = points(), other = points();
+      showNewLayers([{layer: old, dataset: {}}, {layer: lyr, dataset: {}}, {layer: other, dataset: {}}],
+        {layer: lyr, dataset: {}});
+      assert.strictEqual(other.pinned, false);
+    });
+
+    it('pins a new layer if the unframed layers that were already there are pinned', function () {
+      var old = Object.assign(points(), {pinned: true}), lyr = points(), other = points();
+      showNewLayers([{layer: old, dataset: {}}, {layer: lyr, dataset: {}}, {layer: other, dataset: {}}],
+        {layer: lyr, dataset: {}});
+      assert.strictEqual(other.pinned, true);
+    });
+
+    it('ignores unpinned layers outside the unframed group', function () {
+      var framed = Object.assign(points(), {pinned: false}), lyr = points(), other = points();
+      var layers = [{layer: framed, dataset: {}}, {layer: lyr, dataset: {}}, {layer: other, dataset: {}}];
+      showNewLayers(layers, {layer: lyr, dataset: {}}, null, layers.slice(1));
+      assert.strictEqual(other.pinned, true);
+    });
+
     it('leaves a new active layer unpinned, so that it hides when another layer becomes active', function () {
       var lyr = points(), other = points();
       showNewLayers([{layer: lyr, dataset: {}}, {layer: other, dataset: {}}], {layer: lyr, dataset: {}});

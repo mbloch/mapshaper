@@ -21,7 +21,9 @@ import { applyCommandToEachLayer, applyCommandToEachTarget } from '../cli/mapsha
 import { assertFrameUpdateIsValid } from '../furniture/mapshaper-frame-utils';
 import { inheritFrameRef, repairFrameReferences } from '../furniture/mapshaper-frame-resolver';
 import { repairOverlayReferences } from '../furniture/mapshaper-overlays';
-import { getFrameForMerge, getMergedMemberId, splitOffMergeTargets } from '../furniture/mapshaper-frame-members';
+import {
+  getFrameForMerge, getFrameMembership, getMergedMemberId, hideNewFrameLayers, splitOffMergeTargets
+} from '../furniture/mapshaper-frame-members';
 import { setFrameRef } from '../dataset/mapshaper-frame-membership';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 import {
@@ -182,7 +184,8 @@ export async function runCommand(command, job) {
       targets,
       targetDataset,
       targetLayers,
-      arcs;
+      arcs,
+      framesBefore;
 
   if (skipCommand(name, job)) {
     return done(null);
@@ -211,6 +214,7 @@ export async function runCommand(command, job) {
 
   try { // catch errors from synchronous functions
     T.start();
+    framesBefore = getFrameMembership(job.catalog);
 
     if (command._targetOverride) {
       targets = [command._targetOverride];
@@ -809,6 +813,7 @@ export async function runCommand(command, job) {
 
     repairFrameReferences(job.catalog);
     repairOverlayReferences(job.catalog);
+    hideNewFrameLayers(job.catalog, framesBefore);
 
   } catch(e) {
     return done(e);

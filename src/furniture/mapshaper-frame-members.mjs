@@ -1,4 +1,4 @@
-import { getFrameForDataset, getFrameMemberLayers, getFrameMembers } from '../furniture/mapshaper-frame-resolver';
+import { getFrameForDataset, getFrameMemberLayers, getFrameMembers, getFrames } from '../furniture/mapshaper-frame-resolver';
 import { findFrameLayerInDataset, isFrameComponentLayer } from '../furniture/mapshaper-frame-utils';
 import { getFrameRef, setFrameRef } from '../dataset/mapshaper-frame-membership';
 import { haveSameSimplification, rejoinDatasets } from '../dataset/mapshaper-merging';
@@ -47,6 +47,42 @@ export function getFrameMemberRef(catalog, frame, lyr) {
     members.filter(function(o) { return o.layer.name == name; }).length == 1;
   if (nameIsUsable) return name;
   return String(members.findIndex(function(o) { return o.layer == lyr; }) + 1);
+}
+
+// Layers that a command adds to a frame are shown only if all of the frame's
+// other layers are, like new unframed layers in the GUI, which are pinned only
+// if all the unframed layers are. A command that replaces members (e.g.
+// -hillshade without +) leaves the frame alone: its output takes over the
+// visibility of the layers it replaces (see handOverLayerStacking()).
+//
+// Returns the frames' members before a command, for hideNewFrameLayers()
+export function getFrameMembership(catalog) {
+  var frames = getFrames(catalog);
+  if (frames.length === 0) return null;
+  return {
+    layers: new Set(catalog.getLayers().map(function(o) { return o.layer; })),
+    frames: new Map(frames.map(function(frame) {
+      return [frame.layer, getFrameMemberLayers(catalog, frame).map(function(o) { return o.layer; })];
+    }))
+  };
+}
+
+// @before from getFrameMembership(), before the command
+export function hideNewFrameLayers(catalog, before) {
+  var current;
+  if (!before) return;
+  current = new Set(catalog.getLayers().map(function(o) { return o.layer; }));
+  getFrames(catalog).forEach(function(frame) {
+    var prev = before.frames.get(frame.layer);
+    var members, added;
+    if (!prev || prev.some(function(lyr) { return !current.has(lyr); })) return;
+    members = getFrameMemberLayers(catalog, frame).map(function(o) { return o.layer; });
+    added = members.filter(function(lyr) { return !before.layers.has(lyr); });
+    if (added.length === 0 || !members.some(function(lyr) {
+      return before.layers.has(lyr) && lyr.frame_hidden;
+    })) return;
+    added.forEach(function(lyr) { setFrameHidden(lyr, true); });
+  });
 }
 
 // The frame's coordinate system: the first one that is known (from metadata,

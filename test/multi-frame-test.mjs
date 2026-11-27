@@ -280,6 +280,28 @@ describe('multiple map frames', function() {
       assert.equal(!!findLayer(catalog, 'a').layer.frame_hidden, false);
     });
 
+    it('a layer added to a frame with a hidden layer is hidden', async function() {
+      var catalog = await run(boxes + '-frame target=a,b width=200 name=f1 ' +
+        '-frame target=f1 hide-layers=a -dissolve target=b + name=d');
+      assert.equal(frameOf(catalog, 'd'), 'f1');
+      assert.equal(findLayer(catalog, 'd').layer.frame_hidden, true);
+      assert.equal(!!findLayer(catalog, 'b').layer.frame_hidden, false);
+    });
+
+    it('a layer added to a frame whose layers are all shown is shown', async function() {
+      var catalog = await run(boxes + '-frame target=a,b width=200 name=f1 ' +
+        '-dissolve target=b + name=d');
+      assert.equal(frameOf(catalog, 'd'), 'f1');
+      assert.equal(!!findLayer(catalog, 'd').layer.frame_hidden, false);
+    });
+
+    it('a layer that replaces a shown member stays shown beside a hidden one', async function() {
+      var catalog = await run(boxes + '-frame target=a,b width=200 name=f1 ' +
+        '-frame target=f1 hide-layers=a -dissolve target=b name=d');
+      assert.equal(frameOf(catalog, 'd'), 'f1');
+      assert.equal(!!findLayer(catalog, 'd').layer.frame_hidden, false);
+    });
+
     it('name= renames a frame', async function() {
       var catalog = await run(boxes + '-frame target=a width=200 name=f1 -frame target=f1 name=main');
       assert.equal(frameOf(catalog, 'a'), 'main');
