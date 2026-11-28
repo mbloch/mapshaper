@@ -1425,10 +1425,10 @@ mapshaper dem.tif -contours interval=100 no-smoothing \
   -o contours.json
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-deshadow" data-name="-deshadow" data-options="dem despeckle verbose name target"><h3 id="-deshadow">-deshadow</h3>
+<section class="cmd-section" data-id="-deshadow" data-name="-deshadow" data-options="dem no-despeckle verbose name target"><h3 id="-deshadow">-deshadow</h3>
 <p>(Experimental) Remove terrain shadows and lighten dark slopes in an RGB aerial image, using an elevation layer to find them. Useful before applying a hillshade with <code>-blend</code>.</p>
 <p><code>&lt;dem&gt;</code> or <code>dem=</code>  Elevation layer covering the image (e.g. from <code>-fetch</code>).</p>
-<p><code>despeckle</code>  Also brighten small dark spots that the elevation data can&#39;t account for.</p>
+<p><code>no-despeckle</code>  Don&#39;t brighten small dark spots that the elevation data can&#39;t account for, such as the shadows of low ledges. By default, these are brightened where they look like the image&#39;s other shadows and are on steep, unforested ground.</p>
 <p><code>verbose</code>  Print technical details about the correction.</p>
 <p>Common options: <code>name=</code> <code>target=</code> <code>+</code></p>
 </section>

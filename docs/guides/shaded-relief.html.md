@@ -20,7 +20,7 @@ Mapshaper now has a set of tools for making shaded relief maps:
 
 Panels are opened from a layer's options menu in the layers panel, and commands are typed in the console.
 
-## Part one: create a hillshade
+## Create a hillshade
 
 A hillshade is a raster layer that models the landscape with light and shadow, on its own or blended with aerial imagery or other layers. Cartographic hillshades aren't meant to be realistic renderings of sunlight on the land. They adjust the strength of relief to suit the map, sometimes exaggerating it, sometimes keeping it subtle, and they generalize detail so that terrain is legible and works as a base layer.
 
@@ -87,6 +87,8 @@ There are two ways to get started.
 
 Select the elevation layer and choose **hillshade** from its options menu. The hillshade panel opens, and the map shows a live preview of the shading. Use the panel's controls to customize your hillshade and finalize it by clicking **Apply**.
 
+The panel makes opaque hillshades. For a transparent hillshade, with translucent shadows and highlights, to stack over vector layers or use in other software, run [`-hillshade`](/docs/reference.html.md#-hillshade) in the console.
+
 ![The hillshade panel, with Light, Colors, Terrain and Effects controls, beside a grayscale preview of a hillshade of a winding river canyon](/docs/images/shaded-relief-hillshade-panel.jpg)
 
 #### Light
@@ -97,13 +99,11 @@ Select the elevation layer and choose **hillshade** from its options menu. The h
 
 #### Colors
 
-The hillshade's tones run from a **Shadow** color through a **Base** color, which is the color of flat ground, to a **Highlight** color. By default, the shadow and highlight colors are *auto*: a darker shade and a lighter tint of the base color. To combine the hillshade with imagery or a tinted raster, use the **blend hillshade** panel (see [part two](#step-two-blend-the-hillshade-with-the-image)).
+The hillshade's tones run from a **Shadow** color through a **Base** color, which is the color of flat ground, to a **Highlight** color. By default, the shadow and highlight colors are *auto*: a darker shade and a lighter tint of the base color. To combine the hillshade with imagery or a tinted raster, use the **blend hillshade** panel (see [blend the hillshade with the image](#step-two-blend-the-hillshade-with-the-image)).
 
 **Making a colored hillshade.** You can use a hillshade with custom shadow, base and highlight colors as a simple background layer for a map. Picking a cool shadow color and a warm highlight color gives the shading a hand-painted look, especially when smoothing is added.
 
 ![The same terrain in the Dolomites in three diagonal bands: a hillshade with blue shadows and pale yellow highlights in the upper left, a pale warm-gray hillshade in the middle, and a hillshade with violet shadows and peach highlights in the lower right](/docs/images/shaded-relief-colored-hillshade.jpg)
-
-The panel makes opaque hillshades. For a transparent hillshade, with translucent shadows and highlights, to stack over vector layers or use in other software, run [`-hillshade`](/docs/reference.html.md#-hillshade) in the console.
 
 #### Terrain
 
@@ -119,13 +119,13 @@ The panel makes opaque hillshades. For a transparent hillshade, with translucent
 - **Aerial** reduces contrast at low elevations, so that lowlands fade and high mountains stand out.
 - **Gamma** controls the prominence of subtle terrain relative to major landforms. Values below 1 strengthen faint shading.
 
-## Part two: blend a hillshade with imagery
+## Blend a hillshade with imagery
 
 ### Step one: prepare the imagery
 
 #### Fetch imagery
 
-With the map frame in place (see [part one](#step-one-get-elevation-data-in-a-map-frame)), run `-fetch` with the name of an imagery source, or import your own imagery.
+With the map frame in place (see [get elevation data in a map frame](#step-one-get-elevation-data-in-a-map-frame)), run `-fetch` with the name of an imagery source, or import your own imagery.
 
 ```bash
 -fetch naip
@@ -150,7 +150,7 @@ Aerial photos often include shadows cast by the terrain. These tend to clash wit
 -deshadow dem=mapterhorn
 ```
 
-Add `despeckle` to also brighten small dark spots that are too fine for the DEM to account for. It works best on bare rock and areas without visible tree shadows.
+It also brightens small dark spots that are too fine for the DEM to account for, such as the shadows of ledges on bare rock. Add `no-despeckle` to brighten only the shadows that the DEM predicts.
 
 ![Aerial imagery of a river canyon, with the original image in the upper left and the image after -deshadow in the lower right, divided by a diagonal line](/docs/images/shaded-relief-deshadow-compare.jpg)
 
@@ -170,17 +170,28 @@ The **Shadows** and **Highlights** sections of the panel each have three setting
 
 ![A river canyon in three diagonal bands: a hillshade in the upper left, the blend of the hillshade with aerial imagery in the middle, and the aerial imagery alone in the lower right](/docs/images/shaded-relief-blend-result.jpg)
 
-## Part three: blend a hillshade with hypsometric tints
+## Blend a hillshade with hypsometric tints
 
 A **hypsometric tint** uses a color ramp to vary color by elevation. The example below colors lowlands green, highlands tan and the highest peaks white, like a relief map in an atlas.
 
 ![A map of northern Scotland, with hypsometric tints blended with a hillshade](/docs/images/shaded-relief-tint-scotland.jpg)
 
-First, make a hillshade (see [part one](#step-two-create-a-hillshade-from-the-elevation-layer)), then choose **color palette** from the DEM's options menu and pick a hypsometric color ramp from the **Elevation** tab. To fit the colors to the terrain of your map, click **Customize** to open the **Elevations and colors** dialog, where you can move, add, remove and recolor the color stops.
+First, make a hillshade (see [create a hillshade from the elevation layer](#step-two-create-a-hillshade-from-the-elevation-layer)), then choose **color palette** from the DEM's options menu and pick a hypsometric color ramp from the **Elevation** tab. To fit the colors to the terrain of your map, click **Customize** to open the **Elevations and colors** dialog, where you can move, add, remove and recolor the color stops.
 
 ![The Elevations and colors dialog, with a histogram of elevations, a column of color stops with editable break values and the share of land pixels in each band, beside a mountain range tinted from tan valleys to white peaks](/docs/images/shaded-relief-elevation-breaks.jpg)
 
-Finish by blending the tinted elevation layer with a hillshade, as in [part two](#step-two-blend-the-hillshade-with-the-image).
+Finish by blending the tinted elevation layer with a hillshade, as in [blend the hillshade with the image](#step-two-blend-the-hillshade-with-the-image).
+
+## Blend a hillshade with polygons
+
+A hillshade can also be blended with a layer of colored polygons.
+
+![A geologic map of the Olympic Peninsula, Washington, with colored map units blended with a hillshade](/docs/images/shaded-relief-polygons.jpg)
+
+Start with a hillshade and a polygon layer in the same map frame (see [create a hillshade from the elevation layer](#step-two-create-a-hillshade-from-the-elevation-layer)). Select the polygon layer, choose **blend hillshade** from its options menu, and adjust the settings as in [blend the hillshade with the image](#step-two-blend-the-hillshade-with-the-image). For polygon layers the panel has two more settings:
+
+- **Output** sets what the blend makes. **Overlay** keeps the polygons as vector shapes and replaces the hillshade with a transparent layer that gives the blended appearance when it is overlaid on the polygons. **Image** replaces the polygons with a blended image.
+- **Clip to polygons** removes the portion of the hillshade outside the polygons.
 
 ## See also
 

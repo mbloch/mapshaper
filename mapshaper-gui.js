@@ -6889,12 +6889,15 @@
       internal.layerHasFurniture(lyr);
   }
 
-  // A layer that arrives without becoming the active one is visible, so that a
-  // command that makes several layers does not hide all but one. The active
-  // layer is shown by being active, and is left unpinned so that it hides
-  // when another layer becomes active. Only layers whose visibility has never
-  // been set are touched: a snapshot stores every layer's, and a layer hidden
-  // with its eye icon stays hidden.
+  // A layer that arrives without becoming the active one is pinned if all the
+  // unframed layers that were already there are pinned (as the show/hide all
+  // button tests), so that a command that makes several layers does not hide
+  // all but one of them when everything is being shown. The active layer is
+  // shown by being active, and is left unpinned so that it hides when another
+  // layer becomes active. Only layers whose visibility has never been set are
+  // touched: a snapshot stores every layer's, and a layer hidden with its eye
+  // icon stays hidden. (Visibility in a frame is set by the -frame command; see
+  // hideNewFrameLayers().)
   //
   // The exception is a new layer with nothing in it, made to be drawn in: the
   // layer that was active stays visible, as a guide for the drawing.
@@ -6903,9 +6906,13 @@
   // active: the active layer, {layer, dataset}
   // prevActive: (optional) the layer that was active before, if the active
   //   layer is new
-  function showNewLayers(layers, active, prevActive) {
+  // unframed: (optional) the unframed layers among @layers (default is all)
+  function showNewLayers(layers, active, prevActive, unframed) {
     var activeLyr = active && active.layer;
     var prev = prevActive && prevActive.layer;
+    var pinNew = (unframed || layers).every(function(o) {
+      return o.layer.pinned !== undefined ? o.layer.pinned : true;
+    });
     if (prev && prev != activeLyr && !prev.hidden && activeLyr.geometry_type &&
         !internal.layerHasGeometry(activeLyr) &&
         layerIsPinnable(prev, prevActive.dataset)) {
@@ -6913,7 +6920,7 @@
     }
     layers.forEach(function(o) {
       if (o.layer.pinned === undefined && layerIsPinnable(o.layer, o.dataset)) {
-        setLayerPinning(o.layer, o.layer != activeLyr);
+        setLayerPinning(o.layer, pinNew && o.layer != activeLyr);
       }
     });
   }
@@ -6979,8 +6986,6 @@
     // With frames, the checklist has an unframed group and a group per frame:
     // [{frame, el, checkbox, count, items}]
     var frameGroups = [];
-    var selectionTouched = false; // the user has checked or unchecked a layer
-    var selectionFormatClass = null; // the kind of format the selection was made for
     var selectionBeforeSnapshot = null; // checked states before the whole-project view
     var sessionFormat = null; // the format last picked by the user, for this session
     var menuFormats = null; // formats the format menu was built with
@@ -7054,9 +7059,8 @@
     function turnOn() {
       layersArr = initLayerMenu();
       formatPickedByUser = false;
-      selectionTouched = false;
-      selectionFormatClass = null;
       selectionBeforeSnapshot = null;
+      applyDefaultSelection();
       // initZipOption();
       initFormatMenu(sessionFormat);
       formatPickedByUser = !!sessionFormat && getSelectedFormat() == sessionFormat;
@@ -7080,12 +7084,6 @@
       });
     }
 
-    // 'map' for formats that draw the map, 'package' for .msx, else 'data'
-    function getFormatClass(fmt) {
-      if (isRenderedMapFormat(fmt)) return 'map';
-      return fmt == internal.PACKAGE_EXT ? 'package' : 'data';
-    }
-
     // A snapshot of a session with frames holds the whole project, since a
     // partial one could leave layers pointing at frames that aren't in it
     function exportsWholeProject(fmt) {
@@ -7094,7 +7092,6 @@
 
     function syncSelectionWithFormat() {
       var fmt = getSelectedFormat();
-      var cls = getFormatClass(fmt);
       var wholeProject = exportsWholeProject(fmt);
       if (wholeProject && !selectionBeforeSnapshot) {
         selectionBeforeSnapshot = layersArr.map(function(item) {
@@ -7105,10 +7102,6 @@
           item.checkbox.checked = selectionBeforeSnapshot[i];
         });
         selectionBeforeSnapshot = null;
-      }
-      if (cls != selectionFormatClass && !selectionTouched) {
-        selectionFormatClass = cls;
-        applyDefaultSelection(cls);
       }
       if (wholeProject) setLayerSelection(true);
       setContentSelectionDisabled(wholeProject);
@@ -7127,13 +7120,12 @@
       if (toggleBtn) toggleBtn.disabled = disabled;
     }
 
-    // Without frames, every layer starts checked. With frames, a map format
-    // exports each frame with the layers that are shown in it (and no unframed
-    // layers), and a data format exports the layers on show in the current
-    // view: the active frame's, or the visible unframed layers. In both, the
-    // selected layer counts as shown, as it is on the map, unless it has been
-    // hidden from the map.
-    function applyDefaultSelection(formatClass) {
+    // Without frames, every layer starts checked. With frames, the layers on
+    // show in the current view start checked: the visible layers of the active
+    // frame, or the visible unframed layers if the selected layer is unframed.
+    // The selected layer counts as shown, as it is on the map, unless it has
+    // been hidden from the map.
+    function applyDefaultSelection() {
       var activeFrame = model.getActiveFrame();
       if (frameGroups.length === 0) return;
       layersArr.forEach(function(item) {
@@ -7141,14 +7133,10 @@
         var active = gui.map.isActiveLayer(lyr);
         var on;
         if (item.frame) {
-          // an overlay frame is drawn in its hosts' maps, so its own map starts
-          // unchecked
-          on = (active ? !lyr.hidden : !lyr.frame_hidden) && (formatClass == 'map' ?
-            !internal.isOverlayFrame(model, item.frame) :
-            !!activeFrame && activeFrame.dataset == item.frame.dataset);
+          on = !!activeFrame && activeFrame.dataset == item.frame.dataset &&
+            (active ? !lyr.hidden : !lyr.frame_hidden);
         } else {
-          on = formatClass != 'map' && !activeFrame &&
-            (active ? !lyr.hidden : !!lyr.pinned);
+          on = !activeFrame && (active ? !lyr.hidden : !!lyr.pinned);
         }
         item.checkbox.checked = on;
       });
@@ -7303,7 +7291,6 @@
       var el = El('div').html(html).addClass('layer-item');
       var box = el.findChild('input').node();
       box.addEventListener('click', function() {
-        selectionTouched = true;
         updateToggleBtn();
       });
 
@@ -7369,7 +7356,6 @@
       box.on('click', function() {
         var checked = box.node().checked;
         group.items.forEach(function(item) { item.checkbox.checked = checked; });
-        selectionTouched = true;
         updateToggleBtn();
       });
       function toggleMembers() {
@@ -7399,7 +7385,6 @@
         } else {
           setLayerSelection(true);
         }
-        selectionTouched = true;
         updateToggleBtn();
       });
       return el;
@@ -31409,7 +31394,7 @@
 
     self.updated = function(flags) {
       var targets = self.getDefaultTargets();
-      var active, relocated;
+      var active, relocated, layers;
       if (targetsAreStale(targets)) {
         relocated = relocateTargets(targets);
         setDefaultTargets.call(self, relocated.length ? relocated : getFirstContentTarget());
@@ -31422,8 +31407,10 @@
       }
       // Before anything hears of the update, so that the map draws a layer that
       // has just arrived along with the ones already showing.
-      showNewLayers(self.getLayers(), active,
-        active && !seenLayers.has(active.layer) ? prevActive : null);
+      layers = self.getLayers();
+      showNewLayers(layers, active,
+        active && !seenLayers.has(active.layer) ? prevActive : null,
+        layers.filter(function(o) { return !internal.getFrameForDataset(self, o.dataset); }));
       self.getLayers().forEach(function(o) { seenLayers.add(o.layer); });
       prevActive = active;
       if (flags.select) {
