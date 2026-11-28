@@ -185,11 +185,14 @@ test.describe('export with overlay frames', function() {
         window.mapshaper.undoTest.getState().model.datasetCount > 0;
     });
     await runCommand(page, SETUP + ' -frame target=f1 overlay=f2', null);
+    await page.evaluate(function() {
+      window.mapshaper.undoTest.selectLayer('r1');
+    });
     await page.locator('.export-btn').click();
     await expect(page.locator('.export-options')).toBeVisible();
   });
 
-  test('overlay frames start unchecked, and the host\'s map draws them', async function({page}) {
+  test('only the current frame starts checked, and its map draws its overlays', async function({page}) {
     await expect(page.locator('.export-frame-row').filter({hasText: 'f2'}).locator('input'))
       .not.toBeChecked();
     await expect(page.locator('.export-frame-row').filter({hasText: 'f1'}).locator('input'))

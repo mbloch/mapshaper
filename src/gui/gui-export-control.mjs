@@ -21,8 +21,6 @@ export var ExportControl = function(gui) {
   // With frames, the checklist has an unframed group and a group per frame:
   // [{frame, el, checkbox, count, items}]
   var frameGroups = [];
-  var selectionTouched = false; // the user has checked or unchecked a layer
-  var selectionFormatClass = null; // the kind of format the selection was made for
   var selectionBeforeSnapshot = null; // checked states before the whole-project view
   var sessionFormat = null; // the format last picked by the user, for this session
   var menuFormats = null; // formats the format menu was built with
@@ -96,9 +94,8 @@ export var ExportControl = function(gui) {
   function turnOn() {
     layersArr = initLayerMenu();
     formatPickedByUser = false;
-    selectionTouched = false;
-    selectionFormatClass = null;
     selectionBeforeSnapshot = null;
+    applyDefaultSelection();
     // initZipOption();
     initFormatMenu(sessionFormat);
     formatPickedByUser = !!sessionFormat && getSelectedFormat() == sessionFormat;
@@ -122,12 +119,6 @@ export var ExportControl = function(gui) {
     });
   }
 
-  // 'map' for formats that draw the map, 'package' for .msx, else 'data'
-  function getFormatClass(fmt) {
-    if (isRenderedMapFormat(fmt)) return 'map';
-    return fmt == internal.PACKAGE_EXT ? 'package' : 'data';
-  }
-
   // A snapshot of a session with frames holds the whole project, since a
   // partial one could leave layers pointing at frames that aren't in it
   function exportsWholeProject(fmt) {
@@ -136,7 +127,6 @@ export var ExportControl = function(gui) {
 
   function syncSelectionWithFormat() {
     var fmt = getSelectedFormat();
-    var cls = getFormatClass(fmt);
     var wholeProject = exportsWholeProject(fmt);
     if (wholeProject && !selectionBeforeSnapshot) {
       selectionBeforeSnapshot = layersArr.map(function(item) {
@@ -147,10 +137,6 @@ export var ExportControl = function(gui) {
         item.checkbox.checked = selectionBeforeSnapshot[i];
       });
       selectionBeforeSnapshot = null;
-    }
-    if (cls != selectionFormatClass && !selectionTouched) {
-      selectionFormatClass = cls;
-      applyDefaultSelection(cls);
     }
     if (wholeProject) setLayerSelection(true);
     setContentSelectionDisabled(wholeProject);
@@ -169,13 +155,12 @@ export var ExportControl = function(gui) {
     if (toggleBtn) toggleBtn.disabled = disabled;
   }
 
-  // Without frames, every layer starts checked. With frames, a map format
-  // exports each frame with the layers that are shown in it (and no unframed
-  // layers), and a data format exports the layers on show in the current
-  // view: the active frame's, or the visible unframed layers. In both, the
-  // selected layer counts as shown, as it is on the map, unless it has been
-  // hidden from the map.
-  function applyDefaultSelection(formatClass) {
+  // Without frames, every layer starts checked. With frames, the layers on
+  // show in the current view start checked: the visible layers of the active
+  // frame, or the visible unframed layers if the selected layer is unframed.
+  // The selected layer counts as shown, as it is on the map, unless it has
+  // been hidden from the map.
+  function applyDefaultSelection() {
     var activeFrame = model.getActiveFrame();
     if (frameGroups.length === 0) return;
     layersArr.forEach(function(item) {
@@ -183,14 +168,10 @@ export var ExportControl = function(gui) {
       var active = gui.map.isActiveLayer(lyr);
       var on;
       if (item.frame) {
-        // an overlay frame is drawn in its hosts' maps, so its own map starts
-        // unchecked
-        on = (active ? !lyr.hidden : !lyr.frame_hidden) && (formatClass == 'map' ?
-          !internal.isOverlayFrame(model, item.frame) :
-          !!activeFrame && activeFrame.dataset == item.frame.dataset);
+        on = !!activeFrame && activeFrame.dataset == item.frame.dataset &&
+          (active ? !lyr.hidden : !lyr.frame_hidden);
       } else {
-        on = formatClass != 'map' && !activeFrame &&
-          (active ? !lyr.hidden : !!lyr.pinned);
+        on = !activeFrame && (active ? !lyr.hidden : !!lyr.pinned);
       }
       item.checkbox.checked = on;
     });
@@ -345,7 +326,6 @@ export var ExportControl = function(gui) {
     var el = El('div').html(html).addClass('layer-item');
     var box = el.findChild('input').node();
     box.addEventListener('click', function() {
-      selectionTouched = true;
       updateToggleBtn();
     });
 
@@ -411,7 +391,6 @@ export var ExportControl = function(gui) {
     box.on('click', function() {
       var checked = box.node().checked;
       group.items.forEach(function(item) { item.checkbox.checked = checked; });
-      selectionTouched = true;
       updateToggleBtn();
     });
     function toggleMembers() {
@@ -441,7 +420,6 @@ export var ExportControl = function(gui) {
       } else {
         setLayerSelection(true);
       }
-      selectionTouched = true;
       updateToggleBtn();
     });
     return el;

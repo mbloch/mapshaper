@@ -500,12 +500,24 @@ test.describe('export dialog with frames', function() {
     await expect(page.locator('.export-options')).toBeVisible();
   });
 
-  test('map formats export each frame with its visible layers', async function({page}) {
+  test('only the visible layers of the current frame start checked', async function({page}) {
+    // r4, the last layer created, is selected, so f2 is shown
     await expect(page.locator('.export-formats input:checked')).toHaveValue('svg');
-    await expect(exportRow(page, 'r2').locator('input')).not.toBeChecked();
+    await expect(page.locator('.export-frame-count'))
+      .toHaveText(['0 of 2 layers', '0 of 2 layers', '1 of 1 layer']);
+    await expect(page.locator('.export-frame-group.closed')).toHaveCount(3);
+    // the selection doesn't depend on the format
+    await page.locator('.export-formats input[value="geojson"]').check();
+    await expect(page.locator('.export-frame-count'))
+      .toHaveText(['0 of 2 layers', '0 of 2 layers', '1 of 1 layer']);
+  });
+
+  test('map formats export each checked frame with its checked layers', async function({page}) {
+    await page.locator('.export-frame-group').filter({hasText: 'f1'})
+      .locator('.export-frame-toggle').click();
+    await exportRow(page, 'r1').locator('input').check();
     await expect(page.locator('.export-frame-count'))
       .toHaveText(['0 of 2 layers', '1 of 2 layers', '1 of 1 layer']);
-    await expect(page.locator('.export-frame-group.closed')).toHaveCount(3);
 
     var download = await exportDownload(page);
     var zip = new AdmZip(await download.path());
@@ -514,14 +526,6 @@ test.describe('export dialog with frames', function() {
     var svg = zip.readAsText('f1.svg');
     expect(svg).toContain('id="r1"');
     expect(svg).not.toContain('id="r3"');
-  });
-
-  test('data formats start with the layers on show in the current view', async function({page}) {
-    // r4, the last layer created, is selected, so f2 is shown
-    await page.locator('.export-formats input[value="geojson"]').check();
-    await expect(page.locator('.export-frame-count'))
-      .toHaveText(['0 of 2 layers', '0 of 2 layers', '1 of 1 layer']);
-    await expect(exportRow(page, 'r2').locator('input')).not.toBeChecked();
   });
 
   test('a frame\'s checkbox checks all of its layers', async function({page}) {

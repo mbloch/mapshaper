@@ -472,8 +472,8 @@ zero margins, cannot be dragged, and the placement toolbar replaces its corner
 and margin controls with a "Full page" label.
 
 **Export.** Overlay frames are listed in the export dialog with the other
-frames but start unchecked; checking one exports it as its own file as
-well. Host and other primary frames start checked.
+frames; checking one exports it as its own file as well. Like other frames,
+it starts checked only if it is the current frame.
 
 ## CLI: Everything Through `-frame`
 
@@ -740,7 +740,7 @@ What a checkbox means depends on the format:
   of output is a frame: each checked frame produces one file, named after the
   frame, with its overlays composed in. The frame row is a three-state
   checkbox; its group is closed by default and can be opened to leave out
-  individual layers. Overlay frames appear too, unchecked by default.
+  individual layers. Overlay frames appear too.
   Checked unframed layers produce one frameless file, as an unframed export
   does today.
 - **Data formats (GeoJSON, Shapefile, CSV, TopoJSON, GeoPackage, ...).** The
@@ -756,16 +756,11 @@ PDF once it exists. With no frames, the default is unchanged. A format the
 user picked explicitly earlier in the session should probably win over the
 default.
 
-Default selection:
-
-- **Rendered formats:** every primary frame is checked, each with its
-  visible layers; overlay frames are not. Because groups are closed, the frame rows form a short list
-  at the top level, so deselecting a frame is one click. Unframed layers start
-  unchecked when frames exist, so the frames are not joined by an extra
-  frameless file nobody asked for; with no frames, the visible unframed layers
-  are checked, as today.
-- **Data formats:** the visible layers of the current view — the active
-  frame's members, or the visible unframed layers — as today.
+Default selection, the same for every format: the visible layers of the
+current view — the active frame's members, or the visible unframed layers if
+the selected layer is unframed. Other frames start unchecked; because groups
+are closed, the frame rows form a short list at the top level, so adding a
+frame is one click. With no frames, every layer is checked, as before frames.
 
 Several files from one export reuse whatever path the dialog already uses
 for multi-file formats such as Shapefile.
