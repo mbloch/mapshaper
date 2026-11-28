@@ -1,3 +1,6 @@
+v0.8.14
+* Better shadow removal by -deshadow
+
 v0.8.13
 * -blend gives pale colors richer shadows and makes shading more even across light and dark colors: dark colors get stronger shadows and gentler highlights than before. The default `chroma=` is now 0.5 for both shadows and highlights (previously 0,1).
 * [web] The blend hillshade panel works on polygon layers, either making an overlay that retains the vector polygons, or a blended image layer.
