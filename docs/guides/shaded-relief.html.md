@@ -11,11 +11,11 @@ Mapshaper now has a set of tools for making shaded relief maps:
 
 - the `-fetch` command downloads elevation data and imagery
 - the `-resample`, `-blur` and `-smooth-terrain` commands change the resolution and level of detail of elevation data
-- the **hillshade** panel turns an elevation raster into a hillshade
+- the **hillshade** interactive panel and `-hillshade` command turn an elevation raster into a hillshade
 - the `-deshadow` command removes shadows from aerial imagery
-- the **adjust colors** panel modifies the colors and contrast of image layers
-- the **blend hillshade** panel combines a hillshade with imagery or a tinted raster
-- the **color palette** panel colors an elevation raster with hypsometric tints
+- the **adjust colors** panel and `-tone` command modify the colors and contrast of image layers
+- the **blend hillshade** panel and `-blend` command combine a hillshade with imagery or a tinted raster
+- the **color palette** panel and `-classify` command color an elevation raster with hypsometric tints
 - the `-sharpen` command applies an unsharp mask to a hillshade or blended image.
 
 Panels are opened from a layer's options menu in the layers panel, and commands are typed in the console.
@@ -24,9 +24,9 @@ Panels are opened from a layer's options menu in the layers panel, and commands 
 
 A hillshade is a raster layer that models the landscape with light and shadow, on its own or blended with aerial imagery or other layers. Cartographic hillshades aren't meant to be realistic renderings of sunlight on the land. They adjust the strength of relief to suit the map, sometimes exaggerating it, sometimes keeping it subtle, and they generalize detail so that terrain is legible and works as a base layer.
 
-### Step one: get elevation data in a map frame
+### Step one: put elevation data into a map frame
 
-A **map frame** is a rectangle that defines the geographical extent of a map, its projection and its output size. When `-fetch` is run, the area to download, the coordinate system and the resolution are all taken from the frame.
+A **map frame** is a rectangle that defines the geographical extent of a map, its projection and its output size.
 
 There are two ways to get started.
 
@@ -50,7 +50,7 @@ There are two ways to get started.
    -fetch mapterhorn
    ```
 
-   The result should look something like this:
+   When `-fetch` is run, it downloads data for the area covered by the map frame and reprojects it to the frame's projection. The result should look something like this:
 
    ![A fetched elevation raster of a river canyon, drawn in grayscale inside a map frame](/docs/images/shaded-relief-fetch-dem.png)
 

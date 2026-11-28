@@ -54,18 +54,18 @@
 <ul>
 <li>the <code>-fetch</code> command downloads elevation data and imagery</li>
 <li>the <code>-resample</code>, <code>-blur</code> and <code>-smooth-terrain</code> commands change the resolution and level of detail of elevation data</li>
-<li>the <strong>hillshade</strong> panel turns an elevation raster into a hillshade</li>
+<li>the <strong>hillshade</strong> interactive panel and <code>-hillshade</code> command turn an elevation raster into a hillshade</li>
 <li>the <code>-deshadow</code> command removes shadows from aerial imagery</li>
-<li>the <strong>adjust colors</strong> panel modifies the colors and contrast of image layers</li>
-<li>the <strong>blend hillshade</strong> panel combines a hillshade with imagery or a tinted raster</li>
-<li>the <strong>color palette</strong> panel colors an elevation raster with hypsometric tints</li>
+<li>the <strong>adjust colors</strong> panel and <code>-tone</code> command modify the colors and contrast of image layers</li>
+<li>the <strong>blend hillshade</strong> panel and <code>-blend</code> command combine a hillshade with imagery or a tinted raster</li>
+<li>the <strong>color palette</strong> panel and <code>-classify</code> command color an elevation raster with hypsometric tints</li>
 <li>the <code>-sharpen</code> command applies an unsharp mask to a hillshade or blended image.</li>
 </ul>
 <p>Panels are opened from a layer&#39;s options menu in the layers panel, and commands are typed in the console.</p>
 <h2 id="create-a-hillshade">Create a hillshade</h2>
 <p>A hillshade is a raster layer that models the landscape with light and shadow, on its own or blended with aerial imagery or other layers. Cartographic hillshades aren&#39;t meant to be realistic renderings of sunlight on the land. They adjust the strength of relief to suit the map, sometimes exaggerating it, sometimes keeping it subtle, and they generalize detail so that terrain is legible and works as a base layer.</p>
-<h3 id="step-one-get-elevation-data-in-a-map-frame">Step one: get elevation data in a map frame</h3>
-<p>A <strong>map frame</strong> is a rectangle that defines the geographical extent of a map, its projection and its output size. When <code>-fetch</code> is run, the area to download, the coordinate system and the resolution are all taken from the frame.</p>
+<h3 id="step-one-put-elevation-data-into-a-map-frame">Step one: put elevation data into a map frame</h3>
+<p>A <strong>map frame</strong> is a rectangle that defines the geographical extent of a map, its projection and its output size.</p>
 <p>There are two ways to get started.</p>
 <h4 id="option-one-draw-a-frame-and-download-a-dem-to-fit-it">Option one: draw a frame and download a DEM to fit it</h4>
 <ol>
@@ -82,7 +82,7 @@
 <li><p>Download elevation data for the frame:</p>
 <pre><code class="hljs language-bash">-fetch mapterhorn
 </code></pre>
-<p>The result should look something like this:</p>
+<p>When <code>-fetch</code> is run, it downloads data for the area covered by the map frame and reprojects it to the frame&#39;s projection. The result should look something like this:</p>
 <p><img src="/docs/images/shaded-relief-fetch-dem.png" alt="A fetched elevation raster of a river canyon, drawn in grayscale inside a map frame"></p>
 </li>
 </ol>
@@ -267,7 +267,7 @@
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#create-a-hillshade">Create a hillshade</a></li><li class="lvl-3"><a href="#step-one-get-elevation-data-in-a-map-frame">Step one: get elevation data in a map frame</a></li><li class="lvl-3"><a href="#step-two-create-a-hillshade-from-the-elevation-layer">Step two: create a hillshade from the elevation layer</a></li><li class="lvl-2"><a href="#blend-a-hillshade-with-imagery">Blend a hillshade with imagery</a></li><li class="lvl-3"><a href="#step-one-prepare-the-imagery">Step one: prepare the imagery</a></li><li class="lvl-3"><a href="#step-two-blend-the-hillshade-with-the-image">Step two: blend the hillshade with the image</a></li><li class="lvl-2"><a href="#blend-a-hillshade-with-hypsometric-tints">Blend a hillshade with hypsometric tints</a></li><li class="lvl-2"><a href="#blend-a-hillshade-with-polygons">Blend a hillshade with polygons</a></li><li class="lvl-2"><a href="#see-also">See also</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#create-a-hillshade">Create a hillshade</a></li><li class="lvl-3"><a href="#step-one-put-elevation-data-into-a-map-frame">Step one: put elevation data into a map frame</a></li><li class="lvl-3"><a href="#step-two-create-a-hillshade-from-the-elevation-layer">Step two: create a hillshade from the elevation layer</a></li><li class="lvl-2"><a href="#blend-a-hillshade-with-imagery">Blend a hillshade with imagery</a></li><li class="lvl-3"><a href="#step-one-prepare-the-imagery">Step one: prepare the imagery</a></li><li class="lvl-3"><a href="#step-two-blend-the-hillshade-with-the-image">Step two: blend the hillshade with the image</a></li><li class="lvl-2"><a href="#blend-a-hillshade-with-hypsometric-tints">Blend a hillshade with hypsometric tints</a></li><li class="lvl-2"><a href="#blend-a-hillshade-with-polygons">Blend a hillshade with polygons</a></li><li class="lvl-2"><a href="#see-also">See also</a></li></ul>
   </aside>
 
 </div>
