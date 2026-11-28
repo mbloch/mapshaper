@@ -54,10 +54,10 @@
 <ul>
 <li>the <code>-fetch</code> command downloads elevation data and imagery</li>
 <li>the <code>-deshadow</code> command removes shadows from aerial imagery</li>
-<li>the <strong>hillshade</strong> interactive panel and <code>-hillshade</code> command turn an elevation raster into a hillshade</li>
-<li>the <strong>adjust colors</strong> panel and <code>-tone</code> command modify the colors and contrast of image layers</li>
-<li>the <strong>blend hillshade</strong> panel and <code>-blend</code> command combine a hillshade with imagery or a tinted raster</li>
-<li>the <strong>color palette</strong> panel and <code>-classify</code> command color an elevation raster with hypsometric tints</li>
+<li>the <strong>hillshade</strong> UI panel and <code>-hillshade</code> command turn an elevation raster into a hillshade</li>
+<li>the <strong>adjust colors</strong> panel and <code>-tone</code> command modify the colors and contrast of images</li>
+<li>the <strong>blend hillshade</strong> panel and <code>-blend</code> command combine a hillshade with imagery and other layers</li>
+<li>the <strong>color palette</strong> panel and <code>-classify</code> command create hypsometric tints</li>
 <li>the <code>-resample</code>, <code>-blur</code> and <code>-smooth-terrain</code> commands change the resolution and level of detail of elevation data</li>
 <li>the <code>-sharpen</code> command applies an unsharp mask to a hillshade or blended image.</li>
 </ul>
@@ -175,7 +175,7 @@
 <h2 id="blend-a-hillshade-with-imagery">Blend a hillshade with imagery</h2>
 <h3 id="step-one-prepare-the-imagery">Step one: prepare the imagery</h3>
 <h4 id="fetch-imagery">Fetch imagery</h4>
-<p>With the map frame in place (see <a href="#step-one-get-elevation-data-in-a-map-frame">get elevation data in a map frame</a>), run <code>-fetch</code> with the name of an imagery source, or import your own imagery.</p>
+<p>With the map frame in place (see <a href="#step-one-put-elevation-data-into-a-map-frame">put elevation data into a map frame</a>), run <code>-fetch</code> with the name of an imagery source, or import your own imagery.</p>
 <pre><code class="hljs language-bash">-fetch naip
 </code></pre>
 <p>Built-in imagery sources:</p>

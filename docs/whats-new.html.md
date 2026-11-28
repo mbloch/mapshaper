@@ -11,13 +11,13 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**Fetch imagery and DEMs.** Download elevation or imagery tiles for the area of a map frame from sources such as Mapterhorn, Copernicus, USGS 3DEP, NAIP, Sentinel-2, Landsat and Blue Marble. → See [`-fetch`](/docs/reference.html.md#-fetch).
+**Fetch imagery and DEMs.** Download elevation data or imagery for the area of a map frame from sources such as Mapterhorn, Copernicus, USGS 3DEP, NAIP, Sentinel-2, Landsat and Blue Marble. → See [`-fetch`](/docs/reference.html.md#-fetch), and the sections of the Shaded relief guide on [elevation data](/docs/guides/shaded-relief.html.md#step-one-put-elevation-data-into-a-map-frame) and [imagery](/docs/guides/shaded-relief.html.md#fetch-imagery).
 
 </div>
 
 <div class="whats-new-entry">
 
-**Hillshades.** Convert an elevation raster to shaded relief, with control over light direction and other settings. → See [`-hillshade`](/docs/reference.html.md#-hillshade).
+**Hillshades.** Convert an elevation raster to shaded relief, with control over light direction and other settings. → See [`-hillshade`](/docs/reference.html.md#-hillshade) and [Create a hillshade from the elevation layer](/docs/guides/shaded-relief.html.md#step-two-create-a-hillshade-from-the-elevation-layer) in the Shaded relief guide.
 
 - `smoothing=` (0-4) removes minor terrain detail while keeping larger landforms distinct.
 - `ambient=` darkens terrain with a partially occluded view of the sky, such as valleys and canyons, for a more three-dimensional look.
@@ -28,29 +28,29 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**Color adjustment.** Change the saturation, lightness, hue and contrast of an RGB image. In the web UI, there are sliders for adjusting color interactively. → See [`-tone`](/docs/reference.html.md#-tone).
+**Color adjustment.** Change the saturation, lightness, hue and contrast of an RGB image. In the web UI, there are sliders for adjusting color interactively. → See [`-tone`](/docs/reference.html.md#-tone) and [Adjust the colors of the imagery](/docs/guides/shaded-relief.html.md#adjust-the-colors-of-the-imagery) in the Shaded relief guide.
 
 </div>
 
 <div class="whats-new-entry">
 
-**Hypsometric tints.** Color an elevation raster by climate-based palettes (desert, steppe, tropical, temperate, boreal, polar or blended), or atlas, lowland and highland palettes, continuously or in classes. → See the `land-colors=` and `sea-colors=` options of [`-classify`](/docs/reference.html.md#-classify).
+**Hypsometric tints.** Color an elevation raster by a hypsometric color ramp, using a smooth gradient or bands of solid color. → See the `land-colors=` and `sea-colors=` options of [`-classify`](/docs/reference.html.md#-classify), and [Blend a hillshade with hypsometric tints](/docs/guides/shaded-relief.html.md#blend-a-hillshade-with-hypsometric-tints) in the Shaded relief guide.
 
 </div>
 
 <div class="whats-new-entry">
 
-**Blending.** Combine a hillshade with an image or with rasterized vector layers (such as choropleth fills) to add shaded relief. → See [`-blend`](/docs/reference.html.md#-blend).
+**Blending.** Combine a hillshade with an image or with rasterized vector layers (such as choropleth fills) to add shaded relief. → See [`-blend`](/docs/reference.html.md#-blend) and the Shaded relief guide sections on blending a hillshade with [imagery](/docs/guides/shaded-relief.html.md#blend-a-hillshade-with-imagery) and with [polygons](/docs/guides/shaded-relief.html.md#blend-a-hillshade-with-polygons).
 
 - `strength=` modifies the opacity of the shading.
-- `chroma=` controls how the hillshade's shadow and highlight colors are composited with the base layer. At 0, the shading layer is blended using alpha transparency, which reduces the saturation of the base layer's colors. At 1, the result keeps the layer's original hue and saturation, akin to a luminosity blend mode. Decimal values between 0 and 1 keep a proportional share of the base layer's saturation, and values above 1 boost saturation beyond the original colors.
+- `chroma=` fine-tunes the color saturation of shadow and highlight areas.
 - Both `strength=` and `chroma=` accept either one value or separate values for shadows and highlights.
 
 </div>
 
 <div class="whats-new-entry">
 
-**Shadow removal (experimental).** Remove terrain shadows from an aerial image, using an elevation raster to find shadowed areas and dark slopes and bring them to a consistent brightness. This is useful before blending the image with a hillshade, so the image’s own shadows don’t clash with the hillshade’s. Results are less reliable on composite images with inconsistent lighting, and on images without distinct shadow areas. → See [`-deshadow`](/docs/reference.html.md#-deshadow).
+**Shadow removal (experimental).** Remove terrain shadows from an aerial image, using an elevation raster to find shadowed areas and dark slopes and bring them to a consistent brightness. This is useful before blending the image with a hillshade, so the image’s own shadows don’t clash with the hillshade’s. Results can be compromised by factors such as unusual land cover, a low-resolution DEM, low relief and inconsistent lighting in composite images. → See [`-deshadow`](/docs/reference.html.md#-deshadow) and [Remove shadows from aerial imagery](/docs/guides/shaded-relief.html.md#remove-shadows-from-aerial-imagery) in the Shaded relief guide.
 
 </div>
 

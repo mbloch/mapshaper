@@ -11,10 +11,10 @@ Mapshaper now has a set of tools for making shaded relief maps:
 
 - the `-fetch` command downloads elevation data and imagery
 - the `-deshadow` command removes shadows from aerial imagery
-- the **hillshade** interactive panel and `-hillshade` command turn an elevation raster into a hillshade
-- the **adjust colors** panel and `-tone` command modify the colors and contrast of image layers
-- the **blend hillshade** panel and `-blend` command combine a hillshade with imagery or a tinted raster
-- the **color palette** panel and `-classify` command color an elevation raster with hypsometric tints
+- the **hillshade** UI panel and `-hillshade` command turn an elevation raster into a hillshade
+- the **adjust colors** panel and `-tone` command modify the colors and contrast of images
+- the **blend hillshade** panel and `-blend` command combine a hillshade with imagery and other layers
+- the **color palette** panel and `-classify` command create hypsometric tints
 - the `-resample`, `-blur` and `-smooth-terrain` commands change the resolution and level of detail of elevation data
 - the `-sharpen` command applies an unsharp mask to a hillshade or blended image.
 
@@ -125,7 +125,7 @@ The hillshade's tones run from a **Shadow** color through a **Base** color, whic
 
 #### Fetch imagery
 
-With the map frame in place (see [get elevation data in a map frame](#step-one-get-elevation-data-in-a-map-frame)), run `-fetch` with the name of an imagery source, or import your own imagery.
+With the map frame in place (see [put elevation data into a map frame](#step-one-put-elevation-data-into-a-map-frame)), run `-fetch` with the name of an imagery source, or import your own imagery.
 
 ```bash
 -fetch naip
